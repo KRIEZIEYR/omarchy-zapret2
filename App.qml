@@ -178,7 +178,10 @@ Item {
         text: {
           if (row && row.error) return String(row.error)
           var s = ((row && row.score) || 0) + "/" + ((row && row.total) || 0)
-          if (row && !row.baseline && baseScore >= 0 && (row.total | 0) > 0 && (row.score | 0) === baseScore) s += " · = без обхода"
+          if (row && !row.baseline && baseScore >= 0 && (row.total | 0) > 0) {
+            if ((row.score | 0) === baseScore) s += " · = без обхода"
+            else if ((row.score | 0) < baseScore) s += " · −" + (baseScore - (row.score | 0)) + " к базе"
+          }
           return s
         }
         elide: Text.ElideRight
@@ -186,7 +189,7 @@ Item {
       }
       Button {
         bordered: true
-        visible: !!row && !row.baseline && (!root.ready || root.svc.preset !== row.preset)
+        visible: !!row && !row.baseline && (pickHover.hovered || (row && row.chosen)) && (!root.ready || root.svc.preset !== row.preset)
         enabled: !!row && !row.baseline && root.ready && !root.svc.busy && root.svc.preset !== row.preset
         text: "Применить"
         tooltipText: "Применить " + ((row && row.title) || (row && row.preset) || "")
@@ -328,19 +331,32 @@ Item {
                   tooltipText: "Ctrl+" + (index + 1) + (index === 4 && root.sysUpdate && root.tab !== 4 ? " · есть обновление" : "")
                   onClicked: root.tab = index
                 }
-                Rectangle {
+                BorderSurface {
                   Layout.alignment: Qt.AlignVCenter
-                  width: Style.space(8)
-                  height: Style.space(8)
-                  radius: width / 2
-                  color: Color.accent
                   visible: index === 4 && root.ready && root.svc.installed && !root.svc.appCurrent && root.tab !== 0 && root.tab !== 4
+                  implicitWidth: pillText.implicitWidth + Style.space(10)
+                  implicitHeight: pillText.implicitHeight + Style.space(4)
+                  color: Style.selectedFillFor(root.fg, Color.accent)
+                  borderSpec: Border.controlSpec("selected", root.fg, Color.accent)
+                  radius: Style.cornerRadius
+                  Text {
+                    id: pillText
+                    anchors.centerIn: parent
+                    text: "обновление"
+                    color: Style.selectedStateColor(root.fg, Color.accent)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
                 }
               }
             }
 
             Item { Layout.fillHeight: true }
 
+            Hint {
+              Layout.fillWidth: true
+              text: "Ctrl+1…6 вкладки · Ctrl+T вкл/выкл · / поиск"
+            }
             Hint {
               Layout.fillWidth: true
               visible: root.ready && root.svc.busy
@@ -465,7 +481,7 @@ Item {
           var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
           if (v.tone !== "neutral" || v.action !== "none") return false
           var t = String(v.text || "")
-          return t.indexOf("без обхода") !== -1 || t.indexOf("не нужен") !== -1 || t.indexOf("Обход здесь не нужен") !== -1
+          return t.indexOf("без обхода") !== -1 || t.indexOf("не нужен") !== -1 || t.indexOf("не нужно") !== -1
         }
         PanelHero {
           Layout.fillWidth: true
@@ -536,13 +552,16 @@ Item {
           textFormat: Text.PlainText
           font.family: root.fontFamily
           font.pixelSize: Style.font.title
+          font.bold: headCard.isNeutral
           text: {
             if (!root.ready) return ""
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
+            if (headCard.isNeutral) return "✓ " + root.fixQuic(v.text)
             return root.fixQuic(v.text)
           }
           color: {
             if (!root.ready) return Color.popups.text
+            if (headCard.isNeutral) return Color.accent
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
             return v.tone === "good" ? Color.accent : (v.tone === "bad" || v.tone === "warn") ? root.bad : Color.popups.text
           }
@@ -552,65 +571,52 @@ Item {
           visible: !headCard.isStale && text !== ""
           text: {
             if (!root.ready) return ""
+            if (headCard.isNeutral) {
+              var vv = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
+              var n = vv.note || ""
+              var expl = "Сайты открываются и так — возможно, роутер или VPN уже обходят блокировки"
+              return n !== "" ? n + " · " + expl : expl
+            }
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
             return v.note || ""
           }
         }
-        Label {
+        Hint {
           Layout.fillWidth: true
           visible: headCard.isStale
-          color: root.bad
+          color: root.dim
           text: {
             if (!root.ready) return ""
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
-            return "⚠ " + (v.note || "") + " — нажмите «Проверить»"
+            return v.note || ""
           }
         }
         RowLayout {
           Layout.fillWidth: true
-          visible: headCard.isStale
+          visible: root.ready && root.svc.installed
           spacing: Style.space(8)
           Button {
-            bordered: true
+            bordered: headCard.isStale
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: "Проверить"
             tooltipText: "Проверить доступность с текущей стратегией"
             onClicked: root.svc.runCheck()
           }
           Button {
+            bordered: !headCard.isStale
             enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Включить всё равно"
+            text: {
+              if (!root.ready) return "Включить"
+              if (root.svc.isOn) return "Выключить"
+              if (headCard.isNeutral) return "Включить без необходимости"
+              if (headCard.isStale) return "Включить без проверки"
+              return "Включить"
+            }
             tooltipText: "Включить обход без новой проверки"
-            onClicked: root.svc.turnOn()
-          }
-        }
-        RowLayout {
-          Layout.fillWidth: true
-          visible: !headCard.isStale && !headCard.isNeutral
-          Button {
-            bordered: true
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            visible: !root.svc.isOn
-            text: "Включить"
-            tooltipText: "Включить обход"
-            onClicked: root.svc.turnOn()
-          }
-          Button {
-            bordered: true
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            visible: root.ready && root.svc.isOn
-            text: "Выключить"
-            onClicked: root.svc.turnOff()
-          }
-        }
-        RowLayout {
-          Layout.fillWidth: true
-          visible: !headCard.isStale && headCard.isNeutral
-          Button {
-            bordered: true
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Всё равно включить"
-            onClicked: root.svc.turnOn()
+            onClicked: {
+              if (root.svc.isOn) root.svc.turnOff()
+              else root.svc.turnOn()
+            }
           }
         }
       }
@@ -1027,13 +1033,23 @@ Item {
         || editor.area.activeFocus || viewerEditor.area.activeFocus)
 
     Card {
+      id: recCard
       visible: !sp.editing && !sp.showing
-      PanelSectionHeader { Layout.fillWidth: true; text: "Рекомендуемая"; foreground: root.fg; fontFamily: root.fontFamily }
-      Label { Layout.fillWidth: true; text: Model.presetTitle(sp.recommendedName()) }
-      Hint { Layout.fillWidth: true; text: sp.recommendedText() }
+      property bool notNeeded: root.ready && root.svc.autopickResult.notNeeded === true
+      PanelSectionHeader { Layout.fillWidth: true; text: recCard.notNeeded ? "Обход не нужен" : "Рекомендуемая"; foreground: root.fg; fontFamily: root.fontFamily }
+      Label { Layout.fillWidth: true; text: recCard.notNeeded ? "Обход не нужен" : Model.presetTitle(sp.recommendedName()) }
+      Hint { Layout.fillWidth: true; text: recCard.notNeeded ? "Всё открывается без обхода — ничего делать не нужно. Сайты открываются и так — возможно, роутер или VPN уже обходят блокировки." : sp.recommendedText() }
       RowLayout {
         Layout.fillWidth: true
         Button {
+          visible: recCard.notNeeded
+          bordered: true
+          text: "Открыть Обзор"
+          tooltipText: "Открыть Обзор"
+          onClicked: root.tab = 0
+        }
+        Button {
+          visible: !recCard.notNeeded
           bordered: true
           enabled: root.ready && root.svc.installed && !root.svc.busy
           text: "Включить " + Model.presetTitle(sp.recommendedName())
@@ -1049,7 +1065,7 @@ Item {
     RowLayout {
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
-      Button { bordered: true; text: "Подобрать автоматически"; onClicked: { root.tab = 3; root.svc.autopick([]) } }
+      Button { bordered: true; visible: !(root.ready && root.svc.autopickResult.notNeeded === true); text: "Подобрать автоматически"; onClicked: { root.tab = 3; root.svc.autopick([]) } }
       Button { bordered: true; text: "Обновить стратегии из Flowseal"; onClicked: root.svc.updatePresets() }
       Button { bordered: true; text: "Новая стратегия"; onClicked: sp.edit("") }
       Button {
@@ -1279,7 +1295,7 @@ Item {
       Hint {
         Layout.fillWidth: true
         visible: sp.shownText !== "" && !sp.isSectionFormat(sp.shownText)
-        text: "Полный пресет Flowseal: его можно только посмотреть. Свои стратегии используют формат секций ([TCP_HTTP], [TCP_TLS], …)."
+        text: "Полный пресет Flowseal: правится через копию как свою."
       }
       Editor {
         id: viewerEditor
@@ -1296,8 +1312,9 @@ Item {
         }
         Button {
           bordered: true
-          visible: sp.shownText !== "" && sp.isSectionFormat(sp.shownText)
+          visible: sp.shownText !== ""
           text: "Скопировать как свою"
+          tooltipText: "Открыть копию в редакторе своих стратегий"
           onClicked: sp.copyAsOwn()
         }
       }
@@ -1339,22 +1356,25 @@ Item {
     spacing: Style.space(10)
     property string current: "list-general-user"
     readonly property bool editable: current.indexOf("-user") !== -1
-    readonly property bool uiBlocked: listEditor.area.activeFocus || listDrop.popupOpen
+    readonly property bool uiBlocked: listDrop.popupOpen || listEditor.area.activeFocus
     readonly property string kind: current.indexOf("ipset") === 0 ? "ipset" : "host"
     property string info: ""
     property string loadedText: ""
     property string saveResult: ""
-    readonly property var names: [
-      { value: "list-general-user", label: "Мои сайты (через обход)" },
-      { value: "list-exclude-user", label: "Мои исключения (без обхода)" },
-      { value: "ipset-all-user", label: "Мои IP-сети (через обход)" },
-      { value: "ipset-exclude-user", label: "Мои IP-исключения" },
-      { value: "list-general", label: "Общий список (только чтение)" },
-      { value: "list-google", label: "YouTube/Google (только чтение)" },
-      { value: "list-exclude", label: "Исключения (только чтение)" },
-      { value: "ipset-all", label: "IP-сети (только чтение)" },
-      { value: "ipset-exclude", label: "IP-исключения (только чтение)" }
+    readonly property var myNames: [
+      { value: "list-general-user", label: "Мои: сайты (через обход)" },
+      { value: "list-exclude-user", label: "Мои: исключения (без обхода)" },
+      { value: "ipset-all-user", label: "Мои: IP-сети (через обход)" },
+      { value: "ipset-exclude-user", label: "Мои: IP-исключения" }
     ]
+    readonly property var builtinNames: [
+      { value: "list-general", label: "Встроенные: общий список" },
+      { value: "list-google", label: "Встроенные: YouTube/Google" },
+      { value: "list-exclude", label: "Встроенные: исключения" },
+      { value: "ipset-all", label: "Встроенные: IP-сети" },
+      { value: "ipset-exclude", label: "Встроенные: IP-исключения" }
+    ]
+    readonly property var names: myNames.concat(builtinNames)
 
     function load() {
       if (!root.ready) return
@@ -1385,33 +1405,30 @@ Item {
         options: lp.names
         onChanged: function(v) { lp.current = v }
       }
-      Button {
+      Hint {
         visible: lp.editable && listEditor.text !== lp.loadedText
-        enabled: false
-        selected: true
-        bordered: true
-        text: "не сохранено"
-        tooltipText: "Сохраните, чтобы применить изменения"
+        text: "не сохранено — сохраните, чтобы применить"
       }
       Hint { Layout.fillWidth: true; text: lp.info }
       Button { bordered: true; text: "Обновить списки из Flowseal"; onClicked: root.svc.updateLists() }
     }
     Hint {
       Layout.fillWidth: true
-      text: lp.editable ? "По одному домену (поддомены включаются сами) или IP/CIDR на строку. Неверные строки отбрасываются. Сохранение перезапускает обход."
-                        : "Встроенный список. Свои записи добавляйте в «Мои …»."
+      text: lp.editable ? "Мои — можно править. По одному домену (поддомены включаются сами) или IP/CIDR на строку. Неверные строки отбрасываются. Сохранение перезапускает обход."
+                        : "Встроенные (только чтение). Свои записи добавляйте в «Мои …»."
     }
     Editor {
       id: listEditor
       readOnly: !lp.editable
-      placeholderText: "example.com\nsub.example.org\n# по одному домену на строку"
+      placeholderText: "# пример:\n# example.com\n# sub.example.org\n# по одному домену на строку"
     }
     RowLayout {
       visible: lp.editable
       property var liveCounts: (typeof Model.validLines === "function") ? Model.validLines(listEditor.text, lp.kind) : { valid: Model.countLines(listEditor.text), dropped: 0 }
       Button {
         bordered: true
-        text: "Сохранить " + parent.liveCounts.valid + " строк"
+        enabled: root.ready && !root.svc.busy && parent.liveCounts.valid > 0
+        text: "Сохранить список"
         tooltipText: "Сохранить список (" + parent.liveCounts.valid + " строк, отброшено " + parent.liveCounts.dropped + ") и перезапустить обход"
         onClicked: root.svc.saveList(lp.current, listEditor.text, function(r) {
           if (r.ok) {
@@ -1577,25 +1594,39 @@ Item {
           PanelSectionHeader { Layout.fillWidth: true; text: "Глубокий поиск: blockcheck2"; foreground: root.fg; fontFamily: root.fontFamily }
           Button {
             bordered: true
-            enabled: root.ready && (!blockcheckCard.vpnOn() || root.svc.blockcheckRunning)
+            visible: !blockcheckCard.vpnOn() || root.svc.blockcheckRunning
+            enabled: root.ready && !blockcheckCard.bindMissing() || (root.ready && root.svc.blockcheckRunning)
             text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить"
-            tooltipText: blockcheckCard.bindMissing() ? "Скопировать: omarchy pkg add bind" : "Запустить глубокий поиск"
+            tooltipText: "Запустить глубокий поиск"
             onClicked: {
               if (root.svc.blockcheckRunning) { root.svc.blockcheckStop(); return }
               if (blockcheckCard.vpnOn()) return
-              if (blockcheckCard.bindMissing()) { root.copyText("omarchy pkg add bind"); return }
+              if (blockcheckCard.bindMissing()) return
               root.svc.blockcheckStart(domains.text.split(/[\s,]+/).filter(function(d) { return d !== "" }), level.value)
             }
           }
         }
+        Label {
+          Layout.fillWidth: true
+          visible: blockcheckCard.vpnOn() && !root.svc.blockcheckRunning
+          color: root.bad
+          font.bold: true
+          text: "Выключите VPN-туннель (omarchy-xray TUN): поиск через туннель бессмыслен"
+        }
         RowLayout {
           Layout.fillWidth: true
-          visible: !root.svc.blockcheckRunning && blockcheckCard.bindMissing()
+          visible: !root.svc.blockcheckRunning && blockcheckCard.bindMissing() && !blockcheckCard.vpnOn()
           spacing: Style.space(8)
           Hint {
             Layout.fillWidth: true
             color: root.bad
-            text: "нужен bind: omarchy pkg add bind — нажмите «Запустить», чтобы скопировать команду"
+            text: "нужен bind: omarchy pkg add bind"
+          }
+          Button {
+            bordered: true
+            text: "Скопировать команду"
+            tooltipText: "Скопировать команду: omarchy pkg add bind"
+            onClicked: root.copyText("omarchy pkg add bind")
           }
           PanelActionButton {
             iconText: "󰆏"
@@ -1604,17 +1635,6 @@ Item {
             fontFamily: root.fontFamily
             onClicked: root.copyText("omarchy pkg add bind")
           }
-        }
-        Hint {
-          Layout.fillWidth: true
-          visible: {
-            if (!root.ready || root.svc.blockcheckRunning) return false
-            var items = root.svc.doctorItems || []
-            for (var i = 0; i < items.length; i++)
-              if (items[i].name === "No VPN tunnel" && !items[i].ok) return true
-            return false
-          }
-          text: "включён VPN-туннель: blockcheck2 бессмыслен"
         }
         Hint {
           Layout.fillWidth: true
@@ -1688,6 +1708,7 @@ Item {
           Layout.fillHeight: false
           readOnly: true
           visible: root.ready && root.svc.blockcheck !== null && root.svc.blockcheck.lines > 0
+          area.wrapMode: TextEdit.Wrap
           text: {
             if (!root.ready || !root.svc.blockcheck) return ""
             var tail = root.svc.blockcheck.tail
@@ -1847,7 +1868,7 @@ Item {
         Toggle {
           Layout.fillWidth: true
           label: "IPv6"
-          description: "Обрабатывать и IPv6-соединения · отключение может мешать проверке QUIC"
+          description: "Обрабатывать и IPv6-соединения · не трогайте, если не уверены"
           checked: root.ready && root.svc.settings.ipv6 !== false
           foreground: root.fg
           onClicked: root.svc.toggleIpv6()
@@ -1959,22 +1980,34 @@ Item {
             spacing: 0
             PanelSectionHeader { Layout.fillWidth: true; text: "Hosts Flowseal"; foreground: root.fg; fontFamily: root.fontFamily }
             Hint { Layout.fillWidth: true; text: "Добавляет в /etc/hosts адреса Discord-серверов из репозитория Flowseal, нужен пароль" }
-          }
-          ToggleSwitch {
-            checked: root.ready && root.svc.hostsOn === true
-            busy: root.ready && root.svc.busy
-            foreground: root.fg
-            onToggled: {
-              if (!root.svc.hostsOn && !stp.hostsConfirm) { stp.hostsConfirm = true; hostsTimer.restart() }
-              else root.svc.hostsSet(!root.svc.hostsOn)
+            Hint {
+              Layout.fillWidth: true
+              visible: root.ready && root.svc.hostsOn === true
+              text: "Включён"
             }
+          }
+          Button {
+            visible: root.ready && root.svc.hostsOn === true
+            bordered: true
+            enabled: root.ready && !root.svc.busy
+            text: "Выключить"
+            tooltipText: "Убрать записи из /etc/hosts (спросит пароль)"
+            onClicked: root.svc.hostsSet(false)
+          }
+          Button {
+            visible: !(root.ready && root.svc.hostsOn === true) && !stp.hostsConfirm
+            bordered: true
+            enabled: root.ready && !root.svc.busy
+            text: "Включить"
+            tooltipText: "Изменить /etc/hosts (спросит пароль)"
+            onClicked: { stp.hostsConfirm = true; hostsTimer.restart() }
           }
         }
         RowLayout {
           Layout.fillWidth: true
           visible: stp.hostsConfirm && !(root.ready && root.svc.hostsOn)
           Hint { Layout.fillWidth: true; text: "Изменит /etc/hosts, нужен пароль" }
-          Button { bordered: true; text: "Включить"; tooltipText: "Изменить /etc/hosts (спросит пароль)"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop(); root.svc.hostsSet(true) } }
+          Button { bordered: true; text: "Подтвердить"; tooltipText: "Изменить /etc/hosts (спросит пароль)"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop(); root.svc.hostsSet(true) } }
           Button { text: "Отмена"; tooltipText: "Оставить /etc/hosts как есть"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop() } }
         }
       }
@@ -2000,25 +2033,45 @@ Item {
         }
         RowLayout {
           Layout.fillWidth: true
-          TextField {
+          spacing: Style.space(8)
+          Text {
             id: hotkeyApp
             Layout.fillWidth: true
-            readOnly: true
-            selectByMouse: true
             text: "omarchy-shell krieziey.omarchy-zapret2 toggle"
+            color: root.fg
+            font.family: root.monoFamily
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideMiddle
+            textFormat: Text.PlainText
           }
-          Button { bordered: true; text: "Скопировать"; tooltipText: "Скопировать команду в буфер"; onClicked: root.copyText(hotkeyApp.text) }
+          PanelActionButton {
+            iconText: "󰆏"
+            tooltipText: "Скопировать команду в буфер"
+            foreground: root.fg
+            fontFamily: root.fontFamily
+            onClicked: root.copyText(hotkeyApp.text)
+          }
         }
         RowLayout {
           Layout.fillWidth: true
-          TextField {
+          spacing: Style.space(8)
+          Text {
             id: hotkeyBypass
             Layout.fillWidth: true
-            readOnly: true
-            selectByMouse: true
             text: "omarchy-shell krieziey.omarchy-zapret2 toggleBypass"
+            color: root.fg
+            font.family: root.monoFamily
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideMiddle
+            textFormat: Text.PlainText
           }
-          Button { bordered: true; text: "Скопировать"; tooltipText: "Скопировать команду в буфер"; onClicked: root.copyText(hotkeyBypass.text) }
+          PanelActionButton {
+            iconText: "󰆏"
+            tooltipText: "Скопировать команду в буфер"
+            foreground: root.fg
+            fontFamily: root.fontFamily
+            onClicked: root.copyText(hotkeyBypass.text)
+          }
         }
         Hint {
           Layout.fillWidth: true

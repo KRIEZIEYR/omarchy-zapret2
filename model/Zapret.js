@@ -194,7 +194,7 @@ function failReason(check, failing) {
 }
 
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
-var NOT_NEEDED_TEXT = "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)"
+var NOT_NEEDED_TEXT = "Всё открывается без обхода — ничего делать не нужно"
 function verdict(st, check, autopick, now) {
   if (check !== null && check !== undefined && typeof check === "object" && check.preset !== undefined) {
     var curPreset = (st && st.settings) ? String(st.settings.preset || "") : ""

@@ -99,7 +99,7 @@ test("autopick tie-break: name asc, untested last", () => {
 })
 
 test("verdict", () => {
-  const NOT_NEEDED = "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)"
+  const NOT_NEEDED = "Всё открывается без обхода — ничего делать не нужно"
   const on = { installed: true, active: "active" }
   const off = { installed: true, active: "inactive" }
   const allOk = { categories: { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } } }
@@ -131,7 +131,8 @@ test("verdict partial never says not needed", () => {
   const v = Model.verdict(off, partial, notNeeded)
   eq(v.tone, "warn")
   eq(v.action, "autopick")
-  if (v.text.indexOf("не нужен") !== -1) throw new Error("partial must not say not needed: " + v.text)
+  if (v.text.indexOf("без обхода") !== -1) throw new Error("partial must not say not needed: " + v.text)
+  if (v.text.indexOf("ничего делать не нужно") !== -1) throw new Error("partial must not say not needed: " + v.text)
   if (v.text.indexOf("частично") === -1) throw new Error("partial text must say частично: " + v.text)
 })
 
@@ -198,7 +199,7 @@ test("verdict stale check", () => {
     { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия NEXT · ALT 5, обход был выключен" })
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "fs-general-alt" }), null),
     { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия ALT, обход был включён" })
-  eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)")
+  eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Всё открывается без обхода — ничего делать не нужно")
   eq(Model.verdict(on, fresh, null, 1010), { text: "Всё открывается", tone: "good", action: "none", note: "по проверке только что, обход был включён" })
   eq(Model.verdict(on, null, null), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })
 })
@@ -310,7 +311,7 @@ test("doctorDetail additions", () => {
 })
 
 test("verdict neutral not-needed text", () => {
-  const NOT_NEEDED = "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)"
+  const NOT_NEEDED = "Всё открывается без обхода — ничего делать не нужно"
   const off = { installed: true, active: "inactive" }
   const on = { installed: true, active: "active" }
   const allOk = { categories: { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } } }
