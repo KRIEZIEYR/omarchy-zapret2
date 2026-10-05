@@ -1,0 +1,236 @@
+"""Manager tests: strategy validation, rendering, lists, blockcheck parsing.
+
+    python3 -m unittest discover -s tests/manager
+    OMARCHY_ZAPRET2_TEST_ENGINE=/path/to/zapret2-vX python3 -m unittest discover -s tests/manager
+
+With the engine (an unpacked release) every bundled preset in every mode is
+also checked by `nfqws2 --dry-run`.
+"""
+
+import importlib.machinery
+import importlib.util
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+loader = importlib.machinery.SourceFileLoader("zm", os.path.join(ROOT, "bin", "omarchy-zapret2"))
+spec = importlib.util.spec_from_loader("zm", loader)
+zm = importlib.util.module_from_spec(spec)
+loader.exec_module(zm)
+
+ENGINE = os.environ.get("OMARCHY_ZAPRET2_TEST_ENGINE", "")
+
+
+def preset_text(name):
+    with open(os.path.join(zm.DATA, "presets", name + ".txt"), encoding="utf-8") as f:
+        return f.read()
+
+
+MINIMAL = """[TCP_HTTP]
+--lua-desync=fake:blob=http_iana:tcp_md5
+[TCP_TLS]
+--lua-desync=fake:blob=tls_google:tcp_md5
+[TCP_GENERIC]
+--lua-desync=multisplit:pos=2
+[QUIC]
+--lua-desync=fake:blob=quic_google:repeats=6
+"""
+
+
+class Validation(unittest.TestCase):
+    def test_every_bundled_preset_parses(self):
+        for name in zm.PRESETS:
+            with self.subTest(name=name):
+                secs = zm.parse_preset(preset_text(name))
+                for s in zm.REQUIRED:
+                    self.assertTrue(secs[s])
+
+    def test_minimal_ok(self):
+        zm.parse_preset(MINIMAL)
+
+    def rejects(self, extra, section="TCP_TLS"):
+        text = MINIMAL.replace("[%s]\n" % section, "[%s]\n%s\n" % (section, extra), 1)
+        with self.assertRaises(zm.Fail):
+            zm.parse_preset(text)
+
+    def test_rejects_code_and_files(self):
+        self.rejects("--lua-desync=luaexec:code=os.execute")
+        self.rejects("--lua-desync=condition:func=luaexec")
+        self.rejects("--lua-init=@/tmp/x.lua")
+        self.rejects("--lua-init=os.execute('id')")
+        self.rejects("--blob=x:@/etc/shadow")
+        self.rejects("--hostlist=/etc/shadow")
+        self.rejects("--writable=/tmp")
+        self.rejects("--user=root")
+        self.rejects("--qnum=1")
+        self.rejects("--debug=@/etc/passwd")
+        self.rejects("--filter-udp=1-65535")                 # only voice may filter
+        self.rejects("--lua-desync=fake:blob=unknown_blob")
+        self.rejects("--lua-desync=fake:blob=tls_google:x=a/b")
+        self.rejects("--lua-desync=fake:blob=tls_google:x=$(id)")
+        self.rejects("--payload=evil")
+        self.rejects("--out-range=../x")
+        self.rejects("plain words")
+
+    def test_structure(self):
+        with self.assertRaises(zm.Fail):
+            zm.parse_preset(MINIMAL.replace("[QUIC]\n--lua-desync=fake:blob=quic_google:repeats=6\n", ""))
+        with self.assertRaises(zm.Fail):
+            zm.parse_preset("--lua-desync=fake\n" + MINIMAL)
+        with self.assertRaises(zm.Fail):
+            zm.parse_preset(MINIMAL + "[BOGUS]\n")
+        with self.assertRaises(zm.Fail):
+            zm.parse_preset(MINIMAL + "[QUIC]\n--lua-desync=fake\n")
+        with self.assertRaises(zm.Fail):
+            zm.parse_preset(MINIMAL + "[IPSET_TCP_PORTS]\n99999\n")
+
+    def test_voice_may_filter(self):
+        zm.parse_preset(MINIMAL + "[VOICE_COMPATIBLE]\n--filter-udp=19294-19344,50000-50100\n--filter-l7=discord,stun\n"
+                        "--payload=discord_ip_discovery\n--lua-desync=fake:blob=stun:repeats=3\n")
+
+    def test_settings_are_untrusted(self):
+        s = zm.clean_settings({"preset": "../../etc/x", "game": "rm -rf", "ipv6": "yes", "extra": 1})
+        self.assertEqual(s, zm.DEFAULTS)
+        s = zm.clean_settings({"preset": "my-own", "game": "all", "ipv6": False})
+        self.assertEqual((s["preset"], s["game"], s["ipv6"]), ("my-own", "all", False))
+        self.assertEqual(zm.clean_settings({"preset": "my-../x"})["preset"], "general")
+        self.assertEqual(zm.clean_settings([1, 2]), zm.DEFAULTS)
+
+
+class Lists(unittest.TestCase):
+    def test_hosts(self):
+        text = "YouTube.com\n*.googlevideo.com\n# c\nbad host\n../etc\nexample.org. # tail\nxn--d1acpjx3f.xn--p1ai\n^dns.google\n^^x\n"
+        self.assertEqual(zm.clean_list(text, "host"),
+                         ["youtube.com", "googlevideo.com", "example.org", "xn--d1acpjx3f.xn--p1ai", "^dns.google", "^x"])
+
+    def test_ipsets(self):
+        text = "1.2.3.0/24\n1.2.3.4/24\n2001:db8::/32\nnope\n300.1.1.1\n"
+        self.assertEqual(zm.clean_list(text, "ipset"), ["1.2.3.0/24", "1.2.3.0/24", "2001:db8::/32"])
+
+    def test_bundled_lists_are_clean(self):
+        for name in zm.BASE_LISTS:
+            with open(os.path.join(zm.DATA, "lists", name + ".txt"), encoding="utf-8") as f:
+                lines = [l for l in f.read().splitlines() if l.strip()]
+            self.assertEqual(len(zm.clean_list("\n".join(lines), zm.list_kind(name))), len(lines), name)
+
+
+class Rendering(unittest.TestCase):
+    def test_merge_ports(self):
+        self.assertEqual(zm.merge_ports(["443", "80", "1024-65535", "2053", "8443,443"]), ["80", "443", "1024-65535"])
+        self.assertEqual(zm.merge_ports(["19294-19344", "443", "50000-50100"]), ["443", "19294-19344", "50000-50100"])
+
+    def test_ports(self):
+        secs = zm.parse_preset(preset_text("general"))
+        tcp, udp = zm.ports_for(dict(zm.DEFAULTS), secs)
+        self.assertEqual(tcp, ["80", "443", "2053", "2083", "2087", "2096", "8443"])
+        self.assertEqual(udp, ["443", "1024-65535"])               # compatible voice without a preset block
+        tcp, udp = zm.ports_for(dict(zm.DEFAULTS, voice="off"), secs)
+        self.assertEqual(udp, ["443", "19294-19344", "50000-50100"])
+        tcp, _ = zm.ports_for(dict(zm.DEFAULTS, game="tcp"), secs)
+        self.assertEqual(tcp, ["80", "443", "1024-65535"])
+
+    def render(self, name, settings, counts=None):
+        counts = counts if counts is not None else {n: 1 for n in zm.BASE_LISTS}
+        secs = zm.parse_preset(preset_text(name)) if name in zm.PRESETS else zm.parse_preset(MINIMAL)
+        return zm.render_args(name, secs, settings, "/E", "/L", ["/F"], counts)
+
+    def test_render_shape(self):
+        args = self.render("general", dict(zm.DEFAULTS))
+        self.assertEqual(args[0], "--qnum=%d" % zm.QNUM)
+        self.assertIn("--user=nobody", args)
+        self.assertNotIn("--new", args[-1:])
+        self.assertFalse(any("{{" in a for a in args))
+        self.assertFalse(any(a.startswith("--lua-init") and "/E/lua/" not in a for a in args))
+        self.assertNotIn("--hostlist=/L/list-general-user.txt", args)         # empty user list left out
+        self.assertIn("--ipset=/L/ipset-none.txt", args)                      # default: hostlists only
+        self.assertNotIn("--ipset=/L/ipset-all.txt", args)
+        self.assertIn("--ipset=/L/ipset-all.txt", self.render("general", dict(zm.DEFAULTS, ipset="loaded")))
+        args = self.render("general", dict(zm.DEFAULTS), dict({n: 1 for n in zm.BASE_LISTS}, **{"list-general-user": 3}))
+        self.assertIn("--hostlist=/L/list-general-user.txt", args)
+        args = self.render("general", dict(zm.DEFAULTS, ipset="loaded"), {})
+        self.assertIn("--ipset=/L/ipset-none.txt", args)                      # loaded but empty
+        args = self.render("general", dict(zm.DEFAULTS, ipset="any"))
+        self.assertFalse(any(a.startswith("--ipset=") for a in args))
+
+    def test_custom_presets_get_discord_web(self):
+        self.assertIn("--hostlist=/L/list-discord-web.txt", self.render("custom-safe", dict(zm.DEFAULTS)))
+        self.assertNotIn("--hostlist=/L/list-discord-web.txt", self.render("general", dict(zm.DEFAULTS)))
+
+    def test_game(self):
+        self.assertIn("--filter-tcp=12", self.render("general", dict(zm.DEFAULTS)))
+        a = self.render("general", dict(zm.DEFAULTS, game="all"))
+        self.assertIn("--filter-tcp=1024-65535", a)
+        self.assertIn("--filter-udp=1024-65535", a)
+
+    def test_nft(self):
+        text = zm.render_nft(["80", "443"], ["443"], ipv6=False)
+        self.assertIn("table inet omarchy_zapret2 {", text)
+        self.assertIn("queue num 220 bypass", text)
+        self.assertIn("meta nfproto ipv6 return", text)
+        self.assertIn("meta oiftype 65534 return", text)        # tunnels untouched
+        self.assertIn("meta iiftype 65534 return", text)
+        self.assertIn("tcp dport { 80, 443 }", text)
+        self.assertNotIn("nfproto ipv6", zm.render_nft(["80"], ["443"]))
+
+    @unittest.skipUnless(shutil.which("unshare") and shutil.which("nft"), "needs unshare and nft")
+    def test_nft_applies_in_a_namespace(self):
+        for tcp, udp, v6 in ((["80", "443"], ["443", "1024-65535"], True),
+                             (zm.merge_ports(["80", "443", "1024-65535"]), ["443", "19294-19344"], False)):
+            with tempfile.NamedTemporaryFile("w", suffix=".nft") as f:
+                f.write(zm.render_nft(tcp, udp, v6))
+                f.flush()
+                r = subprocess.run(["unshare", "-rn", "nft", "-f", f.name], capture_output=True, text=True, timeout=20)
+                if r.returncode != 0 and "Operation not permitted" in r.stderr:
+                    self.skipTest("user namespaces are not available")
+                self.assertEqual(r.returncode, 0, r.stderr)
+
+    @unittest.skipUnless(ENGINE, "set OMARCHY_ZAPRET2_TEST_ENGINE to an unpacked zapret2 release")
+    def test_dry_run_every_preset(self):
+        nfqws = os.path.join(ENGINE, "binaries", "linux-x86_64", "nfqws2")
+        with tempfile.TemporaryDirectory() as lists:
+            counts = {}
+            for n in zm.BASE_LISTS + zm.USER_LISTS + ("ipset-none",):
+                kind = zm.list_kind(n)
+                with open(os.path.join(lists, n + ".txt"), "w") as f:
+                    f.write("1.2.3.0/24\n" if kind == "ipset" else "example.com\n")
+                counts[n] = 1
+            fakes = [os.path.join(ENGINE, "files", "fake"), os.path.join(zm.DATA, "fake")]
+            modes = [dict(zm.DEFAULTS), dict(zm.DEFAULTS, game="all", ipset="any", voice="standard"),
+                     dict(zm.DEFAULTS, voice="off", ipset="none")]
+            for name in zm.PRESETS:
+                secs = zm.parse_preset(preset_text(name))
+                for s in modes:
+                    with self.subTest(name=name, settings=s):
+                        args = zm.render_args(name, secs, s, ENGINE, lists, fakes, counts)
+                        args = [a for a in args if a != "--user=nobody"]
+                        r = subprocess.run([nfqws, "--dry-run"] + args, capture_output=True, text=True, timeout=20)
+                        self.assertEqual(r.returncode, 0, r.stdout[-600:] + r.stderr[-600:])
+
+
+class Blockcheck(unittest.TestCase):
+    LOG = """* SUMMARY
+!!!!! curl_test_https_tls12: working strategy found for ipv4 youtube.com : nfqws2 --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5 --lua-desync=multisplit:pos=1 !!!!!
+!!!!! curl_test_http3: working strategy found for ipv4 youtube.com : nfqws2 --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6 !!!!!
+!!!!! curl_test_http: working strategy found for ipv4 example.com : nfqws2 --lua-init=@/tmp/x.lua --lua-desync=luaexec:code=1 !!!!!
+"""
+
+    def test_parse(self):
+        found = zm.parse_blockcheck(self.LOG)
+        self.assertEqual([f["test"] for f in found], ["curl_test_https_tls12", "curl_test_http3", "curl_test_http"])
+        self.assertEqual(found[0]["domain"], "youtube.com")
+
+    def test_to_strategy(self):
+        found = zm.parse_blockcheck(self.LOG)
+        secs = zm.parse_preset(zm.strategy_from_found(found[0]))
+        self.assertIn("--lua-desync=multisplit:pos=1", secs["TCP_TLS"])
+        secs = zm.parse_preset(zm.strategy_from_found(found[1]))
+        self.assertIn("--lua-desync=fake:blob=fake_default_quic:repeats=6", secs["QUIC"])
+        with self.assertRaises(zm.Fail):
+            zm.strategy_from_found(found[2])
+
+
+if __name__ == "__main__":
+    unittest.main()

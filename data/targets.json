@@ -1,0 +1,18 @@
+{
+  "youtube": {
+    "label": "YouTube",
+    "urls": ["https://www.youtube.com", "https://i.ytimg.com", "https://redirector.googlevideo.com"]
+  },
+  "discord": {
+    "label": "Discord",
+    "urls": ["https://discord.com", "https://gateway.discord.gg", "https://cdn.discordapp.com", "https://updates.discord.com"]
+  },
+  "google": {
+    "label": "Google",
+    "urls": ["https://www.google.com", "https://www.gstatic.com"]
+  },
+  "cloudflare": {
+    "label": "Cloudflare",
+    "urls": ["https://www.cloudflare.com", "https://cdnjs.cloudflare.com"]
+  }
+}

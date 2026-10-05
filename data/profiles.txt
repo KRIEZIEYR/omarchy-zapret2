@@ -1,0 +1,107 @@
+# Linux port of the Zapret 2 NEXT profile layout (presets/_profiles.txt.in, MIT).
+# The manager replaces a line that is exactly {{SECTION}} with that section of
+# the active preset and fills {{LISTS}}, {{GAME_TCP}}, {{GAME_UDP}},
+# {{IPSET_INCLUDE}}, {{IPSET_TCP_FILTER}}. '#' lines and empty lines are dropped.
+# Ports here only pick a profile; which packets reach nfqws2 at all is decided
+# by the nftables rules the manager renders next to this file.
+
+# YouTube/general QUIC
+--filter-udp=443
+--hostlist={{LISTS}}/list-general.txt
+--hostlist={{LISTS}}/list-general-user.txt
+--hostlist-exclude={{LISTS}}/list-exclude.txt
+--hostlist-exclude={{LISTS}}/list-exclude-user.txt
+--ipset-exclude={{LISTS}}/ipset-exclude.txt
+--ipset-exclude={{LISTS}}/ipset-exclude-user.txt
+--payload=quic_initial
+--out-range=-d5
+{{QUIC}}
+--new
+
+# Discord voice (before the game UDP fallback)
+{{VOICE_UDP_PROFILE}}
+--new
+
+# Discord media TLS
+--filter-tcp=2053,2083,2087,2096,8443
+--hostlist-domains=discord.media
+--payload=tls_client_hello
+--out-range=-d10
+{{DISCORD_MEDIA_TLS}}
+--new
+
+# Google/YouTube TLS
+--filter-tcp=443
+--hostlist={{LISTS}}/list-google.txt
+--payload=tls_client_hello
+--out-range=-d10
+{{GOOGLE_TLS}}
+--new
+
+# Discord web, gateway, CDN and updates (custom-* presets only)
+{{DISCORD_WEB_PROFILE}}
+
+# General HTTP
+--filter-tcp=80
+--hostlist={{LISTS}}/list-general.txt
+--hostlist={{LISTS}}/list-general-user.txt
+--hostlist-exclude={{LISTS}}/list-exclude.txt
+--hostlist-exclude={{LISTS}}/list-exclude-user.txt
+--ipset-exclude={{LISTS}}/ipset-exclude.txt
+--ipset-exclude={{LISTS}}/ipset-exclude-user.txt
+--payload=http_req
+--out-range=-d10
+{{TCP_HTTP}}
+--new
+
+# General TLS
+--filter-tcp=443
+--hostlist={{LISTS}}/list-general.txt
+--hostlist={{LISTS}}/list-general-user.txt
+--hostlist-exclude={{LISTS}}/list-exclude.txt
+--hostlist-exclude={{LISTS}}/list-exclude-user.txt
+--ipset-exclude={{LISTS}}/ipset-exclude.txt
+--ipset-exclude={{LISTS}}/ipset-exclude-user.txt
+--payload=tls_client_hello
+--out-range=-d10
+{{TCP_TLS}}
+--new
+
+# IPSet fallback UDP
+--filter-udp=443
+{{IPSET_INCLUDE}}
+--ipset-exclude={{LISTS}}/ipset-exclude.txt
+--ipset-exclude={{LISTS}}/ipset-exclude-user.txt
+--payload=quic_initial
+--out-range=-d5
+{{QUIC}}
+--new
+
+# IPSet fallback TCP
+--filter-tcp={{IPSET_TCP_FILTER}}
+{{IPSET_INCLUDE}}
+--ipset-exclude={{LISTS}}/ipset-exclude.txt
+--ipset-exclude={{LISTS}}/ipset-exclude-user.txt
+--payload=http_req,tls_client_hello
+--out-range=-d10
+{{TCP_GENERIC}}
+--new
+
+# Optional game TCP filter; port 12 is a disabled sentinel
+--filter-tcp={{GAME_TCP}}
+{{IPSET_INCLUDE}}
+--ipset-exclude={{LISTS}}/ipset-exclude.txt
+--ipset-exclude={{LISTS}}/ipset-exclude-user.txt
+--payload=all
+--out-range=-d4
+{{TCP_GENERIC}}
+--new
+
+# Optional game UDP profile; port 12 is a disabled sentinel
+--filter-udp={{GAME_UDP}}
+{{IPSET_INCLUDE}}
+--ipset-exclude={{LISTS}}/ipset-exclude.txt
+--ipset-exclude={{LISTS}}/ipset-exclude-user.txt
+--payload=all
+--out-range=-n4
+--lua-desync=fake:blob=game_udp:repeats=10:payload=all

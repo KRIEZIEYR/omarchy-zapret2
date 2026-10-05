@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "krieziey.omarchy-zapret2",
+  "name": "Zapret2",
+  "version": "0.1.0",
+  "author": "krieziey",
+  "license": "MIT",
+  "description": "zapret2 DPI bypass as an Omarchy app: one-click install of the official engine, strategy presets, lists, reachability checks, autopick and blockcheck2, with a bar widget for quick on/off.",
+  "kinds": [
+    "service",
+    "panel",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "panel": "App.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Zapret2",
+    "description": "Turn the DPI bypass on or off, switch strategies, check YouTube and Discord, open the app.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

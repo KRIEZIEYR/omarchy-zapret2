@@ -1,0 +1,1610 @@
+#!/usr/bin/python3 -I
+"""omarchy-zapret2: the manager behind the Omarchy zapret2 plugin.
+
+Every user command prints one JSON object on stdout (long jobs print JSON
+progress lines first). Commands starting with "_" are the privileged half and
+refuse to run unless root:
+
+  _install / _uninstall   through pkexec (or sudo), once per install/update
+  _run / _stop            ExecStart / ExecStopPost of omarchy-zapret2.service
+  _blockcheck             ExecStart of omarchy-zapret2-blockcheck.service
+
+The units run the root-owned copy in /opt/omarchy-zapret2/app, never the
+plugin folder. That copy treats everything under /var/lib/omarchy-zapret2
+(written by the user, without a password) as untrusted data: settings are
+enums, lists are re-validated line by line, custom strategies pass an
+allowlist of nfqws2 options and Lua desync functions.
+
+  status                       JSON state (what the widget reads)
+  setup                        download the latest zapret2 release, verify it, install (one prompt)
+  engine check                 installed vs latest release
+  on | off | restart           the bypass service
+  set <key> <value>            preset, game (off|tcp|udp|all), ipset (loaded|none|any),
+                               voice (compatible|standard|off), ipv6 (on|off), autostart (on|off)
+  presets                      built-in and custom strategies
+  custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
+  list show <name> | list save <name>              user lists (save reads stdin)
+  lists update                 fetch fresh upstream lists (Flowseal)
+  check                        reachability of YouTube, Discord, Google, Cloudflare
+  autopick [p1,p2,...]         try strategies one by one, keep the best
+  blockcheck start [domain...] [--level quick|standard|force] | stop | status | save <index>
+  doctor | logs [n] | desktop on|off | remove [--purge]
+"""
+
+import concurrent.futures
+import hashlib
+import io
+import ipaddress
+import json
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+SELF = os.path.realpath(__file__)
+APP = os.path.dirname(os.path.dirname(SELF))          # plugin folder, or /opt/omarchy-zapret2/app
+DATA = os.path.join(APP, "data")
+
+SYS_BASE = "/opt/omarchy-zapret2"
+SYS_APP = SYS_BASE + "/app"
+SYS_ENGINE = SYS_BASE + "/engine"
+RECORD = SYS_BASE + "/install.json"
+VAR = "/var/lib/omarchy-zapret2"
+RUN = "/run/omarchy-zapret2"
+RUN_BC = "/run/omarchy-zapret2-blockcheck"
+UNIT = "omarchy-zapret2.service"
+BC_UNIT = "omarchy-zapret2-blockcheck.service"
+UNIT_DIR = "/etc/systemd/system"
+POLKIT_RULE = "/etc/polkit-1/rules.d/49-omarchy-zapret2.rules"
+NFT_TABLE = "omarchy_zapret2"
+QNUM = 220
+MARK = 0x40000000
+
+REPO_API = "https://api.github.com/repos/bol-van/zapret2/releases/latest"
+UPSTREAM = "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/"
+# lists/ipset-all.txt upstream is a placeholder that service.bat swaps; the real set lives in .service/
+UPSTREAM_LISTS = {"list-general": "lists/list-general.txt", "list-google": "lists/list-google.txt",
+                  "list-exclude": "lists/list-exclude.txt", "ipset-exclude": "lists/ipset-exclude.txt",
+                  "ipset-all": ".service/ipset-service.txt"}
+DESKTOP = os.path.expanduser("~/.local/share/applications/omarchy-zapret2.desktop")
+PLUGIN_ID = "krieziey.omarchy-zapret2"
+
+MAX_TARBALL = 64 * 1024 * 1024
+MAX_LIST = 8 * 1024 * 1024
+MAX_SMALL = 64 * 1024
+
+# ipset "none" like Flowseal's shipped default: the strategy touches only
+# hostlist domains; "loaded" applies it to ~33k networks and can break sites
+# that are not blocked at all.
+DEFAULTS = {"preset": "general", "game": "off", "ipset": "none", "voice": "compatible",
+            "ipv6": True, "autostart": False}
+ENUMS = {"game": ("off", "tcp", "udp", "all"), "ipset": ("loaded", "none", "any"),
+         "voice": ("compatible", "standard", "off")}
+
+# Lists: bundled defaults (data/lists, may be replaced by `lists update`) and
+# the user's own additions, edited from the app.
+BASE_LISTS = ("list-general", "list-google", "list-exclude", "list-discord-web", "ipset-all", "ipset-exclude")
+USER_LISTS = ("list-general-user", "list-exclude-user", "ipset-all-user", "ipset-exclude-user")
+
+PRESETS = {
+    "general": "fake + multisplit, the usual first try",
+    "alt": "fake + fakedsplit",
+    "alt3": "hostfakesplit",
+    "alt5": "syndata + multidisorder",
+    "alt11": "multistage multisplit",
+    "alt12": "large seqovl, Google via hostfakesplit",
+    "fake-tls-auto": "fake with auto TTL + multidisorder",
+    "fake-tls-auto-alt2": "fake with auto TTL + multisplit",
+    "simple-fake": "fake only",
+    "voice": "tuned for Discord voice",
+    "custom-safe": "experimental, low intervention",
+    "custom-balanced": "experimental, daily candidate",
+    "custom-aggressive": "experimental, for hard DPI",
+}
+
+SECTIONS = ("TCP_HTTP", "TCP_TLS", "TCP_GENERIC", "QUIC", "GOOGLE_TLS", "DISCORD_MEDIA_TLS",
+            "DISCORD_WEB_TLS", "IPSET_TCP_PORTS", "VOICE_COMPATIBLE")
+REQUIRED = ("TCP_HTTP", "TCP_TLS", "TCP_GENERIC", "QUIC")
+
+# Desync functions a strategy may call: zapret-antidpi.lua only. Never the
+# helpers in zapret-lib/zapret-auto (luaexec runs Lua source; condition and
+# friends call other functions by name).
+LUA_FUNCS = frozenset((
+    "drop send pktmod http_domcase http_hostcase http_methodeol http_unixeol synack_split synack "
+    "wsize wssize tls_client_hello_clone syndata rst fake multisplit multidisorder multidisorder_legacy "
+    "hostfakesplit fakedsplit fakeddisorder tcpseg oob udplen dht_dn").split())
+PAYLOADS = frozenset((
+    "all unknown empty known ipv4 ipv6 icmp http_req http_reply tls_client_hello tls_server_hello "
+    "dtls_client_hello dtls_server_hello quic_initial wireguard_initiation wireguard_response "
+    "wireguard_cookie wireguard_keepalive wireguard_data dht discord_ip_discovery stun xmpp_stream "
+    "xmpp_starttls xmpp_proceed xmpp_features dns_query dns_response mtproto_initial bt_handshake "
+    "utp_bt_handshake").split())
+L7 = frozenset("all unknown known http tls dtls quic wireguard dht discord stun xmpp dns mtproto bt utp_bt".split())
+# name -> file in the engine's files/fake (the extra four ship in data/fake)
+BLOB_FILES = {
+    "tls_google": "tls_clienthello_www_google_com.bin",
+    "tls_max": "tls_clienthello_max_ru.bin",
+    "quic_google": "quic_initial_www_google_com.bin",
+    "stun": "stun.bin",
+    "http_iana": "http_iana_org.bin",
+    "zero": "zero_512.bin",
+    "discord_voice": "quic_initial_dbankcloud_ru.bin",
+    "game_udp": "quic_initial_dbankcloud_ru.bin",
+}
+BLOBS = frozenset(BLOB_FILES) | {"fake_default_tls", "fake_default_http", "fake_default_quic"}
+BLOB_KEYS = ("blob", "pattern", "seqovl_pattern")
+
+RE_TOKEN = re.compile(r"^[A-Za-z0-9_.,+\-]{0,200}$")
+RE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+RE_RANGE = re.compile(r"^[nadspbx]?\d{0,9}(-|<)[nadspbx]?\d{0,9}$|^[ax]$")
+RE_PORTS = re.compile(r"^\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*$")
+RE_HEX = re.compile(r"^0x[0-9A-Fa-f]{2,512}$")
+RE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+RE_DOMAIN = re.compile(r"^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+RE_VERSION = re.compile(r"^v\d{1,4}(\.\d{1,4}){1,4}$")
+RE_SHA = re.compile(r"^[0-9a-f]{64}$")
+
+
+# --------------------------------------------------------------- plumbing
+
+class Fail(Exception):
+    pass
+
+
+def out(obj):
+    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def progress(**kw):
+    out(dict(kw, progress=True))
+
+
+def child_env():
+    keep = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+            "WAYLAND_DISPLAY", "DISPLAY")
+    env = {k: os.environ[k] for k in keep if k in os.environ}
+    env.setdefault("PATH", "/usr/bin:/bin")
+    return env
+
+
+def tool(name):
+    for d in ("/usr/bin", "/bin", "/usr/sbin", "/sbin"):
+        p = os.path.join(d, name)
+        if os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def sh(*args, timeout=60, env=None, input=None):
+    try:
+        return subprocess.run(list(args), capture_output=True, text=True, timeout=timeout,
+                              env=env if env is not None else child_env(), input=input)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(list(args), 124, "", "timed out")
+    except OSError as e:
+        return subprocess.CompletedProcess(list(args), 127, "", str(e))
+
+
+def read_nofollow(path, cap, owner=None):
+    """A small regular file, never through a symlink; None when absent.
+    owner: the uid the file must belong to (files the root side reads from VAR)."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        raise Fail("%s is not a regular file" % path)
+    with os.fdopen(fd, "rb") as f:
+        st = os.fstat(f.fileno())
+        if not (st.st_mode & 0o170000 == 0o100000):
+            raise Fail("%s is not a regular file" % path)
+        if owner is not None and st.st_uid != owner:
+            raise Fail("%s has a foreign owner" % path)
+        data = f.read(cap + 1)
+    if len(data) > cap:
+        raise Fail("%s is larger than %d bytes" % (path, cap))
+    return data.decode("utf-8", "replace")
+
+
+def atomic_write(path, data, mode=0o644):
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix="." + os.path.basename(path) + ".")
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data.encode("utf-8") if isinstance(data, str) else data)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_record():
+    try:
+        text = read_nofollow(RECORD, MAX_SMALL)
+        return json.loads(text) if text else None
+    except (Fail, ValueError):
+        return None
+
+
+# --------------------------------------------------------------- validation
+
+def clean_settings(raw):
+    """Settings from VAR are untrusted: unknown keys dropped, bad values defaulted."""
+    s = dict(DEFAULTS)
+    if not isinstance(raw, dict):
+        return s
+    p = raw.get("preset")
+    if isinstance(p, str) and (p in PRESETS or (p.startswith("my-") and RE_NAME.match(p))):
+        s["preset"] = p
+    for k, allowed in ENUMS.items():
+        if raw.get(k) in allowed:
+            s[k] = raw[k]
+    for k in ("ipv6", "autostart"):
+        if isinstance(raw.get(k), bool):
+            s[k] = raw[k]
+    return s
+
+
+def check_ports(text):
+    if not RE_PORTS.match(text):
+        raise Fail("bad port list: %s" % text)
+    for part in text.split(","):
+        a, _, b = part.partition("-")
+        if not (1 <= int(a) <= 65535 and (not b or int(a) <= int(b) <= 65535)):
+            raise Fail("bad port range: %s" % part)
+
+
+def check_desync(spec):
+    parts = spec.split(":")
+    if parts[0] not in LUA_FUNCS:
+        raise Fail("desync function not allowed: %s" % parts[0])
+    for p in parts[1:]:
+        k, eq, v = p.partition("=")
+        if not RE_KEY.match(k) or not RE_TOKEN.match(v):
+            raise Fail("bad desync parameter: %s" % p)
+        if eq and k in BLOB_KEYS and v not in BLOBS and not RE_HEX.match(v):
+            raise Fail("unknown blob: %s" % v)
+
+
+def check_line(line, section):
+    """One strategy line. Only options that change how packets are desynced;
+    nothing that loads files, Lua code or changes what is intercepted."""
+    opt, eq, val = line.partition("=")
+    if not eq:
+        raise Fail("not an option: %s" % line)
+    if opt == "--lua-desync":
+        check_desync(val)
+    elif opt == "--payload":
+        bad = [v for v in val.split(",") if v not in PAYLOADS]
+        if bad:
+            raise Fail("unknown payload type: %s" % ",".join(bad))
+    elif opt in ("--out-range", "--in-range"):
+        if not RE_RANGE.match(val):
+            raise Fail("bad range: %s" % val)
+    elif section == "VOICE_COMPATIBLE" and opt == "--filter-udp":
+        check_ports(val)
+    elif section == "VOICE_COMPATIBLE" and opt == "--filter-l7":
+        bad = [v for v in val.split(",") if v not in L7]
+        if bad:
+            raise Fail("unknown protocol: %s" % ",".join(bad))
+    else:
+        raise Fail("option not allowed in a strategy: %s" % opt)
+
+
+def parse_preset(text, validate=True):
+    """[SECTION] blocks of nfqws2 options, one per line; '#' comments."""
+    sections, cur = {}, None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.match(r"^\[([A-Z_]+)\]$", line)
+        if m:
+            cur = m.group(1)
+            if cur not in SECTIONS:
+                raise Fail("unknown section [%s]" % cur)
+            if cur in sections:
+                raise Fail("duplicate section [%s]" % cur)
+            sections[cur] = []
+            continue
+        if cur is None:
+            raise Fail("option outside a section: %s" % line)
+        if validate:
+            if cur == "IPSET_TCP_PORTS":
+                check_ports(line)
+            else:
+                check_line(line, cur)
+        sections[cur].append(line)
+    missing = [s for s in REQUIRED if not sections.get(s)]
+    if missing:
+        raise Fail("missing section: %s" % ", ".join("[%s]" % s for s in missing))
+    return sections
+
+
+def clean_list(text, kind):
+    """Keep valid domains (hostlists) or networks (ipsets); drop the rest."""
+    keep = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip().lower()
+        if not line:
+            continue
+        if kind == "ipset":
+            try:
+                keep.append(str(ipaddress.ip_network(line, strict=False)))
+            except ValueError:
+                pass
+        else:
+            exact = line.startswith("^")             # zapret: this host only, no subdomains
+            line = line.lstrip("^").lstrip("*.").rstrip(".")
+            if RE_DOMAIN.match(line):
+                keep.append("^" + line if exact else line)
+    return keep
+
+
+def list_kind(name):
+    return "ipset" if name.startswith("ipset") else "host"
+
+
+# --------------------------------------------------------------- rendering
+
+def merge_ports(parts):
+    """'80', '1024-65535', ... into sorted, non-overlapping nft set elements."""
+    spans = []
+    for part in parts:
+        for p in str(part).split(","):
+            a, _, b = p.partition("-")
+            spans.append((int(a), int(b or a)))
+    spans.sort()
+    merged = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return ["%d" % a if a == b else "%d-%d" % (a, b) for a, b in merged]
+
+
+def voice_profile(settings, sections):
+    if settings["voice"] == "compatible" and sections.get("VOICE_COMPATIBLE"):
+        return list(sections["VOICE_COMPATIBLE"])
+    if settings["voice"] == "compatible":
+        return ["--filter-udp=1024-65535", "--filter-l7=stun,discord", "--payload=stun,discord_ip_discovery",
+                "--lua-desync=fake:blob=discord_voice:repeats=3", "--payload=all", "--out-range=n2-n4",
+                "--lua-desync=fake:blob=discord_voice:repeats=10"]
+    if settings["voice"] == "standard":
+        return ["--filter-udp=1024-65535", "--filter-l7=stun,discord", "--payload=stun,discord_ip_discovery",
+                "--lua-desync=fake:blob=0x00000000000000000000000000000000:repeats=2"]
+    return ["--filter-udp=1024-65535", "--filter-l7=stun,discord"]
+
+
+def ports_for(settings, sections):
+    """(tcp, udp) ports nftables hands to nfqws2."""
+    ipset_tcp = [p for p in sections.get("IPSET_TCP_PORTS", [])]
+    tcp = ["80", "443", "2053", "2083", "2087", "2096", "8443"] + ipset_tcp
+    if settings["game"] in ("tcp", "all"):
+        tcp.append("1024-65535")
+    if settings["game"] in ("udp", "all") or (settings["voice"] == "compatible" and not sections.get("VOICE_COMPATIBLE")):
+        udp = ["443", "1024-65535"]
+    else:
+        udp = ["443", "19294-19344", "50000-50100"]
+        for line in sections.get("VOICE_COMPATIBLE", []):
+            if line.startswith("--filter-udp="):
+                udp.append(line.split("=", 1)[1])
+    return merge_ports(tcp), merge_ports(udp)
+
+
+def render_args(preset, sections, settings, engine, lists, fake_dirs, counts):
+    """The full nfqws2 command line (without the binary)."""
+    def blob_path(f):
+        for d in fake_dirs:
+            if os.path.exists(os.path.join(d, f)):
+                return os.path.join(d, f)
+        return os.path.join(fake_dirs[0], f)
+
+    args = ["--qnum=%d" % QNUM, "--user=nobody", "--fwmark=0x%x" % MARK, "--ctrack-disable=0",
+            "--ipcache-lifetime=8400", "--ipcache-hostname=1",
+            "--lua-init=@%s/lua/zapret-lib.lua" % engine, "--lua-init=@%s/lua/zapret-antidpi.lua" % engine]
+    args += ["--blob=%s:@%s" % (name, blob_path(f)) for name, f in sorted(BLOB_FILES.items())]
+
+    def sect(name, fallback="TCP_TLS"):
+        return list(sections.get(name) or sections[fallback])
+
+    loaded = ["--ipset=%s/%s.txt" % (lists, n) for n in ("ipset-all", "ipset-all-user") if counts.get(n)]
+    ipset_include = {"loaded": loaded or ["--ipset=%s/ipset-none.txt" % lists],
+                     "none": ["--ipset=%s/ipset-none.txt" % lists], "any": []}[settings["ipset"]]
+    discord_web = []
+    if preset.startswith("custom-"):
+        discord_web = ["--filter-tcp=443", "--hostlist=%s/list-discord-web.txt" % lists,
+                       "--payload=tls_client_hello", "--out-range=-d10"] + sect("DISCORD_WEB_TLS") + ["--new"]
+    blocks = {
+        "QUIC": sect("QUIC"), "TCP_HTTP": sect("TCP_HTTP"), "TCP_TLS": sect("TCP_TLS"),
+        "TCP_GENERIC": sect("TCP_GENERIC"), "GOOGLE_TLS": sect("GOOGLE_TLS"),
+        "DISCORD_MEDIA_TLS": sect("DISCORD_MEDIA_TLS"), "DISCORD_WEB_PROFILE": discord_web,
+        "VOICE_UDP_PROFILE": voice_profile(settings, sections), "IPSET_INCLUDE": ipset_include,
+    }
+    tcp_extra = ["80,443"] + sections.get("IPSET_TCP_PORTS", [])
+    inline = {
+        "{{LISTS}}": lists,
+        "{{GAME_TCP}}": "1024-65535" if settings["game"] in ("tcp", "all") else "12",
+        "{{GAME_UDP}}": "1024-65535" if settings["game"] in ("udp", "all") else "12",
+        "{{IPSET_TCP_FILTER}}": ",".join(tcp_extra),
+    }
+    with open(os.path.join(DATA, "profiles.txt"), encoding="utf-8") as f:
+        template = f.read()
+    for raw in template.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.match(r"^\{\{([A-Z_]+)\}\}$", line)
+        if m:
+            args += blocks[m.group(1)]
+            continue
+        for k, v in inline.items():
+            line = line.replace(k, v)
+        args.append(line)
+    # an empty user list would only add noise; base lists always have entries
+    args = [a for a in args if not any(a == "%s=%s/%s.txt" % (o, lists, n) for n in USER_LISTS
+                                       if not counts.get(n) for o in ("--hostlist", "--hostlist-exclude", "--ipset-exclude"))]
+    while args and args[-1] == "--new":
+        args.pop()
+    return args
+
+
+def render_nft(tcp, udp, ipv6=True):
+    """Queue the first packets of matching connections to nfqws2. Loopback and
+    L3 tunnels (ARPHRD_NONE: TUN, WireGuard, Tailscale, omarchy-xray) are left
+    alone: what enters a VPN tunnel is not seen by the DPI, and desynced
+    packets would only break the tunnel's own TCP stack."""
+    t, u = ", ".join(tcp), ", ".join(udp)
+    skip6 = "" if ipv6 else "\t\tmeta nfproto ipv6 return\n"
+    return (
+        "table inet {tb} {{}}\n"
+        "delete table inet {tb}\n"
+        "table inet {tb} {{\n"
+        "\tchain post {{\n"
+        "\t\ttype filter hook postrouting priority 101; policy accept;\n"
+        "\t\toifname \"lo\" return\n"
+        "\t\tmeta oiftype 65534 return\n{skip6}"
+        "\t\tmeta mark & {mark:#x} != 0 return\n"
+        "\t\ttcp dport {{ {t} }} ct original packets 1-20 queue num {q} bypass\n"
+        "\t\tudp dport {{ {u} }} ct original packets 1-5 queue num {q} bypass\n"
+        "\t}}\n"
+        "\tchain pre {{\n"
+        "\t\ttype filter hook prerouting priority filter; policy accept;\n"
+        "\t\tiifname \"lo\" return\n"
+        "\t\tmeta iiftype 65534 return\n{skip6}"
+        "\t\ttcp sport {{ {t} }} ct reply packets 1-10 queue num {q} bypass\n"
+        "\t\ttcp sport {{ {t} }} tcp flags & (syn | ack) == (syn | ack) queue num {q} bypass\n"
+        "\t}}\n"
+        "\tchain predefrag {{\n"
+        "\t\ttype filter hook output priority -401; policy accept;\n"
+        "\t\tmeta mark & {mark:#x} != 0 notrack\n"
+        "\t}}\n"
+        "}}\n").format(tb=NFT_TABLE, mark=MARK, t=t, u=u, q=QNUM, skip6=skip6)
+
+
+# --------------------------------------------------------------- user side: state
+
+def var_path(*parts):
+    return os.path.join(VAR, *parts)
+
+
+def installed():
+    rec = load_record()
+    return bool(rec) and rec.get("uid") == os.getuid() and os.path.isdir(VAR)
+
+
+def require_installed():
+    if not installed():
+        raise Fail("zapret2 is not set up yet: run setup first")
+
+
+def load_settings():
+    try:
+        text = read_nofollow(var_path("settings.json"), MAX_SMALL)
+        return clean_settings(json.loads(text) if text else {})
+    except (Fail, ValueError):
+        return dict(DEFAULTS)
+
+
+def save_settings(s):
+    atomic_write(var_path("settings.json"), json.dumps(clean_settings(s), indent=1) + "\n")
+
+
+def custom_names():
+    try:
+        names = sorted(f[:-4] for f in os.listdir(var_path("custom")) if f.endswith(".txt"))
+    except OSError:
+        return []
+    return [n for n in names if n.startswith("my-") and RE_NAME.match(n)]
+
+
+def unit_state(unit):
+    r = sh("systemctl", "show", "-p", "ActiveState,SubState,Result,NRestarts,ExecMainStatus", unit, timeout=10)
+    st = dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
+    return st
+
+
+def systemctl(verb, unit):
+    r = sh("systemctl", "--no-ask-password", verb, unit, timeout=60)
+    if r.returncode != 0:
+        raise Fail((r.stderr.strip().splitlines() or ["systemctl %s failed" % verb])[-1])
+
+
+def state_dir():
+    d = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "omarchy-zapret2")
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    return d
+
+
+def load_state(name, default):
+    try:
+        text = read_nofollow(os.path.join(state_dir(), name), 4 * 1024 * 1024)
+        v = json.loads(text) if text else default
+        return v if isinstance(v, type(default)) else default
+    except (Fail, ValueError):
+        return default
+
+
+def save_state(name, obj):
+    atomic_write(os.path.join(state_dir(), name), json.dumps(obj, ensure_ascii=False), mode=0o600)
+
+
+def cmd_status():
+    rec = load_record()
+    st = {"ok": True, "installed": installed(), "engine": rec.get("version") if rec else None,
+          "appCurrent": True, "settings": load_settings(),
+          "presets": [{"name": n, "about": a} for n, a in PRESETS.items()]
+          + [{"name": n, "about": "own strategy"} for n in custom_names()],
+          "check": load_state("check.json", {}), "autopick": load_state("autopick.json", {})}
+    if rec and rec.get("uid") != os.getuid():
+        st["error"] = "zapret2 is set up for another user on this machine"
+    if st["installed"]:
+        files = rec.get("files", {})
+        own = files.get(SYS_APP + "/bin/omarchy-zapret2")
+        st["appCurrent"] = own == sha256_file(SELF) if own else False
+        u = unit_state(UNIT)
+        st["active"] = u.get("ActiveState", "unknown")
+        st["sub"] = u.get("SubState", "")
+        st["restarts"] = int(u.get("NRestarts", "0") or 0)
+        st["failed"] = u.get("ActiveState") == "failed"
+        b = unit_state(BC_UNIT)
+        st["blockcheck"] = b.get("ActiveState", "inactive")
+    else:
+        st["active"] = "inactive"
+        st["blockcheck"] = "inactive"
+    if st["active"] == "failed":
+        st["error"] = "The bypass stopped with an error: open the logs"
+    out(st)
+
+
+def cmd_presets():
+    out({"ok": True, "builtin": [{"name": n, "about": a} for n, a in PRESETS.items()],
+         "custom": custom_names()})
+
+
+def cmd_on():
+    require_installed()
+    st = unit_state(BC_UNIT)
+    if st.get("ActiveState") in ("active", "activating"):
+        raise Fail("blockcheck is running: stop it first")
+    systemctl("start", UNIT)
+    wait_active()
+    out({"ok": True, "active": "active"})
+
+
+def wait_active(timeout=8.0):
+    end = time.time() + timeout
+    while time.time() < end:
+        st = unit_state(UNIT)
+        a = st.get("ActiveState")
+        if a == "active" and st.get("SubState") == "running":
+            time.sleep(0.5)                       # nft rules are up, let nfqws2 bind the queue
+            if unit_state(UNIT).get("ActiveState") == "active":
+                return
+        if a == "failed":
+            break
+        time.sleep(0.3)
+    tail = journal(8)
+    raise Fail("the bypass did not start" + (": " + tail[-1] if tail else ""))
+
+
+def cmd_off():
+    require_installed()
+    systemctl("stop", UNIT)
+    out({"ok": True, "active": "inactive"})
+
+
+def restart_if_active():
+    if unit_state(UNIT).get("ActiveState") in ("active", "activating", "failed"):
+        systemctl("restart", UNIT)
+        wait_active()
+        return True
+    return False
+
+
+def cmd_restart():
+    require_installed()
+    systemctl("restart", UNIT)
+    wait_active()
+    out({"ok": True, "active": "active"})
+
+
+def cmd_set(key, value):
+    require_installed()
+    s = load_settings()
+    if key == "preset":
+        if value not in PRESETS and value not in custom_names():
+            raise Fail("no such strategy: %s" % value)
+        s["preset"] = value
+    elif key in ENUMS:
+        if value not in ENUMS[key]:
+            raise Fail("%s takes one of: %s" % (key, ", ".join(ENUMS[key])))
+        s[key] = value
+    elif key in ("ipv6", "autostart"):
+        if value not in ("on", "off"):
+            raise Fail("%s takes on or off" % key)
+        s[key] = value == "on"
+    else:
+        raise Fail("unknown setting: %s" % key)
+    save_settings(s)
+    restarted = key != "autostart" and restart_if_active()
+    out({"ok": True, "settings": load_settings(), "restarted": restarted})
+
+
+# --------------------------------------------------------------- custom strategies and lists
+
+def read_stdin(cap):
+    data = sys.stdin.buffer.read(cap + 1)
+    if len(data) > cap:
+        raise Fail("input is larger than %d bytes" % cap)
+    return data.decode("utf-8", "replace")
+
+
+def custom_name(name):
+    name = name if name.startswith("my-") else "my-" + name
+    if not RE_NAME.match(name):
+        raise Fail("name: lowercase letters, digits and dashes, up to 32")
+    return name
+
+
+def cmd_custom(args):
+    require_installed()
+    if not args:
+        raise Fail("usage: custom save|show|rm <name>")
+    verb = args[0]
+    if verb == "list":
+        out({"ok": True, "custom": custom_names()})
+        return
+    if len(args) < 2:
+        raise Fail("usage: custom %s <name>" % verb)
+    name = custom_name(args[1])
+    path = var_path("custom", name + ".txt")
+    if verb == "save":
+        text = read_stdin(MAX_SMALL)
+        parse_preset(text)
+        atomic_write(path, text.strip() + "\n")
+        out({"ok": True, "name": name})
+    elif verb == "show":
+        text = read_nofollow(path, MAX_SMALL)
+        if text is None:
+            raise Fail("no such strategy: %s" % name)
+        out({"ok": True, "name": name, "text": text})
+    elif verb == "rm":
+        s = load_settings()
+        if s["preset"] == name:
+            raise Fail("this strategy is in use: pick another one first")
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        out({"ok": True})
+    else:
+        raise Fail("usage: custom save|show|rm <name>")
+
+
+def cmd_list(args):
+    require_installed()
+    if len(args) < 2 or args[0] not in ("show", "save"):
+        raise Fail("usage: list show|save <name>")
+    name = args[1]
+    if name in USER_LISTS:
+        path = var_path("lists", name + ".txt")
+    elif name in BASE_LISTS and args[0] == "show":
+        path = var_path("lists", "upstream", name + ".txt")
+        if not os.path.exists(path):
+            path = os.path.join(DATA, "lists", name + ".txt")
+    else:
+        raise Fail("lists you can edit: %s" % ", ".join(USER_LISTS))
+    if args[0] == "show":
+        text = read_nofollow(path, MAX_LIST) or ""
+        lines = [l for l in text.splitlines() if l.strip()]
+        out({"ok": True, "name": name, "count": len(lines),
+             "text": "\n".join(lines[:5000]), "truncated": len(lines) > 5000})
+        return
+    text = read_stdin(MAX_LIST)
+    lines = clean_list(text, list_kind(name))
+    raw = [l for l in text.splitlines() if l.split("#", 1)[0].strip()]
+    atomic_write(path, "\n".join(lines) + ("\n" if lines else ""))
+    restarted = restart_if_active()
+    out({"ok": True, "name": name, "count": len(lines), "dropped": len(raw) - len(lines), "restarted": restarted})
+
+
+def http_get(url, cap, timeout=30):
+    if not url.startswith("https://"):
+        raise Fail("only https downloads")
+    req = urllib.request.Request(url, headers={"User-Agent": "omarchy-zapret2", "Accept": "*/*"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            if not r.geturl().startswith("https://"):
+                raise Fail("redirected away from https")
+            data = r.read(cap + 1)
+    except urllib.error.URLError as e:
+        raise Fail("download failed: %s" % getattr(e, "reason", e))
+    if len(data) > cap:
+        raise Fail("download is larger than %d bytes" % cap)
+    return data
+
+
+def cmd_lists_update():
+    require_installed()
+    updated, skipped = {}, {}
+    for name, rel in UPSTREAM_LISTS.items():
+        try:
+            text = http_get(UPSTREAM + rel, MAX_LIST).decode("utf-8", "replace")
+        except Fail as e:
+            skipped[name] = str(e)
+            continue
+        lines = clean_list(text, list_kind(name))
+        if len(lines) < 3:
+            skipped[name] = "upstream looks empty, kept the current one"
+            continue
+        updated[name] = lines
+    if not updated:
+        raise Fail("no list could be updated: " + "; ".join("%s: %s" % kv for kv in skipped.items()))
+    for name, lines in updated.items():
+        atomic_write(var_path("lists", "upstream", name + ".txt"), "\n".join(lines) + "\n")
+    restarted = restart_if_active()
+    out({"ok": True, "updated": {k: len(v) for k, v in updated.items()}, "skipped": skipped, "restarted": restarted})
+
+
+# --------------------------------------------------------------- checks and autopick
+
+def curl_probe(url, http3=False, timeout=6):
+    curl = tool("curl")
+    args = [curl, "-sS", "-o", "/dev/null", "--max-time", str(timeout), "--connect-timeout", "4",
+            "-w", "%{http_code} %{time_total}", "-A", "Mozilla/5.0"]
+    args += ["--http3-only"] if http3 else ["--http1.1"]
+    r = sh(*(args + [url]), timeout=timeout + 3)
+    parts = r.stdout.split()
+    code = parts[0] if parts else "000"
+    ok = r.returncode == 0 and code != "000"
+    err = "" if ok else (r.stderr.strip().splitlines() or ["curl exit %d" % r.returncode])[-1]
+    return {"url": url, "ok": ok, "code": code, "time": float(parts[1]) if ok and len(parts) > 1 else None,
+            "error": err.replace("curl: ", "")}
+
+
+def has_http3():
+    r = sh("curl", "--version", timeout=5)
+    return "HTTP3" in r.stdout
+
+
+def run_checks():
+    with open(os.path.join(DATA, "targets.json"), encoding="utf-8") as f:
+        targets = json.load(f)
+    h3 = has_http3()
+    jobs = []
+    for cat, t in targets.items():
+        for url in t["urls"]:
+            jobs.append((cat, url, False))
+            if h3 and cat == "youtube":
+                jobs.append((cat, url, True))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(lambda j: (j[0], j[2], curl_probe(j[1], j[2])), jobs))
+    cats = {}
+    for cat, t in targets.items():
+        rs = [dict(r, http3=h) for c, h, r in results if c == cat]
+        cats[cat] = {"label": t["label"], "ok": sum(1 for r in rs if r["ok"]), "total": len(rs), "results": rs}
+    score = sum(c["ok"] for c in cats.values())
+    total = sum(c["total"] for c in cats.values())
+    return {"time": int(time.time()), "score": score, "total": total, "categories": cats}
+
+
+def cmd_check():
+    res = run_checks()
+    if installed():
+        res["preset"] = load_settings()["preset"]
+        res["active"] = unit_state(UNIT).get("ActiveState") == "active"
+    save_state("check.json", res)
+    out(dict(res, ok=True))
+
+
+def cmd_autopick(args):
+    require_installed()
+    if unit_state(BC_UNIT).get("ActiveState") in ("active", "activating"):
+        raise Fail("blockcheck is running: stop it first")
+    names = [n for n in (args[0].split(",") if args else list(PRESETS)) if n in PRESETS or n in custom_names()]
+    if not names:
+        raise Fail("no strategies to try")
+    s = load_settings()
+    before = s["preset"]
+    progress(step=0, of=len(names), preset="(off)")
+    systemctl("stop", UNIT)
+    base = run_checks()                            # what opens without any bypass
+    baseline = {"preset": "(off)", "score": base["score"], "total": base["total"],
+                "categories": {k: [v["ok"], v["total"]] for k, v in base["categories"].items()}}
+    progress(step=0, of=len(names), preset="(off)", result=baseline)
+    rows = []
+    best = None
+    for i, name in enumerate(names):
+        progress(step=i + 1, of=len(names), preset=name)
+        s["preset"] = name
+        save_settings(s)
+        try:
+            systemctl("restart", UNIT)
+            wait_active()
+            res = run_checks()
+            row = {"preset": name, "score": res["score"], "total": res["total"],
+                   "categories": {k: [v["ok"], v["total"]] for k, v in res["categories"].items()}}
+        except Fail as e:
+            row = {"preset": name, "score": -1, "total": 0, "error": str(e), "categories": {}}
+        rows.append(row)
+        progress(step=i + 1, of=len(names), preset=name, result=row)
+        if best is None or row["score"] > best["score"]:
+            best = row
+        if row["total"] and row["score"] == row["total"]:
+            break                                  # everything answers: no need to go on
+    chosen = best["preset"] if best and best["score"] > 0 else before
+    s["preset"] = chosen
+    save_settings(s)
+    systemctl("restart", UNIT)
+    wait_active()
+    result = {"time": int(time.time()), "rows": rows, "chosen": chosen, "baseline": baseline,
+              "notNeeded": bool(best) and best["score"] <= baseline["score"]}
+    save_state("autopick.json", result)
+    out(dict(result, ok=True))
+
+
+# --------------------------------------------------------------- blockcheck (user side)
+
+RE_FOUND = re.compile(r"^!!!!! (curl_test_[a-z0-9_]+): working strategy found for (ipv[46]) (\S+) : nfqws2 (.*?) !!!!!$")
+
+
+def parse_blockcheck(text):
+    found = []
+    for line in text.splitlines():
+        m = RE_FOUND.match(line.strip())
+        if m:
+            found.append({"test": m.group(1), "ip": m.group(2), "domain": m.group(3), "args": m.group(4)})
+    return found
+
+
+def strategy_from_found(item):
+    """A blockcheck finding as a custom strategy, when it passes the allowlist."""
+    lines = [a for a in item["args"].split() if a.startswith(("--lua-desync=", "--payload=", "--out-range=", "--in-range="))]
+    if not any(l.startswith("--lua-desync=") for l in lines):
+        raise Fail("this finding has no desync to save")
+    for l in lines:
+        check_line(l, "TCP_TLS")
+    test = item["test"]
+    body = "\n".join(lines)
+    secs = {"TCP_HTTP": "--lua-desync=fake:blob=http_iana:tcp_md5:repeats=6\n--lua-desync=multisplit:pos=2,host+1",
+            "TCP_TLS": "--lua-desync=fake:blob=tls_google:tcp_md5:repeats=6\n--lua-desync=multisplit:pos=2,midsld",
+            "TCP_GENERIC": "--lua-desync=fake:blob=tls_google:tcp_md5:repeats=4\n--lua-desync=multisplit:pos=2",
+            "QUIC": "--lua-desync=fake:blob=quic_google:repeats=6"}
+    if test == "curl_test_http":
+        secs["TCP_HTTP"] = body
+    elif test == "curl_test_http3":
+        secs["QUIC"] = body
+    else:
+        secs["TCP_TLS"] = body
+        secs["TCP_GENERIC"] = body
+        secs["GOOGLE_TLS"] = body
+    text = "# from blockcheck2: %s %s %s\n" % (test, item["ip"], item["domain"])
+    text += "".join("[%s]\n%s\n" % (k, v) for k, v in secs.items())
+    parse_preset(text)
+    return text
+
+
+def cmd_blockcheck(args):
+    require_installed()
+    verb = args[0] if args else "status"
+    if verb == "start":
+        domains, level = [], "quick"
+        rest = args[1:]
+        while rest:
+            a = rest.pop(0)
+            if a == "--level" and rest:
+                level = rest.pop(0)
+            else:
+                domains.append(a.lower())
+        domains = domains or ["youtube.com", "discord.com"]
+        if level not in ("quick", "standard", "force"):
+            raise Fail("level: quick, standard or force")
+        bad = [d for d in domains if not RE_DOMAIN.match(d)]
+        if bad or len(domains) > 8:
+            raise Fail("up to 8 domains, plain names: %s" % " ".join(bad))
+        if not (tool("host") or tool("nslookup")):
+            raise Fail("blockcheck2 needs host or nslookup: install them with `omarchy pkg add bind`")
+        # the bypass stops while blockcheck2 runs (Conflicts=); bring it back afterwards
+        resume = unit_state(UNIT).get("ActiveState") == "active"
+        req = {"domains": domains, "level": level, "ipv6": load_settings()["ipv6"], "resume": resume}
+        atomic_write(var_path("blockcheck.json"), json.dumps(req) + "\n")
+        sh("systemctl", "--no-ask-password", "reset-failed", BC_UNIT, timeout=10)
+        systemctl("start", BC_UNIT)
+        out({"ok": True, "started": True, "request": req})
+    elif verb == "stop":
+        systemctl("stop", BC_UNIT)
+        out({"ok": True})
+    elif verb == "status":
+        text = read_nofollow(os.path.join(RUN_BC, "blockcheck.log"), 16 * 1024 * 1024) or ""
+        lines = text.splitlines()
+        st = unit_state(BC_UNIT)
+        out({"ok": True, "active": st.get("ActiveState", "inactive"), "result": st.get("Result", ""),
+             "tail": lines[-60:], "lines": len(lines), "found": parse_blockcheck(text),
+             "done": "* SUMMARY" in text})
+    elif verb == "save":
+        if len(args) < 2 or not args[1].isdigit():
+            raise Fail("usage: blockcheck save <index> [name]")
+        found = parse_blockcheck(read_nofollow(os.path.join(RUN_BC, "blockcheck.log"), 16 * 1024 * 1024) or "")
+        i = int(args[1])
+        if i >= len(found):
+            raise Fail("no such finding")
+        text = strategy_from_found(found[i])
+        name = custom_name(args[2] if len(args) > 2 else "bc-%d-%s" % (i + 1, found[i]["test"][10:].replace("_", "-")))
+        atomic_write(var_path("custom", name + ".txt"), text)
+        out({"ok": True, "name": name})
+    else:
+        raise Fail("usage: blockcheck start|stop|status|save")
+
+
+# --------------------------------------------------------------- engine, setup, removal (user side)
+
+def latest_release():
+    data = json.loads(http_get(REPO_API, 2 * 1024 * 1024))
+    tag = data.get("tag_name", "")
+    if not RE_VERSION.match(tag):
+        raise Fail("unexpected release tag: %r" % tag)
+    want = "zapret2-%s.tar.gz" % tag
+    for a in data.get("assets", []):
+        if a.get("name") == want:
+            digest = str(a.get("digest") or "")
+            sha = digest.split(":", 1)[1] if digest.startswith("sha256:") else ""
+            url = a.get("browser_download_url", "")
+            if not url.startswith("https://github.com/bol-van/zapret2/releases/download/"):
+                raise Fail("unexpected download location")
+            return {"version": tag, "url": url, "sha256": sha, "size": a.get("size", 0)}
+    raise Fail("release %s has no %s" % (tag, want))
+
+
+def cmd_engine_check():
+    rec = load_record()
+    latest = latest_release()
+    out({"ok": True, "installed": rec.get("version") if rec else None, "latest": latest["version"],
+         "update": not rec or rec.get("version") != latest["version"]})
+
+
+def escalate(*args):
+    """Run this script as root: sudo in a terminal, pkexec (polkit prompt) otherwise."""
+    py = "/usr/bin/python3"
+    if sys.stdin.isatty() and tool("sudo"):
+        r = subprocess.run([tool("sudo"), py, "-I", SELF] + list(args), env=child_env())
+        return r.returncode, "", ""
+    pk = tool("pkexec")
+    if not pk:
+        raise Fail("pkexec not found: run in a terminal: sudo %s %s" % (SELF, " ".join(args)))
+    r = sh(pk, py, "-I", SELF, *args, timeout=900)
+    return r.returncode, r.stdout, r.stderr
+
+
+def escalated(what, *args):
+    rc, so, se = escalate(*args)
+    if rc in (126, 127) and not so.strip():
+        raise Fail("%s cancelled: nothing was changed" % what)
+    if rc != 0:
+        msg = ""
+        for line in reversed(so.strip().splitlines()):
+            try:
+                msg = json.loads(line).get("error", "")
+                break
+            except ValueError:
+                continue
+        raise Fail("%s failed: %s" % (what, msg or (se.strip().splitlines() or ["exit %d" % rc])[-1]))
+    for line in reversed(so.strip().splitlines()):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+    return {}
+
+
+def cmd_setup(args):
+    rec = load_record()
+    if rec and rec.get("uid") != os.getuid():
+        raise Fail("zapret2 is set up for another user on this machine")
+    app_only = "--app-only" in args
+    if app_only and rec:
+        res = escalated("Update", "_install")
+        out({"ok": True, "version": rec.get("version"), "updated": "app", "result": res})
+        return
+    progress(step="release")
+    rel = latest_release()
+    if not RE_SHA.match(rel["sha256"]):
+        raise Fail("the release has no sha256 digest to verify against")
+    progress(step="download", version=rel["version"])
+    data = http_get(rel["url"], MAX_TARBALL, timeout=120)
+    got = hashlib.sha256(data).hexdigest()
+    if got != rel["sha256"]:
+        raise Fail("checksum mismatch: the download is not the published release")
+    d = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "omarchy-zapret2")
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    os.chmod(d, 0o700)
+    tarball = os.path.join(d, "zapret2-%s.tar.gz" % rel["version"])
+    atomic_write(tarball, data, mode=0o600)
+    progress(step="install", version=rel["version"])
+    try:
+        res = escalated("Setup", "_install", "--tarball", tarball, "--sha256", got, "--version", rel["version"])
+    finally:
+        try:
+            os.unlink(tarball)
+        except OSError:
+            pass
+    if not os.path.exists(var_path("settings.json")):
+        save_settings(dict(DEFAULTS))
+    desktop(True)
+    out({"ok": True, "version": rel["version"], "result": res})
+
+
+def cmd_remove(args):
+    rec = load_record()
+    if not rec:
+        desktop(False)
+        out({"ok": True, "removed": False})
+        return
+    extra = ["--purge"] if "--purge" in args else []
+    res = escalated("Removal", "_uninstall", *extra)
+    desktop(False)
+    out({"ok": True, "removed": True, "result": res})
+
+
+def desktop(on):
+    if not on:
+        try:
+            os.unlink(DESKTOP)
+        except FileNotFoundError:
+            pass
+        return
+    text = ("[Desktop Entry]\nType=Application\nName=Zapret2\nGenericName=DPI bypass\n"
+            "Comment=zapret2 DPI bypass: strategies, lists, checks\n"
+            "Exec=omarchy-shell shell toggle %s {}\nIcon=network-vpn\nTerminal=false\n"
+            "Categories=Network;Utility;\nKeywords=zapret;dpi;youtube;discord;bypass;\n" % PLUGIN_ID)
+    try:
+        if read_nofollow(DESKTOP, MAX_SMALL) == text:
+            return
+    except Fail:
+        pass
+    atomic_write(DESKTOP, text)
+
+
+def journal(n, unit=UNIT):
+    r = sh("journalctl", "-u", unit, "-n", str(n), "--no-pager", "-o", "short-iso", timeout=15)
+    return [l for l in r.stdout.splitlines() if l.strip() and not l.startswith("-- ")]
+
+
+def cmd_logs(args):
+    n = int(args[0]) if args and args[0].isdigit() else 120
+    lines = journal(min(n, 2000))
+    note = "" if lines else "No log lines: your user may need the wheel or systemd-journal group to read system logs"
+    out({"ok": True, "lines": lines, "note": note})
+
+
+def cmd_doctor():
+    items = []
+
+    def add(name, ok, detail=""):
+        items.append({"name": name, "ok": bool(ok), "detail": detail})
+
+    rec = load_record()
+    add("Setup", installed(), "run setup" if not rec else ("another user" if rec.get("uid") != os.getuid() else rec.get("version", "")))
+    if rec:
+        bad = []
+        for path, sha in rec.get("files", {}).items():
+            try:
+                if sha256_file(path) != sha:
+                    bad.append(path)
+            except PermissionError:
+                pass                                   # e.g. polkit rules: root-only directory
+            except OSError:
+                bad.append(path)
+        add("System files", not bad, "changed or missing: " + ", ".join(bad[:4]) if bad else "%d files intact" % len(rec.get("files", {})))
+        own = rec.get("files", {}).get(SYS_APP + "/bin/omarchy-zapret2")
+        add("Plugin and system copy", own == sha256_file(SELF), "" if own == sha256_file(SELF) else "the plugin was updated: run setup --app-only (Update system part)")
+        eng = os.path.join(SYS_ENGINE, "current", "nfq2", "nfqws2")
+        r = sh(eng, "--version", timeout=10)
+        add("nfqws2", r.returncode == 0 and rec.get("version", "") in r.stdout, r.stdout.strip().splitlines()[0] if r.stdout.strip() else r.stderr.strip())
+    add("nft", tool("nft"), "nftables" if tool("nft") else "install nftables")
+    add("curl", tool("curl"), "HTTP/3 " + ("yes" if has_http3() else "no (QUIC checks skipped)") if tool("curl") else "install curl")
+    add("pkexec", tool("pkexec"), "" if tool("pkexec") else "install polkit")
+    dns = tool("host") or tool("nslookup")
+    add("host/nslookup", dns, "for blockcheck2" if dns else "blockcheck2 needs them: omarchy pkg add bind")
+    other = [u for u in ("zapret2.service", "zapret.service", "nfqws2@.service")
+             if unit_state(u).get("ActiveState") == "active"]
+    add("No other zapret", not other, "running: " + ", ".join(other) if other else "")
+    xray = unit_state("omarchy-xray-tun.service").get("ActiveState") == "active"
+    add("No VPN tunnel", not xray, "omarchy-xray TUN is on: traffic leaves through the tunnel, the bypass does not apply" if xray else "")
+    if installed():
+        st = unit_state(UNIT)
+        add("Service", st.get("ActiveState") != "failed", "%s (%s), restarts %s" % (st.get("ActiveState"), st.get("SubState"), st.get("NRestarts", "0")))
+    out({"ok": True, "items": items, "healthy": all(i["ok"] for i in items)})
+
+
+# --------------------------------------------------------------- privileged half
+
+def require_root(from_system=False):
+    if os.geteuid() != 0:
+        raise Fail("this command is for the system services")
+    if from_system and not SELF.startswith(SYS_APP + "/"):
+        raise Fail("refusing to run outside %s" % SYS_APP)
+
+
+def caller_uid():
+    for k in ("PKEXEC_UID", "SUDO_UID"):
+        v = os.environ.get(k, "")
+        if v.isdigit() and int(v) >= 1000:
+            return int(v)
+    raise Fail("run through pkexec or sudo from your user account")
+
+
+UNIT_TEXT = """# Installed by omarchy-zapret2 (Omarchy plugin). Removed by `omarchy-zapret2 remove`.
+[Unit]
+Description=zapret2 DPI bypass (omarchy-zapret2)
+After=network-online.target nftables.service
+Wants=network-online.target
+Conflicts=omarchy-zapret2-blockcheck.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I {app}/bin/omarchy-zapret2 _run
+ExecStopPost=/usr/bin/python3 -I {app}/bin/omarchy-zapret2 _stop
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=omarchy-zapret2
+RuntimeDirectoryMode=0755
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_NETLINK AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SETUID CAP_SETGID
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+BC_UNIT_TEXT = """# Installed by omarchy-zapret2 (Omarchy plugin). Removed by `omarchy-zapret2 remove`.
+[Unit]
+Description=zapret2 blockcheck2 strategy search (omarchy-zapret2)
+After=network-online.target
+Conflicts=omarchy-zapret2.service
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 -I {app}/bin/omarchy-zapret2 _blockcheck
+ExecStopPost=/usr/bin/python3 -I {app}/bin/omarchy-zapret2 _blockcheck-done
+RuntimeDirectory=omarchy-zapret2-blockcheck
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+UMask=0022
+TimeoutStopSec=15
+KillMode=control-group
+ProtectHome=yes
+PrivateTmp=yes
+"""
+
+POLKIT_TEXT = """// Installed by omarchy-zapret2 (Omarchy plugin) for one user. Removed by `omarchy-zapret2 remove`.
+polkit.addRule(function (action, subject) {
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        subject.user === "%(user)s" && subject.local && subject.active) {
+        var unit = action.lookup("unit");
+        var verb = action.lookup("verb");
+        if ((unit === "%(unit)s" || unit === "%(bc)s") &&
+            (verb === "start" || verb === "stop" || verb === "restart" || verb === "reset-failed")) {
+            return polkit.Result.YES;
+        }
+    }
+});
+"""
+
+WANTED = re.compile(r"^(binaries/linux-x86_64/(nfqws2|mdig|ip2net)|lua/[a-z0-9-]+\.lua|files/fake/[A-Za-z0-9_.-]+\.bin"
+                    r"|blockcheck2\.sh|blockcheck2\.d/[A-Za-z0-9_./-]+|common/[a-z0-9_]+\.sh|config\.default)$")
+
+
+def install_engine(tarball, sha, version):
+    if not RE_VERSION.match(version) or not RE_SHA.match(sha):
+        raise Fail("bad version or checksum")
+    fd = os.open(tarball, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(fd, "rb") as f:
+        data = f.read(MAX_TARBALL + 1)
+    if len(data) > MAX_TARBALL or hashlib.sha256(data).hexdigest() != sha:
+        raise Fail("the archive does not match its checksum")
+    os.makedirs(SYS_ENGINE, mode=0o755, exist_ok=True)
+    tmp = tempfile.mkdtemp(dir=SYS_ENGINE, prefix=".new-")
+    try:
+        raw = os.path.join(tmp, "raw")
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
+            members = []
+            prefix = "zapret2-%s/" % version
+            for m in tf.getmembers():
+                if not m.name.startswith(prefix):
+                    continue
+                rel = m.name[len(prefix):]
+                if (m.isfile() and WANTED.match(rel)) or (m.isdir() and rel):
+                    m.name = rel
+                    members.append(m)
+            tf.extractall(raw, members=members, filter="data")
+        dest = os.path.join(tmp, "engine")
+        os.makedirs(dest)
+        for bin_name in ("nfqws2", "mdig", "ip2net"):
+            src = os.path.join(raw, "binaries/linux-x86_64", bin_name)
+            sub = "nfq2" if bin_name == "nfqws2" else bin_name
+            os.makedirs(os.path.join(dest, sub))
+            shutil.copyfile(src, os.path.join(dest, sub, bin_name))
+            os.chmod(os.path.join(dest, sub, bin_name), 0o755)
+        for item in ("lua", "files", "blockcheck2.d", "common"):
+            shutil.copytree(os.path.join(raw, item), os.path.join(dest, item))
+        for item in ("blockcheck2.sh", "config.default"):
+            shutil.copyfile(os.path.join(raw, item), os.path.join(dest, item))
+        os.chmod(os.path.join(dest, "blockcheck2.sh"), 0o755)
+        for f in os.listdir(os.path.join(DATA, "fake")):
+            shutil.copyfile(os.path.join(DATA, "fake", f), os.path.join(dest, "files", "fake", f))
+        r = sh(os.path.join(dest, "nfq2", "nfqws2"), "--version", timeout=10)
+        if r.returncode != 0 or version not in r.stdout:
+            raise Fail("the new nfqws2 does not run: %s" % (r.stdout + r.stderr).strip()[:200])
+        normalize_tree(dest)
+        final = os.path.join(SYS_ENGINE, version)
+        if os.path.lexists(final):
+            shutil.rmtree(final)
+        os.rename(dest, final)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    link_tmp = os.path.join(SYS_ENGINE, ".current")
+    if os.path.lexists(link_tmp):
+        os.unlink(link_tmp)
+    prev = os.path.basename(os.path.realpath(os.path.join(SYS_ENGINE, "current"))) if os.path.islink(os.path.join(SYS_ENGINE, "current")) else None
+    os.symlink(version, link_tmp)
+    os.replace(link_tmp, os.path.join(SYS_ENGINE, "current"))
+    for d in os.listdir(SYS_ENGINE):                 # keep the new and the previous version
+        if d not in (version, prev, "current") and RE_VERSION.match(d):
+            shutil.rmtree(os.path.join(SYS_ENGINE, d), ignore_errors=True)
+
+
+def normalize_tree(root):
+    for d, dirs, files in os.walk(root):
+        os.chown(d, 0, 0)
+        os.chmod(d, 0o755)
+        for f in files:
+            p = os.path.join(d, f)
+            os.chown(p, 0, 0, follow_symlinks=False)
+            if not os.path.islink(p):
+                os.chmod(p, 0o755 if os.access(p, os.X_OK) or f.endswith(".sh") else 0o644)
+
+
+def install_app():
+    """Copy this script and data/ to the root-owned app folder the units run."""
+    tmp = tempfile.mkdtemp(dir=SYS_BASE, prefix=".app-")
+    try:
+        os.makedirs(os.path.join(tmp, "bin"))
+        shutil.copyfile(SELF, os.path.join(tmp, "bin", "omarchy-zapret2"))
+        shutil.copytree(DATA, os.path.join(tmp, "data"), symlinks=False)
+        normalize_tree(tmp)
+        os.chmod(os.path.join(tmp, "bin", "omarchy-zapret2"), 0o755)
+        old = SYS_APP + ".old"
+        shutil.rmtree(old, ignore_errors=True)
+        if os.path.exists(SYS_APP):
+            os.rename(SYS_APP, old)
+        os.rename(tmp, SYS_APP)
+        shutil.rmtree(old, ignore_errors=True)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+
+
+def ensure_var(uid, gid):
+    for d in (VAR, os.path.join(VAR, "lists"), os.path.join(VAR, "lists", "upstream"), os.path.join(VAR, "custom")):
+        try:
+            st = os.lstat(d)
+        except FileNotFoundError:
+            os.mkdir(d, 0o755)
+            os.chown(d, uid, gid)
+            continue
+        if not (st.st_mode & 0o170000 == 0o040000) or st.st_uid != uid:
+            raise Fail("%s exists and is not this user's folder" % d)
+    os.chmod(VAR, 0o755)
+
+
+def cmd_install(args):
+    require_root()
+    uid = caller_uid()
+    pw = pwd.getpwuid(uid)
+    rec = load_record()
+    if rec and rec.get("uid") != uid:
+        raise Fail("zapret2 is set up for another user (uid %s)" % rec.get("uid"))
+    opts = dict(zip(args[::2], args[1::2]))
+    version = rec.get("version") if rec else None
+    os.makedirs(SYS_BASE, mode=0o755, exist_ok=True)
+    os.chmod(SYS_BASE, 0o755)
+    if "--tarball" in opts:
+        install_engine(opts["--tarball"], opts.get("--sha256", ""), opts.get("--version", ""))
+        version = opts["--version"]
+    if not version:
+        raise Fail("no engine installed yet")
+    install_app()
+    ensure_var(uid, pw.pw_gid)
+    files = {
+        os.path.join(UNIT_DIR, UNIT): UNIT_TEXT.format(app=SYS_APP),
+        os.path.join(UNIT_DIR, BC_UNIT): BC_UNIT_TEXT.format(app=SYS_APP),
+        POLKIT_RULE: POLKIT_TEXT % {"user": pw.pw_name, "unit": UNIT, "bc": BC_UNIT},
+    }
+    for path, text in files.items():
+        if os.path.islink(path):
+            raise Fail("%s is a symlink: refusing" % path)
+        atomic_write(path, text, mode=0o644)
+    hashed = dict((p, hashlib.sha256(t.encode()).hexdigest()) for p, t in files.items())
+    hashed[SYS_APP + "/bin/omarchy-zapret2"] = sha256_file(SYS_APP + "/bin/omarchy-zapret2")
+    hashed[SYS_ENGINE + "/current/nfq2/nfqws2"] = sha256_file(SYS_ENGINE + "/current/nfq2/nfqws2")
+    atomic_write(RECORD, json.dumps({"uid": uid, "user": pw.pw_name, "version": version, "files": hashed,
+                                     "time": int(time.time())}, indent=1) + "\n", mode=0o644)
+    sh("systemctl", "daemon-reload", timeout=60)
+    if unit_state(UNIT).get("ActiveState") == "active":
+        sh("systemctl", "restart", UNIT, timeout=60)
+    out({"ok": True, "version": version})
+
+
+def cmd_uninstall(args):
+    require_root()
+    uid = caller_uid()
+    rec = load_record()
+    if rec and rec.get("uid") != uid:
+        raise Fail("zapret2 is set up for another user")
+    for u in (BC_UNIT, UNIT):
+        sh("systemctl", "stop", u, timeout=60)
+    sh("nft", "delete", "table", "inet", NFT_TABLE, timeout=10)
+    removed = []
+    for path in (os.path.join(UNIT_DIR, UNIT), os.path.join(UNIT_DIR, BC_UNIT), POLKIT_RULE):
+        if os.path.lexists(path):
+            os.unlink(path)
+            removed.append(path)
+    shutil.rmtree(SYS_BASE, ignore_errors=True)
+    shutil.rmtree(RUN_BC, ignore_errors=True)
+    removed.append(SYS_BASE)
+    if "--purge" in args and os.path.isdir(VAR) and not os.path.islink(VAR) and os.lstat(VAR).st_uid == uid:
+        shutil.rmtree(VAR)
+        removed.append(VAR)
+    sh("systemctl", "daemon-reload", timeout=60)
+    out({"ok": True, "removed": removed})
+
+
+def prepare_lists(uid):
+    """Validated copies of every list in RUN: nfqws2 never reads the user's files."""
+    lists = os.path.join(RUN, "lists")
+    os.makedirs(lists, mode=0o755, exist_ok=True)
+    counts = {}
+    for name in BASE_LISTS + USER_LISTS:
+        text = None
+        if name in BASE_LISTS:
+            try:
+                text = read_nofollow(os.path.join(VAR, "lists", "upstream", name + ".txt"), MAX_LIST, owner=uid)
+            except Fail:
+                text = None
+            if not text:
+                with open(os.path.join(DATA, "lists", name + ".txt"), encoding="utf-8") as f:
+                    text = f.read()
+        else:
+            try:
+                text = read_nofollow(os.path.join(VAR, "lists", name + ".txt"), MAX_LIST, owner=uid) or ""
+            except Fail:
+                text = ""
+        lines = clean_list(text, list_kind(name))
+        counts[name] = len(lines)
+        atomic_write(os.path.join(lists, name + ".txt"), "\n".join(lines) + "\n" if lines else "")
+    # an ipset that matches nothing (TEST-NET-3), for ipset=none and an empty loaded set
+    atomic_write(os.path.join(lists, "ipset-none.txt"), "203.0.113.113/32\n")
+    return lists, counts
+
+
+def load_preset_for_run(name, uid):
+    if name in PRESETS:
+        with open(os.path.join(DATA, "presets", name + ".txt"), encoding="utf-8") as f:
+            return parse_preset(f.read())
+    text = read_nofollow(os.path.join(VAR, "custom", name + ".txt"), MAX_SMALL, owner=uid)
+    if text is None:
+        raise Fail("custom strategy %s is gone" % name)
+    return parse_preset(text)
+
+
+def cmd_run():
+    require_root(from_system=True)
+    rec = load_record()
+    if not rec:
+        raise Fail("not set up")
+    uid = int(rec["uid"])
+    try:
+        settings = clean_settings(json.loads(read_nofollow(os.path.join(VAR, "settings.json"), MAX_SMALL, owner=uid) or "{}"))
+    except ValueError:
+        settings = dict(DEFAULTS)
+    try:
+        sections = load_preset_for_run(settings["preset"], uid)
+    except Fail as e:
+        print("omarchy-zapret2: %s; falling back to general" % e, file=sys.stderr)
+        settings["preset"] = "general"
+        sections = load_preset_for_run("general", uid)
+    engine = os.path.realpath(os.path.join(SYS_ENGINE, "current"))
+    if not engine.startswith(SYS_ENGINE + "/"):
+        raise Fail("engine link points outside %s" % SYS_ENGINE)
+    lists, counts = prepare_lists(uid)
+    args = render_args(settings["preset"], sections, settings, engine, lists,
+                       [os.path.join(engine, "files", "fake")], counts)
+    conf = os.path.join(RUN, "nfqws2.conf")
+    atomic_write(conf, "\n".join(args) + "\n")
+    tcp, udp = ports_for(settings, sections)
+    rules = os.path.join(RUN, "rules.nft")
+    atomic_write(rules, render_nft(tcp, udp, settings["ipv6"]))
+    r = sh(tool("nft") or "nft", "-f", rules, timeout=20, env={"PATH": "/usr/bin:/bin"})
+    if r.returncode != 0:
+        raise Fail("nft: %s" % r.stderr.strip()[:400])
+    print("omarchy-zapret2: strategy %s, game %s, ipset %s, voice %s, tcp %s, udp %s"
+          % (settings["preset"], settings["game"], settings["ipset"], settings["voice"], ",".join(tcp), ",".join(udp)),
+          file=sys.stderr, flush=True)
+    nfqws = os.path.join(engine, "nfq2", "nfqws2")
+    os.execve(nfqws, [nfqws, "@" + conf], {"PATH": "/usr/bin:/bin"})
+
+
+def cmd_stop():
+    require_root(from_system=True)
+    sh(tool("nft") or "nft", "delete", "table", "inet", NFT_TABLE, timeout=10, env={"PATH": "/usr/bin:/bin"})
+    out({"ok": True})
+
+
+def cmd_blockcheck_run():
+    require_root(from_system=True)
+    rec = load_record()
+    uid = int(rec["uid"])
+    req = json.loads(read_nofollow(os.path.join(VAR, "blockcheck.json"), MAX_SMALL, owner=uid) or "{}")
+    domains = [d for d in req.get("domains", []) if isinstance(d, str) and RE_DOMAIN.match(d)][:8] or ["youtube.com"]
+    level = req.get("level") if req.get("level") in ("quick", "standard", "force") else "quick"
+    engine = os.path.realpath(os.path.join(SYS_ENGINE, "current"))
+    os.makedirs(RUN_BC, mode=0o755, exist_ok=True)
+    env = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "BATCH": "1", "DOMAINS": " ".join(domains),
+           "IPVS": "46" if req.get("ipv6") is True else "4", "SCANLEVEL": level, "REPEATS": "1",
+           "ENABLE_HTTP": "1", "ENABLE_HTTPS_TLS12": "1", "ENABLE_HTTPS_TLS13": "1", "ENABLE_HTTP3": "1",
+           "ZAPRET_BASE": engine, "ZAPRET_RW": RUN_BC, "ZAPRET_CONFIG": os.path.join(RUN_BC, "config"),
+           "SKIP_DNSCHECK": "1", "LANG": "C"}
+    log = os.path.join(RUN_BC, "blockcheck.log")
+    with open(log, "w", encoding="utf-8") as f:
+        os.fchmod(f.fileno(), 0o644)
+        f.write("# omarchy-zapret2 blockcheck2: %s, level %s\n" % (" ".join(domains), level))
+        f.flush()
+        p = subprocess.run(["/bin/sh", os.path.join(engine, "blockcheck2.sh")], stdout=f, stderr=subprocess.STDOUT,
+                           stdin=subprocess.DEVNULL, env=env, cwd=RUN_BC)
+    sys.exit(p.returncode)
+
+
+def cmd_blockcheck_done():
+    """ExecStopPost of the blockcheck unit: restart the bypass if it was on."""
+    require_root(from_system=True)
+    rec = load_record()
+    try:
+        req = json.loads(read_nofollow(os.path.join(VAR, "blockcheck.json"), MAX_SMALL, owner=int(rec["uid"])) or "{}")
+    except (Fail, ValueError, TypeError, KeyError):
+        req = {}
+    if req.get("resume") is True:
+        sh("systemctl", "start", "--no-block", UNIT, timeout=30, env={"PATH": "/usr/bin:/bin"})
+    out({"ok": True, "resumed": req.get("resume") is True})
+
+
+# --------------------------------------------------------------- main
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return 0
+    cmd, args = argv[0], argv[1:]
+    if os.geteuid() == 0 and not cmd.startswith("_"):
+        raise Fail("run as your user, not root")
+    def need(n, usage):
+        if len(args) < n:
+            raise Fail("usage: " + usage)
+
+    if cmd == "status":
+        cmd_status()
+    elif cmd == "presets":
+        cmd_presets()
+    elif cmd in ("on", "off", "restart"):
+        {"on": cmd_on, "off": cmd_off, "restart": cmd_restart}[cmd]()
+    elif cmd == "set":
+        need(2, "set <key> <value>")
+        cmd_set(args[0], args[1])
+    elif cmd == "custom":
+        cmd_custom(args)
+    elif cmd == "list":
+        cmd_list(args)
+    elif cmd == "lists" and args[:1] == ["update"]:
+        cmd_lists_update()
+    elif cmd == "check":
+        cmd_check()
+    elif cmd == "autopick":
+        cmd_autopick(args)
+    elif cmd == "blockcheck":
+        cmd_blockcheck(args)
+    elif cmd == "setup":
+        cmd_setup(args)
+    elif cmd == "engine" and args[:1] == ["check"]:
+        cmd_engine_check()
+    elif cmd == "engine" and args[:1] == ["update"]:
+        cmd_setup(args[1:])
+    elif cmd == "remove":
+        cmd_remove(args)
+    elif cmd == "doctor":
+        cmd_doctor()
+    elif cmd == "logs":
+        cmd_logs(args)
+    elif cmd == "desktop":
+        desktop(args[:1] != ["off"])
+        out({"ok": True})
+    elif cmd == "_install":
+        cmd_install(args)
+    elif cmd == "_uninstall":
+        cmd_uninstall(args)
+    elif cmd == "_run":
+        cmd_run()
+    elif cmd == "_stop":
+        cmd_stop()
+    elif cmd == "_blockcheck":
+        cmd_blockcheck_run()
+    elif cmd == "_blockcheck-done":
+        cmd_blockcheck_done()
+    else:
+        raise Fail("unknown command: %s (see --help)" % " ".join(argv[:2]))
+    return 0
+
+
+if __name__ == "__main__":
+    os.umask(0o022)
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Fail as e:
+        out({"ok": False, "error": str(e)})
+        sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit(130)
