@@ -2,6 +2,17 @@ test("preset titles", () => {
   eq(Model.presetTitle("fake-tls-auto-alt2"), "FAKE TLS AUTO ALT2")
   eq(Model.presetTitle("my-home"), "home")
   eq(Model.presetTitle(undefined), "")
+  eq(Model.presetTitle("fs-general"), "general")
+  eq(Model.presetTitle("fs-general-alt2"), "ALT2")
+  eq(Model.presetTitle("fs-general-fake-tls-auto-alt2"), "FAKE TLS AUTO ALT2")
+  eq(Model.presetTitle("fs-general-simple-fake"), "SIMPLE FAKE")
+  eq(Model.presetTitle("fs-general-exp"), "EXP")
+})
+
+test("group titles", () => {
+  eq(Model.groupTitle("flowseal"), "Flowseal")
+  eq(Model.groupTitle("next"), "Zapret 2 NEXT")
+  eq(Model.groupTitle("custom"), "Свои")
 })
 
 test("state", () => {
@@ -13,6 +24,8 @@ test("state", () => {
   eq(Model.stateOf({ installed: true, active: "activating", restarts: 2 }), "error")
   eq(Model.stateOf({ installed: true, active: "activating", restarts: 0 }), "starting")
   eq(Model.summary({ installed: true, active: "active", settings: { preset: "alt5" } }), "Zapret2 · Включён · ALT5")
+  eq(Model.summary({ installed: true, active: "active", settings: { preset: "fs-general-alt2" } }), "Zapret2 · Включён · Flowseal ALT2")
+  eq(Model.summary({ installed: true, active: "active", settings: { preset: "fs-general" } }), "Zapret2 · Включён · Flowseal general")
 })
 
 test("categories keep a stable order", () => {

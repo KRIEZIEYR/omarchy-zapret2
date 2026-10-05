@@ -26,6 +26,8 @@ Item {
   readonly property var settings: st && st.settings ? st.settings : ({})
   readonly property string preset: settings.preset || ""
   readonly property var presets: st && st.presets ? st.presets : []
+  readonly property var fakeChoices: st && st.fakeChoices ? st.fakeChoices : []
+  readonly property bool hostsOn: st ? st.hosts === true : false
   readonly property var check: st && st.check ? st.check : ({})
   readonly property var autopickResult: st && st.autopick ? st.autopick : ({})
   readonly property bool appCurrent: !st || st.appCurrent !== false
@@ -184,6 +186,29 @@ Item {
       var n = 0
       if (d && d.updated) for (var k in d.updated) n += d.updated[k]
       return "Списки обновлены: " + n + " записей"
+    })
+  }
+  function updatePresets() {
+    longJob(["presets", "update"], "обновление стратегий", function(d) {
+      var n = 0
+      if (d && d.updated)
+        n = Array.isArray(d.updated) ? d.updated.length : Object.keys(d.updated).length
+      return n > 0 ? "Стратегии обновлены: " + n : "Стратегии обновлены"
+    })
+  }
+  function hostsSet(on) {
+    longJob(["hosts", on ? "on" : "off"], "hosts", function(d) {
+      if (d && d.on && typeof d.lines === "number")
+        return "Hosts включён: " + d.lines + " записей"
+      return on ? "Hosts включён" : "Hosts выключен"
+    })
+  }
+  function clearDiscordCache() {
+    act(["discord-cache", "clear"], "очистка кэша Discord", "", function(r) {
+      if (r.ok) {
+        var n = r.data && r.data.cleared ? r.data.cleared.length : 0
+        flash(n > 0 ? "Кэш Discord очищен: " + n : "Кэш Discord очищен")
+      }
     })
   }
   function removeAll(purge) {

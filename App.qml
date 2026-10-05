@@ -382,6 +382,7 @@ Item {
       Layout.fillWidth: true
       visible: !sp.editing
       Hint { Layout.fillWidth: true; text: "Пресеты из Zapret 2 NEXT (порты стратегий Flowseal). Не открывается? Попробуйте «Подбор»." }
+      Button { bordered: true; text: "Обновить из Flowseal"; onClicked: root.svc.updatePresets() }
       Button { bordered: true; text: "Новая стратегия"; onClicked: sp.edit("") }
     }
 
@@ -392,6 +393,16 @@ Item {
       clip: true
       spacing: Style.space(4)
       model: root.ready ? root.svc.presets : []
+      section.property: "group"
+      section.criteria: ViewSection.FullString
+      section.delegate: Label {
+        required property string section
+        visible: section !== ""
+        width: ListView.view.width
+        font.bold: true
+        color: root.dim
+        text: typeof Model.groupTitle === "function" ? Model.groupTitle(section) : section
+      }
       delegate: Rectangle {
         required property var modelData
         width: ListView.view.width
@@ -742,6 +753,32 @@ Item {
           onChanged: function(v) { root.svc.setOption("game", v) }
         }
         Hint { Layout.fillWidth: true; text: "Обход для игр по IP-сетям (ipset). Нагружает сильнее: включайте, если игра не подключается." }
+        RowLayout {
+          Layout.fillWidth: true
+          visible: root.ready && (root.svc.settings.game || "off") !== "off"
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(2)
+            Label { text: "Порты TCP" }
+            TextField {
+              Layout.fillWidth: true
+              text: root.ready ? (root.svc.settings.gameTcp || "") : ""
+              placeholderText: "например 1024-65535"
+              onEditingFinished: root.svc.setOption("gametcp", text)
+            }
+          }
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(2)
+            Label { text: "Порты UDP" }
+            TextField {
+              Layout.fillWidth: true
+              text: root.ready ? (root.svc.settings.gameUdp || "") : ""
+              placeholderText: "например 1024-65535"
+              onEditingFinished: root.svc.setOption("gameudp", text)
+            }
+          }
+        }
         Dropdown {
           Layout.fillWidth: true
           label: "IP-сети (ipset)"
@@ -755,6 +792,54 @@ Item {
           value: root.ready ? (root.svc.settings.voice || "compatible") : "compatible"
           options: [{ value: "compatible", label: "Совместимый" }, { value: "standard", label: "Стандартный" }, { value: "off", label: "Выключен" }]
           onChanged: function(v) { root.svc.setOption("voice", v) }
+        }
+        Dropdown {
+          Layout.fillWidth: true
+          label: "Фейк для голоса Discord"
+          value: root.ready ? (root.svc.settings.discordFake || "default") : "default"
+          options: (root.ready && root.svc.fakeChoices ? root.svc.fakeChoices : ["default"]).map(function(n) {
+            return { value: n, label: n === "default" ? "По умолчанию" : String(n).replace(/^fs_/, "") }
+          })
+          onChanged: function(v) { root.svc.setOption("discordfake", v) }
+        }
+        Dropdown {
+          Layout.fillWidth: true
+          label: "Фейк для игр"
+          value: root.ready ? (root.svc.settings.gameFake || "default") : "default"
+          options: (root.ready && root.svc.fakeChoices ? root.svc.fakeChoices : ["default"]).map(function(n) {
+            return { value: n, label: n === "default" ? "По умолчанию" : String(n).replace(/^fs_/, "") }
+          })
+          onChanged: function(v) { root.svc.setOption("gamefake", v) }
+        }
+      }
+
+      Card {
+        RowLayout {
+          Layout.fillWidth: true
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 0
+            Label { Layout.fillWidth: true; font.bold: true; text: "Hosts Flowseal" }
+            Hint { Layout.fillWidth: true; text: "Добавляет в /etc/hosts адреса Discord-серверов из репозитория Flowseal, нужен пароль" }
+          }
+          ToggleSwitch {
+            checked: root.ready && root.svc.hostsOn === true
+            busy: root.ready && root.svc.busy
+            onToggled: root.svc.hostsSet(!root.svc.hostsOn)
+          }
+        }
+      }
+
+      Card {
+        RowLayout {
+          Layout.fillWidth: true
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 0
+            Label { Layout.fillWidth: true; font.bold: true; text: "Discord" }
+            Hint { Layout.fillWidth: true; text: "Помогает, если Discord не грузится после включения обхода; закройте Discord перед очисткой" }
+          }
+          Button { bordered: true; text: "Очистить кэш Discord"; onClicked: root.svc.clearDiscordCache() }
         }
       }
 

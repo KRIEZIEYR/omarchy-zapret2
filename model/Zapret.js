@@ -13,8 +13,18 @@ var PRESET_TITLES = {
 function presetTitle(name) {
   var n = String(name || "")
   if (n === "(off)") return "Без обхода"
+  if (n === "fs-general") return "general"
+  if (n.indexOf("fs-general-") === 0) return n.substring("fs-general-".length).split("-").join(" ").toUpperCase()
   if (PRESET_TITLES[n]) return PRESET_TITLES[n]
   return n.indexOf("my-") === 0 ? n.substring(3) : n
+}
+
+function groupTitle(g) {
+  var n = String(g || "")
+  if (n === "flowseal") return "Flowseal"
+  if (n === "next") return "Zapret 2 NEXT"
+  if (n === "custom") return "Свои"
+  return n
 }
 
 // "on" | "off" | "starting" | "error" | "setup" | "unknown"
@@ -35,7 +45,9 @@ function stateText(st) { return STATE_TEXT[stateOf(st)] }
 function summary(st) {
   var s = stateOf(st)
   if (s === "setup" || s === "unknown") return "Zapret2 · " + stateText(st)
-  var preset = st.settings ? presetTitle(st.settings.preset) : ""
+  var raw = st.settings ? String(st.settings.preset || "") : ""
+  var preset = raw ? presetTitle(raw) : ""
+  if (preset && raw.indexOf("fs-") === 0) preset = "Flowseal " + preset
   return "Zapret2 · " + stateText(st) + (preset ? " · " + preset : "")
 }
 
