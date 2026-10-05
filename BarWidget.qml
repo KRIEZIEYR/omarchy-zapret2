@@ -81,6 +81,11 @@ Panel {
     return s
   }
 
+  function staleStatus() {
+    if (!root.ready) return { text: "", severity: "none" }
+    return Model.staleStatus(root.svc.check, root.svc.st, Date.now() / 1000)
+  }
+
   function cursorRows() {
     var rows = ["hero"]
     if (root.ready) {
@@ -431,13 +436,15 @@ Panel {
             Text {
               text: {
                 if (!root.ready) return ""
-                var stale = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
-                return Model.staleLabel(root.svc.check, stale)
+                var ss = root.staleStatus()
+                if (ss.text !== "") return ss.text
+                return Model.staleLabel(root.svc.check, ss.severity !== "none")
               }
               color: {
                 if (!root.ready) return root.dim
-                var stale = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
-                return stale ? root.errorColor : root.dim
+                var ss = root.staleStatus()
+                if (ss.severity === "error") return root.errorColor
+                return root.dim
               }
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

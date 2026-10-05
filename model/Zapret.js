@@ -527,6 +527,27 @@ function staleLabel(check, isStale, now) {
   return (isStale ? "устарело · " : "") + a
 }
 
+// Stale check status for UI: returns { text: "", severity: "neutral" | "error" | "none" }
+// - "neutral": preset/state mismatch → "проверено для другой стратегии" (dim text)
+// - "error": check older than 6 hours AND has failing categories → error color
+// - "none": not stale
+function staleStatus(check, st, now) {
+  if (!check || !check.time) return { text: "", severity: "none" }
+  var curPreset = (st && st.settings) ? String(st.settings.preset || "") : ""
+  var curOn = (stateOf(st) === "on" || stateOf(st) === "starting")
+  var presetMismatch = check.preset !== undefined && String(check.preset) !== curPreset
+  var activeMismatch = check.active !== undefined && (!!check.active) !== curOn
+  if (!(presetMismatch || activeMismatch)) return { text: "", severity: "none" }
+  // Preset/state mismatch: neutral dim text
+  var baseText = "проверено для другой стратегии"
+  // Error colour only when older than 6 hours AND has failing categories
+  var ageSec = Math.max(0, Math.round((now || Date.now() / 1000) - Number(check.time)))
+  var old = ageSec > 6 * 3600
+  var failing = hasFailing(check)
+  if (old && failing) return { text: baseText, severity: "error" }
+  return { text: baseText, severity: "neutral" }
+}
+
 // Severity for a doctor row: "ok" when passing, otherwise
 // "action" (needs a password step now), "optional" (expected / info only),
 // or "error" (real failure). host/nslookup (bind) and VPN-tunnel notes are

@@ -29,6 +29,29 @@ test("staleLabel unified wording", () => {
   eq(Model.staleLabel({ time: 1000 }, false, 1030), "только что")
 })
 
+test("staleStatus helper", () => {
+  const now = 1000 + 7200
+  const st = { installed: true, active: "active", settings: { preset: "alt5" } }
+  // No check
+  eq(Model.staleStatus(null, st, now), { text: "", severity: "none" })
+  eq(Model.staleStatus({}, st, now), { text: "", severity: "none" })
+  // Fresh check, no mismatch
+  eq(Model.staleStatus({ time: 1000, preset: "alt5", active: true }, st, now), { text: "", severity: "none" })
+  // Preset mismatch -> neutral
+  eq(Model.staleStatus({ time: 1000, preset: "general", active: true }, st, now), { text: "проверено для другой стратегии", severity: "neutral" })
+  // Active mismatch -> neutral
+  eq(Model.staleStatus({ time: 1000, preset: "alt5", active: false }, st, now), { text: "проверено для другой стратегии", severity: "neutral" })
+  // Old (>6h) with failing categories -> error
+  const oldCheck = { time: 1000 - 7 * 3600, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 0, total: 3 } } }
+  eq(Model.staleStatus(oldCheck, st, now), { text: "проверено для другой стратегии", severity: "error" })
+  // Old but no failing categories -> neutral
+  const oldCheckOk = { time: 1000 - 7 * 3600, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 3, total: 3 } } }
+  eq(Model.staleStatus(oldCheckOk, st, now), { text: "проверено для другой стратегии", severity: "neutral" })
+  // Not old but failing -> neutral
+  const recentFailing = { time: 1000, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 0, total: 3 } } }
+  eq(Model.staleStatus(recentFailing, st, now), { text: "проверено для другой стратегии", severity: "neutral" })
+})
+
 test("validLines host lists", () => {
   eq(Model.validLines("example.com\nsub.example.org\n# comment\n\nbad host\n", "host"), { valid: 2, dropped: 1 })
   eq(Model.validLines("YouTube.com\n*.googlevideo.com\n^dns.google\n^^x\n", "host"), { valid: 4, dropped: 0 })

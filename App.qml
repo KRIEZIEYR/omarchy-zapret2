@@ -422,7 +422,7 @@ Item {
             Card {
               id: sysUpdateCard
               visible: root.ready && root.svc.installed && !root.svc.appCurrent && (root.tab === 0 || root.tab === 4)
-              Label { Layout.fillWidth: true; text: "Доступно обновление системной части" }
+              Label { Layout.fillWidth: true; visible: root.tab === 0; text: "Доступно обновление системной части" }
               Button { bordered: true; text: "Обновить (спросит пароль)"; tooltipText: "Установить обновление системной части (спросит пароль)"; onClicked: root.svc.updateApp() }
             }
 
@@ -485,10 +485,12 @@ Item {
 
       Card {
         id: headCard
-        property bool isStale: {
-          if (!root.ready) return false
-          return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
+        property var staleStatus: {
+          if (!root.ready) return { text: "", severity: "none" }
+          return Model.staleStatus(root.svc.check, root.svc.st, Date.now() / 1000)
         }
+        property bool isStale: staleStatus.severity !== "none"
+        property bool isStaleError: staleStatus.severity === "error"
         property bool isNeutral: {
           if (!root.ready) return false
           var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
@@ -571,7 +573,11 @@ Item {
         Hint {
           Layout.fillWidth: true
           visible: text !== ""
-          color: headCard.isStale && root.ready && Model.hasError(root.svc.check) ? root.bad : root.dim
+          color: {
+            if (!root.ready) return root.dim
+            if (headCard.staleStatus.severity === "error") return root.bad
+            return root.dim
+          }
           text: {
             if (!root.ready) return ""
             if (headCard.isNeutral) {
@@ -580,6 +586,7 @@ Item {
               var expl = "Сайты открываются и так — возможно, роутер или VPN уже обходят блокировки"
               return n !== "" ? n + " · " + expl : expl
             }
+            if (headCard.staleStatus.text !== "") return headCard.staleStatus.text
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
             return v.note || ""
           }
@@ -616,18 +623,23 @@ Item {
       Card {
         visible: root.ready && root.svc.installed
         id: availCard
-        property bool isStale: {
-          if (!root.ready) return false
-          return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
+        property var staleStatus: {
+          if (!root.ready) return { text: "", severity: "none" }
+          return Model.staleStatus(root.svc.check, root.svc.st, Date.now() / 1000)
         }
+        property bool isStale: staleStatus.severity !== "none"
+        property bool staleError: staleStatus.severity === "error"
         property bool showExplainer: false
-        property bool staleError: root.ready && availCard.isStale && Model.hasError(root.svc.check)
         RowLayout {
           Layout.fillWidth: true
           PanelSectionHeader { Layout.fillWidth: true; text: "Доступность"; foreground: root.fg; fontFamily: root.fontFamily }
           Hint {
             color: availCard.staleError ? root.bad : root.dim
-            text: root.ready ? Model.staleLabel(root.svc.check, availCard.isStale) : ""
+            text: {
+              if (!root.ready) return ""
+              if (availCard.staleStatus.text !== "") return availCard.staleStatus.text
+              return Model.staleLabel(root.svc.check, availCard.isStale)
+            }
           }
           PanelActionButton {
             iconText: "?"
@@ -2122,53 +2134,30 @@ Item {
         PanelSectionHeader { Layout.fillWidth: true; text: "Горячие клавиши"; foreground: root.fg; fontFamily: root.fontFamily }
         Hint {
           Layout.fillWidth: true
-          text: "Добавьте в ~/.config/hypr/bindings.lua, например:"
+          text: "Добавьте в ~/.config/hypr/bindings.lua (подставьте свои клавиши):"
+        }
+        Editor {
+          id: hotkeysSnippet
+          readOnly: true
+          Layout.fillWidth: true
+          Layout.preferredHeight: Style.space(90)
+          placeholderText: ""
+          text: 'o.bind("KEY", "Zapret2: Открыть", "omarchy-shell shell toggle krieziey.omarchy-zapret2 \'{}\'")\no.bind("KEY", "Zapret2: Обход", "omarchy-shell krieziey.omarchy-zapret2 toggleBypass")'
         }
         RowLayout {
           Layout.fillWidth: true
           spacing: Style.space(8)
-          Text {
-            id: hotkeyApp
-            Layout.fillWidth: true
-            text: "omarchy-shell krieziey.omarchy-zapret2 toggle"
-            color: root.fg
-            font.family: root.monoFamily
-            font.pixelSize: Style.font.bodySmall
-            elide: Text.ElideMiddle
-            textFormat: Text.PlainText
-          }
           PanelActionButton {
             iconText: "󰆏"
-            tooltipText: "Скопировать команду в буфер"
+            tooltipText: "Скопировать Lua-сниппет в буфер"
             foreground: root.fg
             fontFamily: root.fontFamily
-            onClicked: root.copyText(hotkeyApp.text)
-          }
-        }
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(8)
-          Text {
-            id: hotkeyBypass
-            Layout.fillWidth: true
-            text: "omarchy-shell krieziey.omarchy-zapret2 toggleBypass"
-            color: root.fg
-            font.family: root.monoFamily
-            font.pixelSize: Style.font.bodySmall
-            elide: Text.ElideMiddle
-            textFormat: Text.PlainText
-          }
-          PanelActionButton {
-            iconText: "󰆏"
-            tooltipText: "Скопировать команду в буфер"
-            foreground: root.fg
-            fontFamily: root.fontFamily
-            onClicked: root.copyText(hotkeyBypass.text)
+            onClicked: root.copyText(hotkeysSnippet.text)
           }
         }
         Hint {
           Layout.fillWidth: true
-          text: "Первая команда — окно приложения, вторая — включить/выключить обход"
+          text: "Замените KEY на желаемые сочетания (например SUPER+Z, SUPER+SHIFT+Z). Первая команда — окно приложения, вторая — включить/выключить обход."
         }
       }
     }
