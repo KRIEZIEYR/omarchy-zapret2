@@ -268,7 +268,7 @@ class Flowseal(unittest.TestCase):
         self.assertIn("@tcp=80,443", text)
         self.assertIn("@udp=443", text)
         self.assertIn("--hostlist={{LISTS}}/list-general.txt", text)
-        self.assertIn("--out-range=<n3", text)
+        self.assertIn("--out-range=-n2", text)
         self.assertIn("blob=fs_tls_clienthello_www_google_com", text)
         self.assertIn("tcp_ts=-1000", text)
         self.assertIn("--lua-desync=multisplit:", text)

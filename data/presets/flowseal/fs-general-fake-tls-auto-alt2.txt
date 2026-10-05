@@ -76,7 +76,7 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n3
+--out-range=-n2
 --payload=tls_client_hello
 --lua-desync=fake:blob=fake_default_tls:tcp_seq=10000000:tcp_ack=-66000:repeats=8:tls_mod=rnd,dupsid,sni=www.google.com
 --payload=http_req
@@ -90,6 +90,6 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n2
+--out-range=-n1
 --payload=unknown
 --lua-desync=fake:blob=fs_active_game_udp:repeats=10

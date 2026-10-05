@@ -80,7 +80,7 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n4
+--out-range=-n3
 --payload=tls_client_hello
 --lua-desync=fake:blob=fs_stun:tcp_ts=-1000:repeats=6
 --payload=tls_client_hello
@@ -98,6 +98,6 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n3
+--out-range=-n2
 --payload=unknown
 --lua-desync=fake:blob=fs_active_game_udp:repeats=12

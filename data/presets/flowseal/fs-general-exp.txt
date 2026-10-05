@@ -13,7 +13,7 @@
 --new
 --filter-udp=19294-19344,50000-50100
 --filter-l7=discord,stun,unknown
---out-range=<n4
+--out-range=-n3
 --payload=discord_ip_discovery
 --lua-desync=fake:blob=fs_quic_initial_www_google_com:repeats=4
 --payload=discord_ip_discovery
@@ -80,7 +80,7 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n4
+--out-range=-n3
 --payload=tls_client_hello
 --lua-desync=fake:blob=fs_stun2:tcp_ts=-1000:repeats=8
 --payload=tls_client_hello
@@ -94,7 +94,7 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n4
+--out-range=-n3
 --payload=unknown
 --lua-desync=fake:blob=fs_quic_initial_4pda_to:repeats=5
 --payload=unknown

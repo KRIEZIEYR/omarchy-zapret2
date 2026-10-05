@@ -31,7 +31,7 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n4
+--out-range=-n3
 --payload=empty
 --lua-desync=syndata
 --payload=all
@@ -50,6 +50,6 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n3
+--out-range=-n2
 --payload=unknown
 --lua-desync=fake:blob=fs_active_game_udp:repeats=14

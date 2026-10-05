@@ -167,7 +167,7 @@ FUNC_KEYS = {"fool": (), "ipfrag": ("", "ipfrag2")}
 
 RE_TOKEN = re.compile(r"^[A-Za-z0-9_.,+=\-]{0,200}$")
 RE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
-RE_RANGE = re.compile(r"^[nadspbx]?\d{0,9}(-|<)[nadspbx]?\d{0,9}$|^[ax]$")
+RE_RANGE = re.compile(r"^[nadspbx]?\d{0,9}-[nadspbx]?\d{0,9}$|^[ax]$")  # no "<": wordexp in @config
 RE_PORTS = re.compile(r"^\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*$")
 RE_HEX = re.compile(r"^0x[0-9A-Fa-f]{2,512}$")
 RE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
@@ -633,7 +633,11 @@ def translate_profile(opts):
     if cutoff:
         if not re.match(r"^[nds]\d{1,6}$", cutoff):
             raise Fail("unsupported cutoff %s" % cutoff)
-        out.append("--out-range=<" + cutoff)          # winws: desync only before N
+        # winws: desync only before N. "<nN" is the same range, but nfqws2 splits
+        # @config files with wordexp, where an unquoted "<" is a syntax error.
+        if int(cutoff[1:]) < 2:
+            raise Fail("unsupported cutoff %s" % cutoff)
+        out.append("--out-range=-%s%d" % (cutoff[0], int(cutoff[1:]) - 1))
     fool = []
     for f in (get("--dpi-desync-fooling") or "").split(","):
         if f == "ts":

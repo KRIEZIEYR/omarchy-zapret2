@@ -60,7 +60,7 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n3
+--out-range=-n2
 --payload=all
 --lua-desync=multisplit:pos=1:seqovl=568:seqovl_pattern=fs_tls_clienthello_4pda_to
 --new
@@ -68,6 +68,6 @@
 --ipset={{LISTS}}/ipset-all.txt
 --ipset-exclude={{LISTS}}/ipset-exclude.txt
 --ipset-exclude={{LISTS}}/ipset-exclude-user.txt
---out-range=<n2
+--out-range=-n1
 --payload=unknown
 --lua-desync=fake:blob=fs_active_game_udp:repeats=12
