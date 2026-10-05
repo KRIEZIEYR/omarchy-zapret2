@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -22,8 +23,43 @@ Panel {
   readonly property bool ready: svc !== null
   readonly property string fontFamily: Style.font.family
   readonly property color fg: Color.popups.text
-  readonly property color dim: Qt.rgba(fg.r, fg.g, fg.b, 0.6)
-  readonly property color bad: Model.pickBad(Color.urgent, Color.popups.background, "#e06c75")
+  readonly property color dim: Qt.darker(fg, 1.4)
+  readonly property color errorColor: {
+    var u = Color.urgent
+    return u.hslSaturation < 0.2 ? fg : u
+  }
+  readonly property int ctlHeight: Style.spacing.controlHeight
+
+  // --- keyboard cursor -------------------------------------------------------
+  // One cursor walks the interactive controls (hero switch, install,
+  // strategy, check, open); mouse hover joins the same model so there is a
+  // single highlight. `?` toggles the legend, which otherwise stays put.
+  property bool cursorActive: false
+  property string cursorRow: ""
+  property bool keysUsed: false
+  property bool keyboardUser: false
+  property bool legendHidden: false
+  onKeysUsedChanged: if (keysUsed) keyboardUser = true
+
+  readonly property bool firstRun: root.ready && root.svc.reachable && !root.svc.installed
+  // Pinned status slot: running action, else the last error, else a note.
+  readonly property string statusKind: {
+    if (!root.ready) return "none"
+    if (root.svc.busy) return "action"
+    if (root.svc.errorText !== "") return "error"
+    if (root.svc.flashText !== "") return "flash"
+    return "none"
+  }
+  // Keyboard-only hint for the control under the cursor (mirrors tooltips).
+  readonly property string hintText: {
+    if (!root.cursorActive) return ""
+    if (root.cursorRow === "hero") return root.ready && root.svc.isOn ? "Enter выключит обход" : "Enter включит обход"
+    if (root.cursorRow === "install") return "Enter установит движок"
+    if (root.cursorRow === "strategy") return "Enter откроет список · h/l тоже открывает"
+    if (root.cursorRow === "check") return "Enter проверит доступность (c)"
+    if (root.cursorRow === "open") return "Enter откроет приложение (o)"
+    return ""
+  }
 
   function findService() {
     if (svc) return
@@ -42,6 +78,53 @@ Panel {
     if (isBest) s += " · лучшая"
     if (worse) s += " · ⚠"
     return s
+  }
+
+  function cursorRows() {
+    var rows = ["hero"]
+    if (root.ready) {
+      if (root.firstRun) rows.push("install")
+      if (root.svc.installed) rows.push("strategy")
+      if (root.svc.installed) rows.push("check")
+    }
+    rows.push("open")
+    return rows
+  }
+
+  function setCursor(row) {
+    root.cursorActive = true
+    root.cursorRow = row
+  }
+
+  function moveCursor(dy) {
+    var rows = root.cursorRows()
+    var i = rows.indexOf(root.cursorRow)
+    if (i === -1) i = dy > 0 ? -1 : 0
+    else i = (i + dy) % rows.length
+    if (i < 0) i += rows.length
+    root.cursorActive = true
+    root.cursorRow = rows[i]
+  }
+
+  function jumpCursor(edge) {
+    var rows = root.cursorRows()
+    root.cursorActive = true
+    root.cursorRow = edge === "end" ? rows[rows.length - 1] : rows[0]
+  }
+
+  function activateCursor() {
+    if (!root.ready) return
+    if (!root.cursorActive) {
+      root.cursorActive = true
+      if (root.cursorRow === "") root.cursorRow = "hero"
+      return
+    }
+    var r = root.cursorRow === "" ? "hero" : root.cursorRow
+    if (r === "hero") root.svc.toggle()
+    else if (r === "install") root.svc.setup()
+    else if (r === "strategy") strategy.toggle()
+    else if (r === "check") root.svc.runCheck()
+    else if (r === "open") { root.close(); root.svc.openApp() }
   }
 
   onBarChanged: findService()
@@ -76,7 +159,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    dimmed: !root.ready || !root.svc.isOn
+    dimmed: root.ready && root.svc.reachable && !root.svc.isOn
     tooltipText: !root.ready ? "Zapret2 загружается…"
         : (root.svc.errorText !== "" ? "󰀦 " + root.svc.errorText + "\n" : "")
           + root.svc.summary + "\nПКМ: " + (root.svc.isOn ? "выключить" : "включить") + " · СКМ: приложение"
@@ -86,8 +169,11 @@ Panel {
           anchors.centerIn: parent
           iconSize: Style.space(14)
           color: root.barForeground
-          filled: root.ready && root.svc.isOn
-          warning: root.ready && (root.svc.bypassState === "error" || root.svc.errorText !== "")
+          // Outline at bar size: on/off reads from the button dimming, a
+          // fill at 14px only blurs the shield.
+          filled: false
+          simple: true
+          warning: root.ready && (!root.svc.reachable || root.svc.bypassState === "error" || root.svc.errorText !== "")
           SequentialAnimation on opacity {
             running: root.ready && root.svc.busy
             loops: 8
@@ -113,82 +199,161 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(330))
-    contentHeight: panel.fittedContentHeight(body.implicitHeight, Style.space(520))
+    // Tighter top and bottom; the sides keep the kit's popup padding below.
+    padding: Style.space(8)
+    contentWidth: panel.fittedContentWidth(Style.space(360))
+    contentHeight: panel.fittedContentHeight(body.implicitHeight, Style.space(620))
 
     PanelKeyCatcher {
       id: keyCatcher
-      anchors.fill: parent
+      readonly property real sideInset: Math.max(0, Style.spacing.popupPadding - panel.padding)
       blocked: strategy.popupOpen
+      anchors.fill: parent
+      anchors.leftMargin: sideInset
+      anchors.rightMargin: sideInset
+      onMoveRequested: function(dx, dy) {
+        root.keysUsed = true
+        if (!root.cursorActive) {
+          root.cursorActive = true
+          if (root.cursorRow === "") root.cursorRow = "hero"
+          return
+        }
+        if (dy !== 0) root.moveCursor(dy > 0 ? 1 : -1)
+        else if (dx !== 0) {
+          if (root.cursorRow === "strategy" && root.ready && root.svc.installed) strategy.toggle()
+          else root.moveCursor(dx > 0 ? 1 : -1)
+        }
+      }
+      // Enter with no cursor shows it first instead of doing nothing.
+      onActivateRequested: { root.keysUsed = true; root.activateCursor() }
       onCloseRequested: root.close()
-      onActivateRequested: if (root.ready) root.svc.toggle()
+      onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (!root.ready) return
+        root.keysUsed = true
+        if (t === "?") { root.legendHidden = !root.legendHidden; return }
         if (t === "t") root.svc.toggle()
         else if (t === "c") root.svc.runCheck()
         else if (t === "o") { root.close(); root.svc.openApp() }
-        else if (t === "s") strategy.open()
+        else if (t === "s") { if (root.svc.installed) strategy.open() }
       }
 
-      ColumnLayout {
+      Shortcut { sequence: "Home"; enabled: root.opened && !keyCatcher.blocked; onActivated: { root.keysUsed = true; root.jumpCursor("home") } }
+      Shortcut { sequence: "End"; enabled: root.opened && !keyCatcher.blocked; onActivated: { root.keysUsed = true; root.jumpCursor("end") } }
+
+      Column {
         id: body
         anchors.left: parent.left
         anchors.right: parent.right
         spacing: Style.space(10)
 
-        // header: icon, name, state, switch
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(10)
-          ZapretIcon {
-            iconSize: Style.space(22)
-            color: root.ready && root.svc.bypassState === "error" ? root.bad : root.fg
-            filled: root.ready && root.svc.isOn
-          }
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 0
-            Text {
-              Layout.fillWidth: true
-              text: "Zapret2"
-              color: root.fg
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              font.bold: true
-            }
-            Text {
-              textFormat: Text.PlainText
-              text: !root.ready ? "Загрузка…"
-                  : root.svc.busy ? "Выполняется: " + root.svc.busyLabel + "…"
-                  : Model.stateText(root.svc.st) + (root.svc.installed && root.svc.isOn && root.svc.preset ? " · стратегия " + Model.presetTitle(root.svc.preset) : "")
-              color: root.ready && root.svc.bypassState === "error" ? root.bad : root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+        PanelHero {
+          width: parent.width
+          title: "Zapret2"
+          meta: !root.ready ? "Загрузка…"
+              : Model.stateText(root.svc.st) + (root.svc.installed && root.svc.isOn && root.svc.preset ? " · стратегия " + Model.presetTitle(root.svc.preset) : "")
+          foreground: root.fg
+          fontFamily: root.fontFamily
+          iconOpacity: root.ready && root.svc.isOn ? 1.0 : 0.5
+          iconComponent: Component {
+            Item {
+              implicitWidth: heroIcon.width + Style.space(6)
+              implicitHeight: heroIcon.height
+              // The keys live here for mouse users, out of the way.
+              MouseArea { id: heroIconHover; anchors.fill: parent; hoverEnabled: true }
+              PanelToolTip {
+                visible: heroIconHover.containsMouse
+                text: "Клавиши: t вкл/выкл · c проверить · o открыть · s стратегия · ? все клавиши"
+                fontFamily: root.fontFamily
+              }
+              ZapretIcon {
+                id: heroIcon
+                anchors.centerIn: parent
+                iconSize: Math.round(Style.font.display * 1.25)
+                color: root.ready && root.svc.bypassState === "error" ? root.errorColor : root.fg
+                filled: root.ready && root.svc.isOn
+              }
             }
           }
-          ToggleSwitch {
-            visible: root.ready && root.svc.installed
-            checked: root.ready && root.svc.isOn
-            busy: root.ready && root.svc.busy
-            onToggled: root.svc.toggle()
+          trailingControl: Component {
+            ToggleSwitch {
+              id: powerSwitch
+              visible: root.ready && root.svc.installed
+              checked: root.ready && root.svc.isOn
+              busy: root.ready && root.svc.busy
+              hasCursor: root.cursorRow === "hero"
+              foreground: root.fg
+              onToggled: root.svc.toggle()
+              onHovered: function(h) { if (h) root.setCursor("hero") }
+              Accessible.role: Accessible.CheckBox
+              Accessible.name: "Обход DPI, " + (root.ready && root.svc.isOn ? "включён" : "выключен")
+              Accessible.checked: checked
+              Accessible.focusable: true
+              Accessible.focused: hasCursor
+
+              PanelToolTip {
+                visible: powerSwitch.containsMouse
+                text: !root.ready ? "" : root.svc.busy ? "Выполняется: " + root.svc.busyLabel + "…"
+                      : root.svc.errorText !== "" ? root.svc.errorText
+                      : root.svc.isOn ? "Выключить (t)" : "Включить (t)"
+                fontFamily: root.fontFamily
+              }
+            }
           }
         }
 
+        // One status slot: the running action, else the last error (with a
+        // way to the journal), else a transient note.
+        RowLayout {
+          visible: root.statusKind !== "none"
+          width: parent.width
+          spacing: Style.space(8)
+
+          Text {
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
+            textFormat: Text.PlainText
+            wrapMode: root.statusKind === "error" ? Text.WordWrap : Text.NoWrap
+            elide: root.statusKind === "error" ? Text.ElideNone : Text.ElideRight
+            text: !root.ready ? ""
+                : root.statusKind === "action" ? "Выполняется: " + root.svc.busyLabel + "…"
+                : root.statusKind === "error" ? "󰀦 " + root.svc.errorText : root.svc.flashText
+            color: root.statusKind === "error" ? root.errorColor : root.statusKind === "flash" ? Color.accent : root.dim
+            font.family: root.fontFamily
+            font.pixelSize: root.statusKind === "error" ? Style.font.bodySmall : Style.font.caption
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
+            onTextChanged: if (root.statusKind === "error" && text !== "") Accessible.announce("Ошибка: " + text)
+          }
+
+          Button {
+            visible: root.statusKind === "error"
+            Layout.alignment: Qt.AlignTop
+            bordered: true
+            text: "Журнал"
+            tooltipText: "Открыть диагностику и журнал"
+            onClicked: root.svc.openApp()
+          }
+        }
+
+        // Keyboard users never see hover tooltips: the control under the
+        // cursor explains itself here. Kept once the keyboard is in use, so
+        // no row moves when the cursor crosses the controls.
         Text {
-          Layout.fillWidth: true
-          visible: text !== ""
+          width: parent.width
+          visible: root.keyboardUser && text.trim() !== ""
           textFormat: Text.PlainText
-          wrapMode: Text.Wrap
-          text: !root.ready ? "" : root.svc.errorText !== "" ? root.svc.errorText : root.svc.flashText
-          color: root.ready && root.svc.errorText !== "" ? root.bad : root.fg
+          text: root.hintText
+          color: root.dim
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: Style.font.bodySmall
+          elide: Text.ElideRight
         }
 
         // first run
         ColumnLayout {
-          Layout.fillWidth: true
-          visible: root.ready && root.svc.reachable && !root.svc.installed
+          width: parent.width
+          visible: root.firstRun
           spacing: Style.space(8)
           Text {
             Layout.fillWidth: true
@@ -201,17 +366,28 @@ Panel {
           Button {
             Layout.fillWidth: true
             bordered: true
+            implicitHeight: root.ctlHeight
+            hasCursor: root.cursorRow === "install"
             text: root.ready && root.svc.busy ? "Установка…" : "Установить"
             onClicked: root.svc.setup()
+            onHovered: function(h) { if (h) root.setCursor("install") }
+            Accessible.role: Accessible.Button
+            Accessible.name: "Установить движок zapret2"
+            Accessible.focusable: true
+            Accessible.focused: hasCursor
           }
         }
 
         // strategy
         Dropdown {
           id: strategy
-          Layout.fillWidth: true
+          width: parent.width
           visible: root.ready && root.svc.installed
           label: "Стратегия"
+          rowHeight: root.ctlHeight
+          popupRowHeight: root.ctlHeight
+          foreground: root.fg
+          hasCursor: root.cursorRow === "strategy"
           value: root.ready ? root.svc.preset : ""
           options: {
             if (!root.ready) return []
@@ -231,11 +407,12 @@ Panel {
             })
           }
           onChanged: function(v) { if (v !== root.svc.preset) root.svc.setOption("preset", v) }
+          onHovered: function(h) { if (h) root.setCursor("strategy") }
         }
 
         // last check
         ColumnLayout {
-          Layout.fillWidth: true
+          width: parent.width
           visible: root.ready && root.svc.installed
           spacing: Style.space(4)
           RowLayout {
@@ -247,7 +424,7 @@ Panel {
                 return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
               }
               text: "⚠ устарело"
-              color: root.bad
+              color: root.errorColor
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
             }
@@ -270,14 +447,14 @@ Panel {
               Text {
                 Layout.fillWidth: true
                 text: (modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")) + modelData.label
-                color: modelData.good ? root.fg : root.bad
+                color: modelData.good ? root.fg : root.errorColor
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: !modelData.good
               }
               Text {
                 text: modelData.ok + "/" + modelData.total
-                color: modelData.good ? root.fg : root.bad
+                color: modelData.good ? root.fg : root.errorColor
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: !modelData.good
@@ -294,22 +471,70 @@ Panel {
         }
 
         RowLayout {
-          Layout.fillWidth: true
+          width: parent.width
           spacing: Style.space(6)
           Button {
             Layout.fillWidth: true
             visible: root.ready && root.svc.installed
             bordered: true
+            implicitHeight: root.ctlHeight
+            hasCursor: root.cursorRow === "check"
             text: "Проверить"
-            tooltipText: "c"
+            tooltipText: "Проверить доступность (c)"
             onClicked: root.svc.runCheck()
+            onHovered: function(h) { if (h) root.setCursor("check") }
+            Accessible.role: Accessible.Button
+            Accessible.name: "Проверить доступность"
+            Accessible.focusable: true
+            Accessible.focused: hasCursor
           }
           Button {
             Layout.fillWidth: true
             bordered: true
+            implicitHeight: root.ctlHeight
+            hasCursor: root.cursorRow === "open"
             text: "Открыть"
-            tooltipText: "o"
+            tooltipText: "Открыть приложение (o)"
             onClicked: { root.close(); root.svc.openApp() }
+            onHovered: function(h) { if (h) root.setCursor("open") }
+            Accessible.role: Accessible.Button
+            Accessible.name: "Открыть приложение"
+            Accessible.focusable: true
+            Accessible.focused: hasCursor
+          }
+        }
+
+        // Keys, pinned at the bottom. Shown once the keyboard is used; `?`
+        // hides or shows them. Before that, the hero icon's tooltip has them.
+        Column {
+          visible: root.keyboardUser && !root.legendHidden
+          width: parent.width
+          spacing: Style.space(4)
+
+          Repeater {
+            model: [["ПЕРЕХОД", "j/k строка · h/l действие · Enter применить · Home/End края"], ["КЛАВИШИ", "t вкл/выкл · c проверить · o открыть · s стратегия · ? скрыть"]]
+            delegate: RowLayout {
+              required property var modelData
+              width: parent.width
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                text: modelData[0]
+                Layout.preferredWidth: Style.space(72)
+                Layout.alignment: Qt.AlignTop
+                foreground: root.fg
+                fontFamily: root.fontFamily
+              }
+              Text {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: modelData[1]
+                wrapMode: Text.WordWrap
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+            }
           }
         }
       }

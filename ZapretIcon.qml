@@ -1,9 +1,13 @@
 import QtQuick
 import qs.Commons
+import qs.Ui
 
 /*
  * Shield drawn with Canvas primitives (no font, no SVG): outline when off,
- * filled with a cut-out check when on, a badge dot on errors. 24-unit grid.
+ * filled with a cut-out check when on. At bar size (`simple`) the outline is
+ * drawn heavier and on/off reads from the button dimming instead of the
+ * fill. Errors get a badge dot with a contrasting "!" on a
+ * popup-background ring. 24-unit grid.
  */
 Item {
   id: root
@@ -12,6 +16,8 @@ Item {
   property color color: Color.foreground
   property bool filled: false
   property bool warning: false
+  // Bar size: a heavier outline reads better at 14px than a filled shield.
+  property bool simple: false
   property color badgeColor: Color.urgent
 
   width: iconSize
@@ -21,7 +27,7 @@ Item {
 
   onColorChanged: canvas.requestPaint()
   onFilledChanged: canvas.requestPaint()
-  onWarningChanged: canvas.requestPaint()
+  onSimpleChanged: canvas.requestPaint()
   onBadgeColorChanged: canvas.requestPaint()
 
   Canvas {
@@ -29,12 +35,13 @@ Item {
     anchors.fill: parent
     antialiasing: true
     onWidthChanged: requestPaint()
+    onHeightChanged: requestPaint()
 
     onPaint: {
       var ctx = getContext("2d")
       ctx.reset()
       var k = width / 24
-      ctx.lineWidth = Math.max(1.2, 1.6 * k)
+      ctx.lineWidth = Math.max(1.2, (root.simple ? 1.9 : 1.6) * k)
       ctx.lineJoin = "round"
       ctx.lineCap = "round"
       ctx.strokeStyle = root.color
@@ -61,13 +68,26 @@ Item {
       } else {
         ctx.stroke()
       }
+    }
+  }
 
-      if (root.warning) {
-        ctx.fillStyle = root.badgeColor
-        ctx.beginPath()
-        ctx.arc(19.5 * k, 19.5 * k, 3.5 * k, 0, Math.PI * 2)
-        ctx.fill()
-      }
+  BorderSurface {
+    visible: root.warning
+    width: Math.max(7, parent.width * 0.42)
+    height: width
+    radius: width / 2
+    color: root.badgeColor
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    borderSpec: Border.flat(Color.popups.background, 1)
+
+    Text {
+      anchors.centerIn: parent
+      text: "!"
+      color: Color.background
+      font.family: Style.font.family
+      font.pixelSize: Math.max(6, parent.height * 0.72)
+      font.bold: true
     }
   }
 }
