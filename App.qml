@@ -142,6 +142,9 @@ Item {
     property int baseScore: -1
     property bool selected: false
     signal picked(string preset)
+    // Delta relative to the no-bypass baseline: 0 = база, −N worse, +N better.
+    property int delta: (row && !row.baseline && baseScore >= 0 && ((row.total | 0) > 0)) ? ((row.score | 0) - baseScore) : 0
+    property bool showDelta: !!row && !row.baseline && baseScore >= 0 && ((row.total | 0) > 0) && delta !== 0
     foreground: root.fg
     Layout.fillWidth: true
     implicitHeight: pickInner.implicitHeight + Style.space(14)
@@ -163,14 +166,22 @@ Item {
       }
       Rectangle {
         Layout.fillWidth: true
+        visible: showDelta
         height: Style.space(6)
         radius: height / 2
         color: Style.normalFillFor(root.fg, Color.accent)
         Rectangle {
-          width: parent.width * ((row && row.pct) || 0) / 100
+          width: 2
+          height: parent.height
+          x: (parent.width - width) / 2
+          color: root.dim
+        }
+        Rectangle {
           height: parent.height
           radius: parent.radius
-          color: ((row && row.pct) || 0) === 100 ? Color.accent : (row && !row.baseline && baseScore >= 0 && (row.score || 0) < baseScore ? root.bad : root.dim)
+          color: delta < 0 ? root.bad : Color.accent
+          width: Math.min(parent.width / 2, parent.width / 2 * Math.abs(delta) / Math.max(1, ((row && row.total) || 14)))
+          x: delta < 0 ? parent.width / 2 - width : parent.width / 2
         }
       }
       Hint {
@@ -181,6 +192,7 @@ Item {
           if (row && !row.baseline && baseScore >= 0 && (row.total | 0) > 0) {
             if ((row.score | 0) === baseScore) s += " · = без обхода"
             else if ((row.score | 0) < baseScore) s += " · −" + (baseScore - (row.score | 0)) + " к базе"
+            else s += " · +" + ((row.score | 0) - baseScore) + " к базе"
           }
           return s
         }
@@ -408,9 +420,10 @@ Item {
             }
 
             Card {
+              id: sysUpdateCard
               visible: root.ready && root.svc.installed && !root.svc.appCurrent && (root.tab === 0 || root.tab === 4)
-              Label { Layout.fillWidth: true; text: "Новая версия плагина ждёт установки системной части. Нужен пароль." }
-              Button { bordered: true; text: "Установить обновление"; tooltipText: "Установить обновление системной части"; onClicked: root.svc.updateApp() }
+              Label { Layout.fillWidth: true; text: "Доступно обновление системной части" }
+              Button { bordered: true; text: "Обновить (спросит пароль)"; tooltipText: "Установить обновление системной части (спросит пароль)"; onClicked: root.svc.updateApp() }
             }
 
             StackLayout {
@@ -550,12 +563,15 @@ Item {
             if (!root.ready) return Color.popups.text
             if (headCard.isNeutral) return Color.accent
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
-            return v.tone === "good" ? Color.accent : (v.tone === "bad" || v.tone === "warn") ? root.bad : Color.popups.text
+            if (v.tone === "good") return Color.accent
+            if (v.tone === "error" || v.tone === "bad") return root.bad
+            return Color.popups.text
           }
         }
         Hint {
           Layout.fillWidth: true
           visible: text !== ""
+          color: headCard.isStale && root.ready && Model.hasError(root.svc.check) ? root.bad : root.dim
           text: {
             if (!root.ready) return ""
             if (headCard.isNeutral) {
@@ -570,7 +586,7 @@ Item {
         }
         RowLayout {
           Layout.fillWidth: true
-          visible: root.ready && root.svc.installed && !headCard.isNeutral
+          visible: root.ready && root.svc.installed
           spacing: Style.space(8)
           Button {
             bordered: headCard.isStale
@@ -585,32 +601,14 @@ Item {
             text: {
               if (!root.ready) return "Включить"
               if (root.svc.isOn) return "Выключить"
-              if (headCard.isStale) return "Включить без проверки"
+              if (headCard.isStale || headCard.isNeutral) return "Включить всё равно"
               return "Включить"
             }
-            tooltipText: "Включить обход без новой проверки"
+            tooltipText: headCard.isNeutral ? "Включить обход, хотя проверка показывает что он не нужен" : "Включить обход без новой проверки"
             onClicked: {
               if (root.svc.isOn) root.svc.turnOff()
               else root.svc.turnOn()
             }
-          }
-        }
-        RowLayout {
-          Layout.fillWidth: true
-          visible: root.ready && root.svc.installed && headCard.isNeutral
-          spacing: Style.space(8)
-          Button {
-            bordered: true
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Проверить"
-            tooltipText: "Проверить доступность ещё раз"
-            onClicked: root.svc.runCheck()
-          }
-          Button {
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Всё равно включить"
-            tooltipText: "Включить обход, хотя проверка показывает что он не нужен"
-            onClicked: root.svc.turnOn()
           }
         }
       }
@@ -622,17 +620,34 @@ Item {
           if (!root.ready) return false
           return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
         }
+        property bool showExplainer: false
+        property bool staleError: root.ready && availCard.isStale && Model.hasError(root.svc.check)
         RowLayout {
           Layout.fillWidth: true
           PanelSectionHeader { Layout.fillWidth: true; text: "Доступность"; foreground: root.fg; fontFamily: root.fontFamily }
-          Hint { text: root.ready ? Model.staleLabel(root.svc.check, availCard.isStale) : "" }
-          Button { bordered: true; text: "Проверить"; tooltipText: "Проверить доступность"; onClicked: root.svc.runCheck() }
+          Hint {
+            color: availCard.staleError ? root.bad : root.dim
+            text: root.ready ? Model.staleLabel(root.svc.check, availCard.isStale) : ""
+          }
+          PanelActionButton {
+            iconText: "?"
+            tooltipText: "Что означают проверки"
+            foreground: root.fg
+            fontFamily: root.fontFamily
+            onClicked: availCard.showExplainer = !availCard.showExplainer
+          }
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: availCard.showExplainer
+          text: Model.CHECK_EXPLAINER
         }
         Repeater {
           model: root.ready ? Model.categories(root.svc.check) : []
           delegate: ColumnLayout {
             required property var modelData
             property string catKey: modelData.key
+            property bool catQuic: !modelData.good && root.ready && Model.isQuicOnlyCat(root.svc.check, modelData.key)
             Layout.fillWidth: true
             spacing: Style.space(2)
             CursorSurface {
@@ -661,7 +676,7 @@ Item {
                 Label {
                   Layout.fillWidth: true
                   font.bold: !modelData.good
-                  color: modelData.good ? root.fg : root.bad
+                  color: modelData.good ? root.fg : (catQuic ? root.fg : root.bad)
                   text: {
                   var open = !!ov.expanded[catKey]
                   var glyph = modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")
@@ -685,7 +700,7 @@ Item {
                 Hint {
                   Layout.fillWidth: true
                   text: (modelData.ok ? "✓ " : "✗ ") + modelData.url.replace("https://", "") + (modelData.http3 ? " (QUIC)" : "")
-                  color: modelData.ok ? root.dim : root.bad
+                  color: modelData.ok ? root.dim : (modelData.http3 ? root.fg : root.bad)
                 }
                 Hint {
                   text: modelData.ok ? Math.round(modelData.time * 1000) + " мс" : Model.curlError(modelData.error)
@@ -717,7 +732,7 @@ Item {
     property string armDelete: ""
     property bool showAll: true
     property bool showAllInit: false
-    property bool onlyGood: false
+    property bool onlyGood: true
     property string pendingPreset: ""
     Timer { id: disarmTimer; interval: 4000; onTriggered: sp.armDelete = "" }
     Timer {
@@ -738,7 +753,9 @@ Item {
     function ensureShowAll() {
       if (sp.showAllInit || !root.ready) return
       sp.showAllInit = true
-      if (sp.totalPresets() > 40) sp.showAll = false
+      var notNeeded = root.svc.autopickResult && root.svc.autopickResult.notNeeded === true
+      if (notNeeded) sp.showAll = false
+      else if (sp.totalPresets() > 40) sp.showAll = false
     }
 
     function focusFilter() { filterField.forceActiveFocus() }
@@ -990,9 +1007,8 @@ Item {
     }
 
     function activateCursor() {
-      if (!root.ready || sp.selectedName === "") return
-      if (root.svc.preset !== sp.selectedName) root.svc.setOption("preset", sp.selectedName)
-      else sp.show(sp.selectedName)
+      if (!root.ready || sp.selectedName === "" || root.svc.busy) return
+      root.svc.setOption("preset", sp.selectedName)
     }
 
     function scrollToName(name) {
@@ -1024,8 +1040,8 @@ Item {
       id: recCard
       visible: !sp.editing && !sp.showing
       property bool notNeeded: root.ready && root.svc.autopickResult.notNeeded === true
-      PanelSectionHeader { Layout.fillWidth: true; text: recCard.notNeeded ? "Обход не нужен" : "Рекомендуемая"; foreground: root.fg; fontFamily: root.fontFamily }
-      Label { Layout.fillWidth: true; text: recCard.notNeeded ? "Обход не нужен" : Model.presetTitle(sp.recommendedName()) }
+      PanelSectionHeader { Layout.fillWidth: true; text: recCard.notNeeded ? "Без обхода" : "Рекомендуемая"; foreground: root.fg; fontFamily: root.fontFamily }
+      Label { Layout.fillWidth: true; text: recCard.notNeeded ? "Без обхода" : Model.presetTitle(sp.recommendedName()) }
       Hint { Layout.fillWidth: true; text: recCard.notNeeded ? "Всё открывается без обхода — ничего делать не нужно. Сайты открываются и так — возможно, роутер или VPN уже обходят блокировки." : sp.recommendedText() }
       RowLayout {
         Layout.fillWidth: true
@@ -1137,7 +1153,7 @@ Item {
                   if (isSpecial) return ""
                   var t = Model.presetTitle(modelData.name)
                   if (flowSrc !== "") t += "\n" + flowSrc
-                  t += isActive ? "\nАктивна · Enter покажет текст" : "\nEnter применит"
+                  t += "\nEnter применит"
                   return t
                 }
                 foreground: root.fg
@@ -1190,33 +1206,17 @@ Item {
                       spacing: Style.space(6)
                       Label { Layout.fillWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
                       BorderSurface {
-                        visible: stratRect.isActive
+                        visible: stratRect.isActive || stratRect.isBest
                         implicitWidth: activeText.implicitWidth + Style.space(10)
                         implicitHeight: activeText.implicitHeight + Style.space(4)
-                        color: Style.selectedFillFor(root.fg, Color.accent)
-                        borderSpec: Border.controlSpec("selected", root.fg, Color.accent)
+                        color: stratRect.isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
+                        borderSpec: stratRect.isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
                         radius: Style.cornerRadius
                         Text {
                           id: activeText
                           anchors.centerIn: parent
-                          text: "активна"
-                          color: Style.selectedStateColor(root.fg, Color.accent)
-                          font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
-                        }
-                      }
-                      BorderSurface {
-                        visible: stratRect.isBest
-                        implicitWidth: bestText.implicitWidth + Style.space(10)
-                        implicitHeight: bestText.implicitHeight + Style.space(4)
-                        color: "transparent"
-                        borderSpec: Border.controlSpec("normal", root.fg, Color.accent)
-                        radius: Style.cornerRadius
-                        Text {
-                          id: bestText
-                          anchors.centerIn: parent
-                          text: "лучшая"
-                          color: root.dim
+                          text: stratRect.isActive && stratRect.isBest ? "активна · лучшая" : (stratRect.isActive ? "активна" : "лучшая")
+                          color: stratRect.isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
                           font.family: root.fontFamily
                           font.pixelSize: Style.font.caption
                         }
@@ -1458,11 +1458,12 @@ Item {
       visible: lp.editable
       spacing: Style.space(8)
       property var liveCounts: (typeof Model.validLines === "function") ? Model.validLines(listEditor.text, lp.kind) : { valid: Model.countLines(listEditor.text), dropped: 0 }
+      property bool changed: listEditor.text !== lp.loadedText
       Button {
         bordered: true
-        enabled: root.ready && !root.svc.busy && parent.liveCounts.valid > 0
-        text: "Сохранить список"
-        tooltipText: "Сохранить список (" + parent.liveCounts.valid + " строк, отброшено " + parent.liveCounts.dropped + ")" + (lp.restartAfterSave ? " и перезапустить обход" : " без перезапуска обхода")
+        enabled: root.ready && !root.svc.busy && (parent.liveCounts.valid > 0 || (parent.liveCounts.valid === 0 && parent.changed))
+        text: parent.liveCounts.valid > 0 ? "Сохранить список" : "Очистить и сохранить"
+        tooltipText: parent.liveCounts.valid > 0 ? "Сохранить список (" + parent.liveCounts.valid + " строк, отброшено " + parent.liveCounts.dropped + ")" + (lp.restartAfterSave ? " и перезапустить обход" : " без перезапуска обхода") : "Очистить список" + (lp.restartAfterSave ? " и перезапустить обход" : " без перезапуска обхода")
         onClicked: root.svc.saveList(lp.current, listEditor.text, function(r) {
           if (r.ok) {
             var msg = lp.savedMessage(r.data.count, r.data.dropped || 0)
@@ -1504,6 +1505,7 @@ Item {
     property bool showFull: false
     property bool onlyImportantBc: true
     property bool tiesOpen: false
+    property bool bcFollow: true
     function focusDomains() { domains.forceActiveFocus() }
     readonly property bool uiBlocked: domains.activeFocus || level.popupOpen || bcEditor.area.activeFocus
     property var pickGroup: Model.groupSearchRows(Model.autopickRows(root.ready ? root.svc.autopickResult : null))
@@ -1639,13 +1641,14 @@ Item {
           Button {
             bordered: true
             visible: !blockcheckCard.vpnOn() || root.svc.blockcheckRunning
-            enabled: root.ready && !blockcheckCard.bindMissing() || (root.ready && root.svc.blockcheckRunning)
+            enabled: root.ready && (root.svc.blockcheckRunning || !blockcheckCard.vpnOn())
             text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить"
-            tooltipText: "Запустить глубокий поиск"
+            tooltipText: blockcheckCard.bindMissing() && !(root.ready && root.svc.blockcheckRunning) ? "bind отсутствует — нажмите, чтобы скопировать команду установки" : "Запустить глубокий поиск"
             onClicked: {
               if (root.svc.blockcheckRunning) { root.svc.blockcheckStop(); return }
               if (blockcheckCard.vpnOn()) return
-              if (blockcheckCard.bindMissing()) return
+              if (blockcheckCard.bindMissing()) { root.copyText("omarchy pkg add bind"); root.svc.flash("Скопировано: omarchy pkg add bind — установите вручную"); return }
+              se.bcFollow = true
               root.svc.blockcheckStart(domains.text.split(/[\s,]+/).filter(function(d) { return d !== "" }), level.value)
             }
           }
@@ -1664,11 +1667,18 @@ Item {
           Hint {
             Layout.fillWidth: true
             color: root.dim
-            text: "нужен bind: omarchy pkg add bind"
+            text: "нужен bind для blockcheck2"
+          }
+          Text {
+            text: "omarchy pkg add bind"
+            color: root.fg
+            font.family: root.monoFamily
+            font.pixelSize: Style.font.bodySmall
+            textFormat: Text.PlainText
           }
           Button {
             bordered: true
-            text: "Скопировать: omarchy pkg add bind"
+            text: "Скопировать команду"
             tooltipText: "Скопировать команду установки bind (без пароля, установка — вручную)"
             onClicked: root.copyText("omarchy pkg add bind")
           }
@@ -1691,7 +1701,12 @@ Item {
         }
         Hint {
           Layout.fillWidth: true
-          text: "Подставлено из неуспешных проверок — можно править"
+          text: {
+            var c = Model.validHosts(domains.text)
+            var base = "Подставлено из неуспешных проверок — можно править"
+            if ((c.total | 0) === 0) return base
+            return base + " · " + c.valid + " из " + c.total + " корректны"
+          }
         }
         Repeater {
           model: root.ready && root.svc.blockcheck ? root.svc.blockcheck.found : []
@@ -1769,7 +1784,15 @@ Item {
             if (se.onlyImportantBc && typeof Model.importantLog === "function") lines = lines.filter(function(l) { return Model.importantLog(l) })
             return lines.join("\n")
           }
-          area.onTextChanged: area.cursorPosition = area.length
+          area.onTextChanged: if (se.bcFollow) area.cursorPosition = area.length
+          Connections {
+            target: bcEditor.contentItem
+            function onContentYChanged() {
+              var f = bcEditor.contentItem
+              if (f.moving || f.dragging || f.flicking) se.bcFollow = f.atYEnd
+            }
+            function onMovementEnded() { se.bcFollow = bcEditor.contentItem.atYEnd }
+          }
         }
       }
     }
@@ -1789,6 +1812,7 @@ Item {
       spacing: Style.space(12)
 
       Card {
+        id: engineCard
         PanelSectionHeader {
           Layout.fillWidth: true
           text: "Движок: " + (root.ready && root.svc.st && root.svc.st.engine ? root.svc.st.engine : "не установлен")
@@ -1798,7 +1822,7 @@ Item {
         Hint { Layout.fillWidth: true; text: "bol-van/zapret2: nfqws2 + Lua. Обновление скачивает последний релиз, сверяет sha256 и спрашивает пароль. Предыдущая версия остаётся рядом." }
         RowLayout {
           Button { bordered: true; text: "Обновить движок"; enabled: root.ready && root.svc.installed; onClicked: root.svc.engineUpdate() }
-          Button { bordered: true; visible: !root.ready || root.svc.appCurrent; text: "Обновить системную часть"; enabled: root.ready && root.svc.installed; onClicked: root.svc.updateApp() }
+          Button { bordered: !root.svc.appCurrent; visible: !root.ready || root.svc.installed; text: root.ready && !root.svc.appCurrent ? "Обновить (спросит пароль)" : "Обновить системную часть"; tooltipText: "Установить обновление системной части (спросит пароль)"; enabled: root.ready && root.svc.installed; onClicked: root.svc.updateApp() }
         }
       }
 
@@ -1936,7 +1960,7 @@ Item {
         }
         Toggle {
           Layout.fillWidth: true
-          label: "IPv6"
+          label: "IPv6 (по умолчанию вкл)"
           description: "Обрабатывать и IPv6-соединения · не трогайте, если не уверены"
           checked: root.ready && root.svc.settings.ipv6 !== false
           foreground: root.fg

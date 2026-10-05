@@ -109,8 +109,8 @@ test("verdict", () => {
 
   eq(Model.verdict(on, allOk, picked), { text: "Всё открывается", tone: "good", action: "none", note: "" })
   eq(Model.verdict(off, allOk, notNeeded), { text: NOT_NEEDED, tone: "neutral", action: "none", note: "" })
-  eq(Model.verdict(off, someFail, picked), { text: "YouTube/Discord частично: не открываются", tone: "warn", action: "autopick", note: "" })
-  eq(Model.verdict(on, someFail, picked).tone, "warn")
+  eq(Model.verdict(off, someFail, picked), { text: "YouTube/Discord частично: не открываются", tone: "error", action: "autopick", note: "" })
+  eq(Model.verdict(on, someFail, picked).tone, "error")
   eq(Model.verdict(on, someFail, picked).action, "autopick")
   eq(Model.verdict(off, someFail, null).action, "autopick")
   eq(Model.verdict(off, someFail, {}).action, "autopick")
@@ -129,7 +129,7 @@ test("verdict partial never says not needed", () => {
   const partial = { categories: { youtube: { label: "YouTube", ok: 2, total: 3 }, google: { label: "Google", ok: 2, total: 2 } } }
   const notNeeded = { time: 1000, chosen: "(off)", notNeeded: true, rows: [] }
   const v = Model.verdict(off, partial, notNeeded)
-  eq(v.tone, "warn")
+  eq(v.tone, "error")
   eq(v.action, "autopick")
   if (v.text.indexOf("без обхода") !== -1) throw new Error("partial must not say not needed: " + v.text)
   if (v.text.indexOf("ничего делать не нужно") !== -1) throw new Error("partial must not say not needed: " + v.text)
@@ -194,11 +194,11 @@ test("verdict stale check", () => {
   const cats = { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } }
   const fresh = { time: 1000, preset: "alt5", active: true, categories: cats }
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "general" }), null),
-    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия NEXT · General, обход был включён" })
+    { text: "", tone: "neutral", action: "check", note: "Проверено для NEXT · General (вкл) · сейчас NEXT · ALT 5 (вкл)" })
   eq(Model.verdict(on, Object.assign({}, fresh, { active: false }), null),
-    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия NEXT · ALT 5, обход был выключен" })
+    { text: "", tone: "neutral", action: "check", note: "Проверено для NEXT · ALT 5 (выкл) · сейчас NEXT · ALT 5 (вкл)" })
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "fs-general-alt" }), null),
-    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия ALT, обход был включён" })
+    { text: "", tone: "neutral", action: "check", note: "Проверено для ALT (вкл) · сейчас NEXT · ALT 5 (вкл)" })
   eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Всё открывается без обхода — ничего делать не нужно")
   eq(Model.verdict(on, fresh, null, 1010), { text: "Всё открывается", tone: "good", action: "none", note: "по проверке только что, обход был включён" })
   eq(Model.verdict(on, null, null), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })

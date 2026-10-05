@@ -195,6 +195,52 @@ function failReason(check, failing) {
 
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
 var NOT_NEEDED_TEXT = "Всё открывается без обхода — ничего делать не нужно"
+var CHECK_EXPLAINER = "14 проверок = адреса YouTube, Discord, Google, Cloudflare по TLS и (для YouTube) QUIC. Если не проходит только QUIC — видео работает, но может грузиться медленнее: попробуйте «Подбор»."
+function failedHosts(check) {
+  var cats = (check && check.categories) || {}
+  var out = []
+  for (var k in cats) {
+    var rs = (cats[k] && cats[k].results) || []
+    for (var i = 0; i < rs.length; i++) if (!rs[i].ok) out.push(rs[i])
+  }
+  return out
+}
+function isQuicOnlyCheck(check) {
+  var failed = failedHosts(check)
+  if (failed.length === 0) return false
+  return failed.every(function(h) { return !!h.http3 })
+}
+function hasFailing(check) {
+  var cats = categories(check)
+  for (var i = 0; i < cats.length; i++) if (!cats[i].good) return true
+  return false
+}
+function hasError(check) {
+  if (!hasFailing(check)) return false
+  return !isQuicOnlyCheck(check)
+}
+function isQuicOnlyCat(check, key) {
+  var c = check && check.categories ? check.categories[key] : null
+  if (!c || !c.results) return false
+  var failed = []
+  for (var i = 0; i < c.results.length; i++) if (!c.results[i].ok) failed.push(c.results[i])
+  if (failed.length === 0) return false
+  return failed.every(function(h) { return !!h.http3 })
+}
+function validHosts(text) {
+  var parts = String(text || "").split(/[\s,;]+/)
+  var valid = 0, total = 0
+  for (var i = 0; i < parts.length; i++) {
+    var cut = String(parts[i]).trim().toLowerCase()
+    if (!cut) continue
+    while (cut.charAt(0) === "^" || cut.charAt(0) === "*" || cut.charAt(0) === ".") cut = cut.substring(1)
+    while (cut.length > 0 && cut.charAt(cut.length - 1) === ".") cut = cut.substring(0, cut.length - 1)
+    if (!cut) continue
+    total++
+    if (isValidDomain(cut)) valid++
+  }
+  return { valid: valid, total: total, dropped: total - valid }
+}
 function verdict(st, check, autopick, now) {
   if (check !== null && check !== undefined && typeof check === "object" && check.preset !== undefined) {
     var curPreset = (st && st.settings) ? String(st.settings.preset || "") : ""
@@ -204,9 +250,10 @@ function verdict(st, check, autopick, now) {
     if (presetMismatch || activeMismatch) {
       var checked = (check.preset !== undefined && check.preset !== null && String(check.preset) !== "")
           ? String(check.preset) : curPreset
-      var checkedTitle = presetTitle(checked) || checked
+      var checkedTitle = presetTitle(checked) || checked || "—"
+      var curTitle = presetTitle(curPreset) || "—"
       return { text: "", tone: "neutral", action: "check",
-               note: "Проверка устарела: стратегия " + checkedTitle + ", обход был " + (check.active ? "включён" : "выключен") }
+               note: "Проверено для " + checkedTitle + " (" + (check.active ? "вкл" : "выкл") + ") · сейчас " + curTitle + " (" + (curOn ? "вкл" : "выкл") + ")" }
     }
   }
   var s = stateOf(st)
@@ -227,10 +274,12 @@ function verdict(st, check, autopick, now) {
     return { text: "Всё открывается", tone: "good", action: "none", note: note }
   }
   // Any category below full: the bypass may still help, never "не нужен".
+  // QUIC-only failure is a warning (video works, slower); anything else is an error.
   var names = failing.map(function(c) { return c.label }).join("/")
   var partial = failing.some(function(c) { return c.ok > 0 })
+  var quicOnly = isQuicOnlyCheck(check)
   return { text: names + (partial ? " частично" : "") + ": " + failReason(check, failing),
-           tone: "warn", action: "autopick", note: note }
+           tone: quicOnly ? "warn" : "error", action: "autopick", note: note }
 }
 
 // Short human label for a curl probe error line.
