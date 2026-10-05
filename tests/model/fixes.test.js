@@ -39,3 +39,22 @@ test("validLines ipset lists", () => {
   eq(Model.validLines("1.2.3.0/24\n1.2.3.4\n2001:db8::/32\nnope\n300.1.1.1\n", "ipset"), { valid: 3, dropped: 2 })
   eq(Model.validLines("# only comment\n\n", "ipset"), { valid: 0, dropped: 0 })
 })
+
+test("doctorSeverity three levels", () => {
+  eq(Model.doctorSeverity("Setup", true, ""), "ok")
+  eq(Model.doctorSeverity("Setup", false, "missing"), "error")
+  eq(Model.doctorSeverity("host/nslookup", false, "нужны для blockcheck2: omarchy pkg add bind"), "optional")
+  eq(Model.doctorSeverity("No VPN tunnel", false, "включён TUN omarchy-xray"), "optional")
+  eq(Model.doctorSeverity("Plugin and system copy", false, "плагин обновлён: установите обновление системной части"), "action")
+})
+
+test("importantLog filters noise", () => {
+  eq(Model.importantLog("23:16:49 binding this socket to queue '220'"), false)
+  eq(Model.importantLog("23:16:49 loading plain text list"), false)
+  eq(Model.importantLog("!!!!! curl_test_https_tls12: working strategy found"), true)
+  eq(Model.importantLog("* checking prerequisites"), true)
+  eq(Model.importantLog("connection failed: reset"), true)
+  eq(Model.importantLog("WARN: something odd"), true)
+  eq(Model.importantLog("exit 1: nfqws died"), true)
+  eq(Model.importantLog(""), false)
+})

@@ -28,7 +28,7 @@ allowlist of nfqws2 options and Lua desync functions.
   hosts on|off|status          Flowseal hosts block in /etc/hosts
   discord-cache clear          delete Discord cache folders
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
-  list show <name> | list save <name>              user lists (save reads stdin)
+  list show <name> | list save <name> [--no-restart]   user lists (save reads stdin)
   lists update                 fetch fresh upstream lists (Flowseal)
   check                        reachability of YouTube, Discord, Google, Cloudflare
   autopick [p1,p2,...]         try strategies one by one, keep the best
@@ -1293,6 +1293,10 @@ def cmd_list(args):
     if len(args) < 2 or args[0] not in ("show", "save"):
         raise Fail("usage: list show|save <name>")
     name = args[1]
+    rest = args[2:]
+    no_restart = "--no-restart" in rest
+    if rest and [a for a in rest if a != "--no-restart"]:
+        raise Fail("usage: list save <name> [--no-restart]")
     if name in USER_LISTS:
         path = var_path("lists", name + ".txt")
     elif name in BASE_LISTS and args[0] == "show":
@@ -1311,7 +1315,7 @@ def cmd_list(args):
     lines = clean_list(text, list_kind(name))
     raw = [l for l in text.splitlines() if l.split("#", 1)[0].strip()]
     atomic_write(path, "\n".join(lines) + ("\n" if lines else ""))
-    restarted = restart_if_active()
+    restarted = False if no_restart else restart_if_active()
     out({"ok": True, "name": name, "count": len(lines), "dropped": len(raw) - len(lines), "restarted": restarted})
 
 

@@ -478,6 +478,42 @@ function staleLabel(check, isStale, now) {
   return (isStale ? "устарело · " : "") + a
 }
 
+// Severity for a doctor row: "ok" when passing, otherwise
+// "action" (needs a password step now), "optional" (expected / info only),
+// or "error" (real failure). host/nslookup (bind) and VPN-tunnel notes are
+// optional info; a plugin/system-copy mismatch needs action.
+function doctorSeverity(name, ok, detail) {
+  if (ok) return "ok"
+  var n = String(name || "")
+  var d = String(detail || "")
+  if (n === "host/nslookup" || n.indexOf("host") !== -1 && n.indexOf("nslookup") !== -1) return "optional"
+  if (d.indexOf("bind") !== -1) return "optional"
+  if (n === "No VPN tunnel") return "optional"
+  if (n === "Plugin and system copy") return "action"
+  if (d.indexOf("плагин обновлён") !== -1 || d.indexOf("setup --app-only") !== -1) return "action"
+  return "error"
+}
+
+// True when a log line is worth showing in the "только важное" mode:
+// errors, failures, warnings, found strategies and exits.
+function importantLog(line) {
+  var s = String(line || "").toLowerCase()
+  if (!s.trim()) return false
+  if (s.indexOf("error") !== -1) return true
+  if (s.indexOf("fail") !== -1) return true
+  if (s.indexOf("warn") !== -1) return true
+  if (s.indexOf("ошиб") !== -1) return true
+  if (s.indexOf("strategy") !== -1) return true
+  if (s.indexOf("стратег") !== -1) return true
+  if (s.indexOf("working") !== -1) return true
+  if (s.indexOf("found") !== -1) return true
+  if (s.indexOf("available") !== -1) return true
+  if (s.indexOf("exit") !== -1) return true
+  if (s.indexOf("!!!!!") !== -1) return true
+  if (s.charAt(0) === "*" || s.trim().charAt(0) === "*") return true
+  return false
+}
+
 var DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
 
 function isValidDomain(d) {

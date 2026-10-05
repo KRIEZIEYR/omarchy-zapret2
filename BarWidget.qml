@@ -332,8 +332,8 @@ Panel {
             Layout.alignment: Qt.AlignTop
             bordered: true
             text: "Журнал"
-            tooltipText: "Открыть диагностику и журнал"
-            onClicked: root.svc.openApp()
+            tooltipText: "Открыть диагностику и журнал (вкладка Движок)"
+            onClicked: { root.close(); root.svc.openApp(4) }
           }
         }
 
@@ -414,7 +414,7 @@ Panel {
             return listed
           }
           onChanged: function(v) {
-            if (v === "__more") { root.close(); root.svc.openApp(); return }
+            if (v === "__more") { root.close(); root.svc.openApp(1); return }
             if (v !== root.svc.preset) root.svc.setOption("preset", v)
           }
           onHovered: function(h) { if (h) root.setCursor("strategy") }

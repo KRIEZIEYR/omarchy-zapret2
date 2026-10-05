@@ -117,6 +117,40 @@ class Lists(unittest.TestCase):
                 lines = [l for l in f.read().splitlines() if l.strip()]
             self.assertEqual(len(zm.clean_list("\n".join(lines), zm.list_kind(name))), len(lines), name)
 
+    def _save(self, var, text, *args):
+        emitted = {}
+        with mock.patch.object(zm, "require_installed", lambda: None), \
+             mock.patch.object(zm, "VAR", var), \
+             mock.patch.object(zm, "read_stdin", lambda cap: text), \
+             mock.patch.object(zm, "restart_if_active", lambda: True), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_list(list(args))
+        return emitted
+
+    def test_save_restarts_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "lists"))
+            res = self._save(var, "example.com\n", "save", "list-general-user")
+            self.assertTrue(res.get("ok"))
+            self.assertTrue(res.get("restarted"))
+
+    def test_save_no_restart_flag(self):
+        restarted = []
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "lists"))
+            emitted = {}
+            with mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "read_stdin", lambda cap: "example.com\n"), \
+                 mock.patch.object(zm, "restart_if_active", lambda: restarted.append(True) or True), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_list(["save", "list-general-user", "--no-restart"])
+            self.assertTrue(emitted.get("ok"))
+            self.assertFalse(emitted.get("restarted"))
+            self.assertEqual(restarted, [])
+
 
 class Rendering(unittest.TestCase):
     def test_merge_ports(self):

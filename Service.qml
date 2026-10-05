@@ -239,7 +239,11 @@ Item {
     var p = _aux.running ? _aux2 : _aux
     run(p, args, function(r) { cb(r) }, "чтение")
   }
-  function saveList(name, text, cb) { act(["list", "save", name], "сохранение списка", "", cb, text) }
+  function saveList(name, text, cb, restart) {
+    var args = ["list", "save", name]
+    if (restart === false) args.push("--no-restart")
+    act(args, "сохранение списка", "", cb, text)
+  }
   function saveCustom(name, text, cb) { act(["custom", "save", name], "сохранение стратегии", "Стратегия сохранена", cb, text) }
   function removeCustom(name) { act(["custom", "rm", name], "удаление стратегии", "Стратегия удалена") }
   function presetText(name, cb) {
@@ -271,9 +275,11 @@ Item {
     })
   }
 
-  function openApp() {
-    if (shell && typeof shell.summon === "function") shell.summon(pluginId, "{}")
-    else Quickshell.execDetached(["omarchy-shell", "shell", "summon", pluginId, "{}"])
+  function openApp(tab) {
+    var payload = "{}"
+    if (tab !== undefined && tab !== null) payload = JSON.stringify({ tab: tab })
+    if (shell && typeof shell.summon === "function") shell.summon(pluginId, payload)
+    else Quickshell.execDetached(["omarchy-shell", "shell", "summon", pluginId, payload])
   }
   function toggleApp() {
     if (shell && typeof shell.toggle === "function") shell.toggle(pluginId, "{}")
