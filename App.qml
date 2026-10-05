@@ -1164,171 +1164,174 @@ Item {
                 required property var modelData
                 property bool isSpecial: modelData.expander !== undefined || modelData.collapse === true || modelData.tiesExpander !== undefined || modelData.tiesCollapse === true
                 Layout.fillWidth: true
-                implicitHeight: stratRow.implicitHeight + Style.space(14)
+                implicitHeight: stratLoader.item ? stratLoader.item.implicitHeight : 0
 
                 // Special rows (expanders, ties) are simple clickable Hint-style rows
                 Loader {
                   id: stratLoader
                   anchors.fill: parent
-                  sourceComponent: isSpecial ? specialRow : normalRow
+                  sourceComponent: stratItem.isSpecial ? specialRowComp : normalRowComp
                 }
 
-                component specialRow: Item {
-                  TapHandler {
-                    onTapped: {
-                      if (modelData.expander !== undefined || modelData.collapse === true) sp.toggleMore(modelData.group)
-                      else if (modelData.tiesExpander !== undefined || modelData.tiesCollapse === true) sp.toggleTies(modelData.group)
+                Component {
+                  id: specialRowComp
+                  Item {
+                    TapHandler {
+                      onTapped: {
+                        if (stratItem.modelData.expander !== undefined || stratItem.modelData.collapse === true) sp.toggleMore(stratItem.modelData.group)
+                        else if (stratItem.modelData.tiesExpander !== undefined || stratItem.modelData.tiesCollapse === true) sp.toggleTies(stratItem.modelData.group)
+                      }
                     }
-                  }
-                  RowLayout {
-                    id: stratRow
-                    anchors.fill: parent
-                    anchors.margins: Style.space(7)
-                    Label {
-                      Layout.fillWidth: true
-                      color: root.dim
-                      text: modelData.collapse === true ? "▾ свернуть" : modelData.tiesCollapse === true ? "▾ свернуть" : modelData.tiesExpander !== undefined ? "▸ ещё " + modelData.tiesExpander + " с тем же результатом" : "▸ ещё " + modelData.expander + " не проверялись"
-                    }
-                  }
-                }
-
-                component normalRow: CursorSurface {
-                  id: stratRect
-                  required property var modelData
-                  property bool isActive: root.ready && root.svc.preset === modelData.name
-                  property bool isBest: {
-                    var br = sp.pickRow(modelData.name)
-                    return !!(br && br.chosen)
-                  }
-                  property string flowSrc: sp.flowsealSource(modelData.name)
-                  property bool expanded: sp.selectedName === modelData.name || isActive
-                  property string scoreLine: {
-                    var r = sp.pickRow(modelData.name)
-                    if (!r || (r.total | 0) <= 0) return "не проверялась"
-                    var s = r.score + "/" + r.total
-                    if (sp.isTied(modelData.name)) s += " · = без обхода"
-                    else if (sp.isWorse(modelData.name)) s += " · ⚠ хуже, чем без обхода"
-                    else if (r.chosen) s += " · лучшая"
-                    return s
-                  }
-                  property string tipText: {
-                    var t = Model.presetTitle(modelData.name)
-                    if (flowSrc !== "") t += "\n" + flowSrc
-                    t += "\nEnter применит"
-                    return t
-                  }
-                  foreground: root.fg
-                  Layout.fillWidth: true
-                  implicitHeight: stratRow.implicitHeight + Style.space(14)
-                  current: isActive
-                  hasCursor: sp.selectedName === modelData.name
-                  Accessible.role: Accessible.Button
-                  Accessible.name: Model.presetTitle(modelData.name) + (isActive ? ", активна" : "") + (sp.isTied(modelData.name) ? ", как без обхода" : (isBest ? ", лучшая" : ""))
-                  HoverHandler {
-                    id: hover
-                    onHoveredChanged: {
-                      if (hovered) {
-                        sp.selectedName = modelData.name
-                        if (sp.armDelete !== "" && sp.armDelete !== modelData.name) sp.armDelete = ""
+                    RowLayout {
+                      id: stratRow
+                      anchors.fill: parent
+                      anchors.margins: Style.space(7)
+                      Label {
+                        Layout.fillWidth: true
+                        color: root.dim
+                        text: stratItem.modelData.collapse === true ? "▾ свернуть" : stratItem.modelData.tiesCollapse === true ? "▾ свернуть" : stratItem.modelData.tiesExpander !== undefined ? "▸ ещё " + stratItem.modelData.tiesExpander + " с тем же результатом" : "▸ ещё " + stratItem.modelData.expander + " не проверялись"
                       }
                     }
                   }
-                  TapHandler {
-                    onTapped: {
-                      sp.selectedName = modelData.name
-                      if (sp.armDelete !== "" && sp.armDelete !== modelData.name) sp.armDelete = ""
+                }
+
+                Component {
+                  id: normalRowComp
+                  CursorSurface {
+                    property bool isActive: root.ready && root.svc.preset === stratItem.modelData.name
+                    property bool isBest: {
+                      var br = sp.pickRow(stratItem.modelData.name)
+                      return !!(br && br.chosen)
                     }
-                  }
-                  PanelToolTip {
-                    visible: hover.hovered && tipText !== ""
-                    text: tipText
-                    fontFamily: root.fontFamily
-                  }
-                  RowLayout {
-                    id: stratRow
-                    anchors.fill: parent
-                    anchors.margins: Style.space(7)
-                    ColumnLayout {
-                      Layout.fillWidth: true
-                      spacing: 0
-                      RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Style.space(6)
-                        Label { Layout.fillWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
-                        BorderSurface {
-                          visible: isActive || isBest
-                          implicitWidth: activeText.implicitWidth + Style.space(10)
-                          implicitHeight: activeText.implicitHeight + Style.space(4)
-                          color: isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
-                          borderSpec: isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
-                          radius: Style.cornerRadius
-                          Text {
-                            id: activeText
-                            anchors.centerIn: parent
-                            text: isActive && isBest ? "● активна · ★ лучшая" : (isActive ? "● активна" : "★ лучшая")
-                            color: isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                          }
+                    property string flowSrc: sp.flowsealSource(stratItem.modelData.name)
+                    property bool expanded: sp.selectedName === stratItem.modelData.name || isActive
+                    property string scoreLine: {
+                      var r = sp.pickRow(stratItem.modelData.name)
+                      if (!r || (r.total | 0) <= 0) return "не проверялась"
+                      var s = r.score + "/" + r.total
+                      if (sp.isTied(stratItem.modelData.name)) s += " · = без обхода"
+                      else if (sp.isWorse(stratItem.modelData.name)) s += " · ⚠ хуже, чем без обхода"
+                      else if (r.chosen) s += " · лучшая"
+                      return s
+                    }
+                    property string tipText: {
+                      var t = Model.presetTitle(stratItem.modelData.name)
+                      if (flowSrc !== "") t += "\n" + flowSrc
+                      t += "\nEnter применит"
+                      return t
+                    }
+                    foreground: root.fg
+                    Layout.fillWidth: true
+                    current: isActive
+                    hasCursor: sp.selectedName === stratItem.modelData.name
+                    Accessible.role: Accessible.Button
+                    Accessible.name: Model.presetTitle(stratItem.modelData.name) + (isActive ? ", активна" : "") + (sp.isTied(stratItem.modelData.name) ? ", как без обхода" : (isBest ? ", лучшая" : ""))
+                    HoverHandler {
+                      id: hover
+                      onHoveredChanged: {
+                        if (hovered) {
+                          sp.selectedName = stratItem.modelData.name
+                          if (sp.armDelete !== "" && sp.armDelete !== stratItem.modelData.name) sp.armDelete = ""
                         }
                       }
-                      Hint {
+                    }
+                    TapHandler {
+                      onTapped: {
+                        sp.selectedName = stratItem.modelData.name
+                        if (sp.armDelete !== "" && sp.armDelete !== stratItem.modelData.name) sp.armDelete = ""
+                      }
+                    }
+                    PanelToolTip {
+                      visible: hover.hovered && tipText !== ""
+                      text: tipText
+                      fontFamily: root.fontFamily
+                    }
+                    RowLayout {
+                      id: stratRow
+                      anchors.fill: parent
+                      anchors.margins: Style.space(7)
+                      ColumnLayout {
                         Layout.fillWidth: true
-                        color: sp.isWorse(modelData.name) ? root.bad : root.dim
-                        text: scoreLine
+                        spacing: 0
+                        RowLayout {
+                          Layout.fillWidth: true
+                          spacing: Style.space(6)
+                          Label { Layout.fillWidth: true; text: Model.presetTitle(stratItem.modelData.name); font.bold: true }
+                          BorderSurface {
+                            visible: isActive || isBest
+                            implicitWidth: activeText.implicitWidth + Style.space(10)
+                            implicitHeight: activeText.implicitHeight + Style.space(4)
+                            color: isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
+                            borderSpec: isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
+                            radius: Style.cornerRadius
+                            Text {
+                              id: activeText
+                              anchors.centerIn: parent
+                              text: isActive && isBest ? "● активна · ★ лучшая" : (isActive ? "● активна" : "★ лучшая")
+                              color: isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
+                              font.family: root.fontFamily
+                              font.pixelSize: Style.font.caption
+                            }
+                          }
+                        }
+                        Hint {
+                          Layout.fillWidth: true
+                          color: sp.isWorse(stratItem.modelData.name) ? root.bad : root.dim
+                          text: scoreLine
+                        }
+                        Hint {
+                          Layout.fillWidth: true
+                          visible: expanded
+                          color: sp.isWorse(stratItem.modelData.name) ? root.bad : root.dim
+                          text: sp.rowSubtitle(stratItem.modelData)
+                        }
+                        Hint {
+                          Layout.fillWidth: true
+                          visible: expanded && flowSrc !== ""
+                          color: root.dim
+                          text: flowSrc
+                        }
                       }
-                      Hint {
-                        Layout.fillWidth: true
-                        visible: expanded
-                        color: sp.isWorse(modelData.name) ? root.bad : root.dim
-                        text: sp.rowSubtitle(modelData)
+                      Button {
+                        bordered: true
+                        visible: sp.selectedName === stratItem.modelData.name
+                        enabled: root.svc.preset !== stratItem.modelData.name
+                        text: "Применить"
+                        tooltipText: "Применить " + Model.presetTitle(stratItem.modelData.name)
+                        onClicked: root.svc.setOption("preset", stratItem.modelData.name)
                       }
-                      Hint {
-                        Layout.fillWidth: true
-                        visible: expanded && flowSrc !== ""
-                        color: root.dim
-                        text: flowSrc
+                      Button {
+                        visible: sp.selectedName === stratItem.modelData.name
+                        bordered: true
+                        text: "Показать"
+                        tooltipText: "Показать текст пресета"
+                        onClicked: sp.show(stratItem.modelData.name)
                       }
-                    }
-                    Button {
-                      bordered: true
-                      visible: sp.selectedName === modelData.name
-                      enabled: root.svc.preset !== modelData.name
-                      text: "Применить"
-                      tooltipText: "Применить " + Model.presetTitle(modelData.name)
-                      onClicked: root.svc.setOption("preset", modelData.name)
-                    }
-                    Button {
-                      visible: sp.selectedName === modelData.name
-                      bordered: true
-                      text: "Показать"
-                      tooltipText: "Показать текст пресета"
-                      onClicked: sp.show(modelData.name)
-                    }
-                    Button {
-                      visible: modelData.name.indexOf("my-") === 0
-                      bordered: true
-                      text: "Изменить"
-                      tooltipText: "Изменить свою стратегию"
-                      onClicked: sp.edit(modelData.name)
-                    }
-                    Button {
-                      visible: modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
-                      bordered: true
-                      foreground: root.bad
-                      text: sp.armDelete === modelData.name ? "Точно удалить?" : "Удалить"
-                      tooltipText: sp.armDelete === modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
-                      onClicked: {
-                        if (sp.armDelete === modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(modelData.name) }
-                        else { sp.armDelete = modelData.name; disarmTimer.restart() }
+                      Button {
+                        visible: stratItem.modelData.name.indexOf("my-") === 0
+                        bordered: true
+                        text: "Изменить"
+                        tooltipText: "Изменить свою стратегию"
+                        onClicked: sp.edit(stratItem.modelData.name)
                       }
-                    }
-                    Button {
-                      visible: sp.armDelete === modelData.name && modelData.name.indexOf("my-") === 0
-                      bordered: true
-                      text: "Отмена"
-                      tooltipText: "Оставить стратегию"
-                      onClicked: { sp.armDelete = ""; disarmTimer.stop() }
+                      Button {
+                        visible: stratItem.modelData.name.indexOf("my-") === 0 && root.svc.preset !== stratItem.modelData.name
+                        bordered: true
+                        foreground: root.bad
+                        text: sp.armDelete === stratItem.modelData.name ? "Точно удалить?" : "Удалить"
+                        tooltipText: sp.armDelete === stratItem.modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
+                        onClicked: {
+                          if (sp.armDelete === stratItem.modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(stratItem.modelData.name) }
+                          else { sp.armDelete = stratItem.modelData.name; disarmTimer.restart() }
+                        }
+                      }
+                      Button {
+                        visible: sp.armDelete === stratItem.modelData.name && stratItem.modelData.name.indexOf("my-") === 0
+                        bordered: true
+                        text: "Отмена"
+                        tooltipText: "Оставить стратегию"
+                        onClicked: { sp.armDelete = ""; disarmTimer.stop() }
+                      }
                     }
                   }
                 }
