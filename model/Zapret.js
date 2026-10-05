@@ -213,9 +213,14 @@ function failReason(check, failing) {
     var r = (cats[failing[i].key] && cats[failing[i].key].results) || []
     for (var j = 0; j < r.length; j++) if (!r[j].ok) failed.push(r[j])
   }
-  if (failed.length > 0 && failed.every(function(h) { return h.http3 })) return "может грузиться медленно (QUIC) — попробуйте другую стратегию"
+  if (failed.length > 0 && failed.every(function(h) { return h.http3 })) return quicWarning()
   if (failed.length > 0) return curlError(failed[0].error)
   return "не открываются"
+}
+
+// Centralized QUIC warning text used by failReason and breaksText.
+function quicWarning() {
+  return "QUIC не проходит — видео может грузиться медленнее"
 }
 
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
@@ -513,7 +518,7 @@ function breaksText(row) {
     var label = labels.hasOwnProperty(k) ? labels[k] : k
     if (ok < tt) {
       hasFail = true
-      if (k === "youtube" && ok > 0) parts.push(label + " ✗ QUIC")
+      if (k === "youtube" && ok > 0) parts.push(label + " ✗ " + quicWarning())
       else parts.push(label + " ✗")
     } else {
       parts.push(label + " ✓")

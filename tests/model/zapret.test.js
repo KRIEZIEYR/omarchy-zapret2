@@ -143,7 +143,7 @@ test("verdict QUIC-only failure", () => {
     { url: "https://youtube.com", ok: false, http3: true, error: "(28) timeout" },
   ] } } }
   const v = Model.verdict(off, quicOnly, null)
-  eq(v, { text: "YouTube частично: может грузиться медленно (QUIC) — попробуйте другую стратегию", tone: "warn", action: "autopick", note: "" })
+  eq(v, { text: "YouTube частично: " + Model.quicWarning(), tone: "warn", action: "autopick", note: "" })
 })
 
 test("verdict note carries check context", () => {
@@ -279,13 +279,13 @@ test("autopick rows keep categories", () => {
 
 test("breaksText", () => {
   eq(Model.breaksText({ score: 10, total: 10, categories: { youtube: [3, 3] } }), "всё открывается")
-  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: [1, 3] } }), "YouTube ✗ QUIC")
+  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: [1, 3] } }), "YouTube ✗ " + Model.quicWarning())
   eq(Model.breaksText({ score: 0, total: 3, categories: { youtube: [0, 3] } }), "YouTube ✗")
   eq(Model.breaksText({ score: 1, total: 5, categories: { youtube: [0, 3], discord: [1, 2] } }), "YouTube ✗ · Discord ✗")
   eq(Model.breaksText({ score: 0, total: 0, categories: {} }), "не проверялась")
   eq(Model.breaksText(null), "не проверялась")
   eq(Model.breaksText({ score: 0, total: 0, categories: {}, error: "boom" }), "boom")
-  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: { ok: 1, total: 3, label: "YouTube" } } }), "YouTube ✗ QUIC")
+  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: { ok: 1, total: 3, label: "YouTube" } } }), "YouTube ✗ " + Model.quicWarning())
   eq(Model.breaksText({ score: 3, total: 3, categories: { google: { ok: 2, total: 2 } } }), "всё открывается")
   eq(Model.breaksText({ score: 0, total: 2, categories: { custom: { ok: 0, total: 2 } } }), "custom ✗")
 })
@@ -327,7 +327,7 @@ test("verdict neutral not-needed text", () => {
 })
 
 test("breaksText mixed pass and fail", () => {
-  eq(Model.breaksText({ score: 3, total: 5, categories: { youtube: [1, 3], discord: [2, 2] } }), "YouTube ✗ QUIC · Discord ✓")
+  eq(Model.breaksText({ score: 3, total: 5, categories: { youtube: [1, 3], discord: [2, 2] } }), "YouTube ✗ " + Model.quicWarning() + " · Discord ✓")
   eq(Model.breaksText({ score: 2, total: 5, categories: { youtube: { ok: 0, total: 3 }, discord: { ok: 2, total: 2 } } }), "YouTube ✗ · Discord ✓")
   eq(Model.breaksText({ score: 5, total: 5, categories: { youtube: [3, 3], discord: [2, 2] } }), "всё открывается")
 })

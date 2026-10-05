@@ -326,7 +326,6 @@ Item {
               }
               title: "Zapret2"
               meta: root.ready ? (root.svc.bypassState === "error" ? Model.stateText(root.svc.st) : (root.svc.isOn ? "Включён" : "Выключен")) : "Загрузка…"
-              detail: root.sysUpdate ? "обновление" : ""
             }
 
             Repeater {
@@ -1068,8 +1067,8 @@ Item {
       id: recCard
       visible: !sp.editing && !sp.showing
       property bool notNeeded: root.ready && root.svc.autopickResult.notNeeded === true
-      PanelSectionHeader { Layout.fillWidth: true; text: recCard.notNeeded ? "Без обхода" : "Рекомендуемая"; foreground: root.fg; fontFamily: root.fontFamily }
-      Label { Layout.fillWidth: true; text: recCard.notNeeded ? "Без обхода" : Model.presetTitle(sp.recommendedName()) }
+      PanelSectionHeader { Layout.fillWidth: true; text: recCard.notNeeded ? "Рекомендация" : "Рекомендуемая"; foreground: root.fg; fontFamily: root.fontFamily }
+      Label { Layout.fillWidth: true; text: recCard.notNeeded ? "Обход не нужен" : Model.presetTitle(sp.recommendedName()) }
       Hint { Layout.fillWidth: true; text: recCard.notNeeded ? "Всё открывается без обхода — ничего делать не нужно. Сайты открываются и так — возможно, роутер или VPN уже обходят блокировки." : sp.recommendedText() }
       RowLayout {
         Layout.fillWidth: true
@@ -1204,7 +1203,6 @@ Item {
                       return !!(br && br.chosen)
                     }
                     property string flowSrc: sp.flowsealSource(stratItem.modelData.name)
-                    property bool expanded: sp.selectedName === stratItem.modelData.name || isActive
                     property string scoreLine: {
                       var r = sp.pickRow(stratItem.modelData.name)
                       if (!r || (r.total | 0) <= 0) return "не проверялась"
@@ -1220,6 +1218,7 @@ Item {
                       t += "\nEnter применит"
                       return t
                     }
+                    property bool moreActionsOpen: sp.moreOpen[stratItem.modelData.name] === true
                     foreground: root.fg
                     Layout.fillWidth: true
                     current: isActive
@@ -1246,91 +1245,118 @@ Item {
                       text: tipText
                       fontFamily: root.fontFamily
                     }
-                    RowLayout {
-                      id: stratRow
+                    ColumnLayout {
                       anchors.fill: parent
-                      anchors.margins: Style.space(7)
-                      ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 0
-                        RowLayout {
+                      spacing: 0
+                      // Main row
+                      RowLayout {
+                        id: mainRow
+                        anchors.fill: parent
+                        anchors.margins: Style.space(7)
+                        ColumnLayout {
                           Layout.fillWidth: true
-                          spacing: Style.space(6)
-                          Label { Layout.fillWidth: true; text: Model.presetTitle(stratItem.modelData.name); font.bold: true }
-                          BorderSurface {
-                            visible: isActive || isBest
-                            implicitWidth: activeText.implicitWidth + Style.space(10)
-                            implicitHeight: activeText.implicitHeight + Style.space(4)
-                            color: isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
-                            borderSpec: isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
-                            radius: Style.cornerRadius
-                            Text {
-                              id: activeText
-                              anchors.centerIn: parent
-                              text: isActive && isBest ? "● активна · ★ лучшая" : (isActive ? "● активна" : "★ лучшая")
-                              color: isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
-                              font.family: root.fontFamily
-                              font.pixelSize: Style.font.caption
+                          spacing: 0
+                          RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Style.space(6)
+                            Label { Layout.fillWidth: true; text: Model.presetTitle(stratItem.modelData.name); font.bold: true }
+                            BorderSurface {
+                              visible: isActive || isBest
+                              implicitWidth: activeText.implicitWidth + Style.space(10)
+                              implicitHeight: activeText.implicitHeight + Style.space(4)
+                              color: isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
+                              borderSpec: isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
+                              radius: Style.cornerRadius
+                              Text {
+                                id: activeText
+                                anchors.centerIn: parent
+                                text: isActive && isBest ? "● активна · ★ лучшая" : (isActive ? "● активна" : "★ лучшая")
+                                color: isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                              }
                             }
                           }
+                          Hint {
+                            Layout.fillWidth: true
+                            color: sp.isWorse(stratItem.modelData.name) ? root.bad : root.dim
+                            text: scoreLine
+                          }
+                          Hint {
+                            Layout.fillWidth: true
+                            visible: (sp.selectedName === stratItem.modelData.name || isActive) && !moreActionsOpen
+                            color: sp.isWorse(stratItem.modelData.name) ? root.bad : root.dim
+                            text: sp.rowSubtitle(stratItem.modelData)
+                          }
+                          Hint {
+                            Layout.fillWidth: true
+                            visible: (sp.selectedName === stratItem.modelData.name || isActive) && flowSrc !== "" && !moreActionsOpen
+                            color: root.dim
+                            text: flowSrc
+                          }
                         }
-                        Hint {
-                          Layout.fillWidth: true
-                          color: sp.isWorse(stratItem.modelData.name) ? root.bad : root.dim
-                          text: scoreLine
+                        // Apply button (only when not active)
+                        Button {
+                          bordered: true
+                          visible: !isActive && sp.selectedName === stratItem.modelData.name
+                          enabled: root.ready && !root.svc.busy
+                          text: "Применить"
+                          tooltipText: "Применить " + Model.presetTitle(stratItem.modelData.name)
+                          onClicked: root.svc.setOption("preset", stratItem.modelData.name)
                         }
-                        Hint {
-                          Layout.fillWidth: true
-                          visible: expanded
-                          color: sp.isWorse(stratItem.modelData.name) ? root.bad : root.dim
-                          text: sp.rowSubtitle(stratItem.modelData)
-                        }
-                        Hint {
-                          Layout.fillWidth: true
-                          visible: expanded && flowSrc !== ""
-                          color: root.dim
-                          text: flowSrc
-                        }
-                      }
-                      Button {
-                        bordered: true
-                        visible: sp.selectedName === stratItem.modelData.name
-                        enabled: root.svc.preset !== stratItem.modelData.name
-                        text: "Применить"
-                        tooltipText: "Применить " + Model.presetTitle(stratItem.modelData.name)
-                        onClicked: root.svc.setOption("preset", stratItem.modelData.name)
-                      }
-                      Button {
-                        visible: sp.selectedName === stratItem.modelData.name
-                        bordered: true
-                        text: "Показать"
-                        tooltipText: "Показать текст пресета"
-                        onClicked: sp.show(stratItem.modelData.name)
-                      }
-                      Button {
-                        visible: stratItem.modelData.name.indexOf("my-") === 0
-                        bordered: true
-                        text: "Изменить"
-                        tooltipText: "Изменить свою стратегию"
-                        onClicked: sp.edit(stratItem.modelData.name)
-                      }
-                      Button {
-                        visible: stratItem.modelData.name.indexOf("my-") === 0 && root.svc.preset !== stratItem.modelData.name
-                        bordered: true
-                        foreground: root.bad
-                        text: sp.armDelete === stratItem.modelData.name ? "Точно удалить?" : "Удалить"
-                        tooltipText: sp.armDelete === stratItem.modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
-                        onClicked: {
-                          if (sp.armDelete === stratItem.modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(stratItem.modelData.name) }
-                          else { sp.armDelete = stratItem.modelData.name; disarmTimer.restart() }
+                        // Ellipsis button to toggle more actions
+                        Button {
+                          bordered: true
+                          visible: sp.selectedName === stratItem.modelData.name
+                          text: "⋯"
+                          tooltipText: moreActionsOpen ? "Скрыть действия" : "Действия"
+                          onClicked: {
+                            var e = Object.assign({}, sp.moreOpen)
+                            e[stratItem.modelData.name] = !moreActionsOpen
+                            sp.moreOpen = e
+                          }
                         }
                       }
-                      Button {
-                        visible: sp.armDelete === stratItem.modelData.name && stratItem.modelData.name.indexOf("my-") === 0
-                        bordered: true
-                        text: "Отмена"
-                        tooltipText: "Оставить стратегию"
-                        onClicked: { sp.armDelete = ""; disarmTimer.stop() }
+                      // Inline action row (shown when moreActionsOpen is true)
+                      RowLayout {
+                        id: actionRow
+                        anchors.fill: parent
+                        anchors.leftMargin: Style.space(7)
+                        anchors.rightMargin: Style.space(7)
+                        anchors.bottomMargin: Style.space(7)
+                        visible: moreActionsOpen
+                        spacing: Style.space(6)
+                        Button {
+                          bordered: true
+                          text: "Показать"
+                          tooltipText: "Показать текст пресета"
+                          onClicked: sp.show(stratItem.modelData.name)
+                        }
+                        Button {
+                          visible: stratItem.modelData.name.indexOf("my-") === 0
+                          bordered: true
+                          text: "Изменить"
+                          tooltipText: "Изменить свою стратегию"
+                          onClicked: sp.edit(stratItem.modelData.name)
+                        }
+                        Button {
+                          visible: stratItem.modelData.name.indexOf("my-") === 0 && root.svc.preset !== stratItem.modelData.name
+                          bordered: true
+                          foreground: root.bad
+                          text: sp.armDelete === stratItem.modelData.name ? "Точно удалить?" : "Удалить"
+                          tooltipText: sp.armDelete === stratItem.modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
+                          onClicked: {
+                            if (sp.armDelete === stratItem.modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(stratItem.modelData.name) }
+                            else { sp.armDelete = stratItem.modelData.name; disarmTimer.restart() }
+                          }
+                        }
+                        Button {
+                          visible: sp.armDelete === stratItem.modelData.name && stratItem.modelData.name.indexOf("my-") === 0
+                          bordered: true
+                          text: "Отмена"
+                          tooltipText: "Оставить стратегию"
+                          onClicked: { sp.armDelete = ""; disarmTimer.stop() }
+                        }
                       }
                     }
                   }
@@ -1487,26 +1513,10 @@ Item {
       text: lp.editable ? "Мои — можно править. По одному домену (поддомены включаются сами) или IP/CIDR на строку. Неверные строки отбрасываются."
                         : "Встроенные (только чтение). Свои записи добавляйте в «Мои …»."
     }
-    Card {
-      visible: lp.editable && lp.loadedText === "" && listEditor.text === "" && lp.info !== "Загрузка…"
-      Hint {
-        Layout.fillWidth: true
-        text: "Пусто — так и должно быть: встроенные списки уже покрывают YouTube и Discord. Добавляйте сюда только свои сайты."
-      }
-      RowLayout {
-        Layout.fillWidth: true
-        Button {
-          bordered: true
-          text: "Вставить пример"
-          tooltipText: "Вставить пример записей в редактор"
-          onClicked: listEditor.text = lp.exampleText()
-        }
-      }
-    }
     Editor {
       id: listEditor
       readOnly: !lp.editable
-      placeholderText: "# пример:\n# example.com\n# sub.example.org\n# по одному домену на строку"
+      placeholderText: "Пусто — так и должно быть: встроенные списки уже покрывают YouTube и Discord.\n# пример:\n# example.com"
     }
     RowLayout {
       visible: lp.editable
@@ -1527,6 +1537,12 @@ Item {
             lp.saveResult = msg + (r.data.restarted ? " · обход перезапущен" : " · без перезапуска")
           }
         }, lp.restartAfterSave)
+      }
+      Button {
+        bordered: false
+        text: "Вставить пример"
+        tooltipText: "Вставить пример записей в редактор"
+        onClicked: listEditor.text += lp.exampleText()
       }
       Hint {
         text: {
@@ -1826,7 +1842,7 @@ Item {
           Layout.fillHeight: false
           readOnly: true
           visible: root.ready && root.svc.blockcheck !== null && root.svc.blockcheck.lines > 0
-          area.wrapMode: TextEdit.Wrap
+          area.wrapMode: TextEdit.NoWrap
           text: {
             if (!root.ready || !root.svc.blockcheck) return ""
             var tail = root.svc.blockcheck.tail
@@ -1875,8 +1891,8 @@ Item {
         }
         Hint { Layout.fillWidth: true; text: "bol-van/zapret2: nfqws2 + Lua. Обновление скачивает последний релиз, сверяет sha256 и спрашивает пароль. Предыдущая версия остаётся рядом." }
         RowLayout {
-          Button { bordered: true; text: "Обновить движок"; enabled: root.ready && root.svc.installed; onClicked: root.svc.engineUpdate() }
-          Button { bordered: !root.svc.appCurrent; visible: !root.ready || root.svc.installed; text: root.ready && !root.svc.appCurrent ? "Обновить (спросит пароль)" : "Обновить системную часть"; tooltipText: "Установить обновление системной части (спросит пароль)"; enabled: root.ready && root.svc.installed; onClicked: root.svc.updateApp() }
+          Button { bordered: true; text: "Обновить движок (zapret2)"; tooltipText: "Обновить движок zapret2 (спросит пароль)"; enabled: root.ready && root.svc.installed; onClicked: root.svc.engineUpdate() }
+          Button { bordered: true; visible: root.ready && root.svc.installed && !root.svc.appCurrent; text: "Установить обновление плагина"; tooltipText: "Установить обновление системной части плагина (спросит пароль)"; onClicked: root.svc.updateApp() }
         }
       }
 
@@ -1962,7 +1978,7 @@ Item {
           Layout.preferredHeight: Style.space(240)
           Layout.fillHeight: false
           readOnly: true
-          area.wrapMode: TextEdit.Wrap
+          area.wrapMode: TextEdit.NoWrap
           text: {
             if (!root.ready) return ""
             var lines = root.svc.logLines.slice()
@@ -2033,6 +2049,34 @@ Item {
           onChanged: function(v) { root.svc.setOption("game", v) }
         }
         Hint { Layout.fillWidth: true; text: "Обход для игр по IP-сетям (ipset). Нагружает сильнее: включайте, если игра не подключается." }
+        RowLayout {
+          Layout.fillWidth: true
+          visible: root.ready && (root.svc.settings.game || "off") !== "off"
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(2)
+            Label { text: "Порты TCP" }
+            TextField {
+              id: gameTcpField
+              Layout.fillWidth: true
+              text: root.ready ? (root.svc.settings.gameTcp || "") : ""
+              placeholderText: "например 1024-65535"
+              onEditingFinished: root.svc.setOption("gametcp", text)
+            }
+          }
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(2)
+            Label { text: "Порты UDP" }
+            TextField {
+              id: gameUdpField
+              Layout.fillWidth: true
+              text: root.ready ? (root.svc.settings.gameUdp || "") : ""
+              placeholderText: "например 1024-65535"
+              onEditingFinished: root.svc.setOption("gameudp", text)
+            }
+          }
+        }
         Dropdown {
           id: ipsetDrop
           Layout.fillWidth: true
@@ -2066,34 +2110,6 @@ Item {
           HoverHandler { cursorShape: Qt.PointingHandCursor }
           TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: stp.showExtra = !stp.showExtra }
           PanelSectionHeader { Layout.fillWidth: true; text: (stp.showExtra ? "▾ " : "▸ ") + "Дополнительно"; foreground: root.fg; fontFamily: root.fontFamily }
-        }
-        RowLayout {
-          Layout.fillWidth: true
-          visible: stp.showExtra && root.ready && (root.svc.settings.game || "off") !== "off"
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Style.space(2)
-            Label { text: "Порты TCP" }
-            TextField {
-              id: gameTcpField
-              Layout.fillWidth: true
-              text: root.ready ? (root.svc.settings.gameTcp || "") : ""
-              placeholderText: "например 1024-65535"
-              onEditingFinished: root.svc.setOption("gametcp", text)
-            }
-          }
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Style.space(2)
-            Label { text: "Порты UDP" }
-            TextField {
-              id: gameUdpField
-              Layout.fillWidth: true
-              text: root.ready ? (root.svc.settings.gameUdp || "") : ""
-              placeholderText: "например 1024-65535"
-              onEditingFinished: root.svc.setOption("gameudp", text)
-            }
-          }
         }
         Dropdown {
           id: discordFakeDrop

@@ -354,7 +354,7 @@ Panel {
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
-          elide: Text.ElideRight
+          wrapMode: Text.WordWrap
         }
 
         // first run
@@ -405,8 +405,25 @@ Panel {
               for (var k = 0; k < rows.length; k++) if (rows[k].preset === name) return rows[k]
               return null
             }
-            var listed = Model.popupPresets(root.svc.presets, root.svc.autopickResult, root.svc.preset).map(function(n) {
-              var nm = typeof n === "string" ? n : (n && n.name)
+            // Build list: active preset first, then top autopick rows (up to 10 total before "__more")
+            var listedNames = []
+            function pushName(n) {
+              if (n && listedNames.indexOf(n) === -1) listedNames.push(n)
+            }
+            pushName(root.svc.preset)
+            var top = rows.filter(function(r) {
+              return !r.baseline && (r.total | 0) > 0
+            }).map(function(r) { return r.preset })
+            if (top.length === 0) {
+              var names = ((root.svc.presets || []).map(function(p) {
+                return typeof p === "string" ? p : (p && p.name)
+              }).filter(function(n) { return !!n }))
+              top = names.slice(0, 10)
+            }
+            top.forEach(pushName)
+            // Limit to 10 before the "__more" entry
+            if (listedNames.length > 10) listedNames = listedNames.slice(0, 10)
+            var listed = listedNames.map(function(nm) {
               var r = rowOf(nm)
               var isBest = !!(r && r.chosen)
               var worse = !!(r && !r.baseline && (r.total | 0) > 0 && base >= 0 && (r.score | 0) < base)
