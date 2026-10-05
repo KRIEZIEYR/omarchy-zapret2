@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 loader = importlib.machinery.SourceFileLoader("zm", os.path.join(ROOT, "bin", "omarchy-zapret2"))
@@ -369,6 +370,55 @@ class NewFeatures(unittest.TestCase):
         removed = zm.apply_hosts_block(replaced, None)
         self.assertEqual(removed, original)
         self.assertEqual(zm.apply_hosts_block(removed, None), original)
+
+
+class AutopickServiceState(unittest.TestCase):
+    def _run(self, baseline_score, preset_scores):
+        """Run cmd_autopick with stubbed side effects; return (calls, result)."""
+        calls = []
+        saved = {}
+        emitted = {}
+        names = ["p%d" % i for i in range(len(preset_scores))]
+        scores = list(preset_scores)
+        state = {"n": 0}
+
+        def fake_run_checks():
+            seq = [baseline_score] + scores
+            score = seq[min(state["n"], len(seq) - 1)]
+            state["n"] += 1
+            return {"time": 0, "score": score, "total": 10,
+                    "categories": {"web": {"ok": score, "total": 10,
+                                           "label": "w", "results": []}}}
+
+        settings = {"preset": names[0], "ipv6": False}
+        with mock.patch.object(zm, "require_installed", lambda: None), \
+             mock.patch.object(zm, "unit_state", lambda u: {"ActiveState": "inactive"}), \
+             mock.patch.object(zm, "all_presets",
+                               lambda: [{"name": n, "group": "g"} for n in names]), \
+             mock.patch.object(zm, "custom_names", lambda: []), \
+             mock.patch.object(zm, "load_settings", lambda: dict(settings)), \
+             mock.patch.object(zm, "save_settings", lambda s: settings.update(s)), \
+             mock.patch.object(zm, "progress", lambda **kw: None), \
+             mock.patch.object(zm, "systemctl",
+                               lambda verb, unit: calls.append((verb, unit))), \
+             mock.patch.object(zm, "run_checks", fake_run_checks), \
+             mock.patch.object(zm, "wait_active", lambda timeout=8.0: None), \
+             mock.patch.object(zm, "save_state",
+                               lambda name, obj: saved.update({name: obj})), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_autopick([",".join(names)])
+        return calls, saved["autopick.json"], emitted
+
+    def test_not_needed_stops_service(self):
+        calls, result, _ = self._run(8, [3, 4])
+        self.assertTrue(result["notNeeded"])
+        self.assertEqual(calls[-1], ("stop", zm.UNIT))
+
+    def test_needed_keeps_service_on(self):
+        calls, result, _ = self._run(2, [3, 8])
+        self.assertFalse(result["notNeeded"])
+        self.assertEqual(calls[-1], ("restart", zm.UNIT))
+        self.assertNotEqual(calls[-1], ("stop", zm.UNIT))
 
 
 if __name__ == "__main__":

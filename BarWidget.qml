@@ -199,7 +199,13 @@ Panel {
           visible: root.ready && root.svc.installed
           label: "Стратегия"
           value: root.ready ? root.svc.preset : ""
-          options: root.ready ? root.svc.presets.map(function(p) { return { value: p.name, label: Model.presetTitle(p.name) } }) : []
+          options: {
+            if (!root.ready) return []
+            return Model.popupPresets(root.svc.presets, root.svc.autopickResult, root.svc.preset).map(function(n) {
+              var nm = typeof n === "string" ? n : (n && n.name)
+              return { value: nm, label: Model.presetTitle(nm) }
+            })
+          }
           onChanged: function(v) { if (v !== root.svc.preset) root.svc.setOption("preset", v) }
         }
 

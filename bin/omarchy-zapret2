@@ -1464,10 +1464,14 @@ def cmd_autopick(args):
     chosen = best["preset"] if best and best["score"] > 0 else before
     s["preset"] = chosen
     save_settings(s)
-    systemctl("restart", UNIT)
-    wait_active()
+    not_needed = bool(best) and best["score"] <= baseline["score"]
+    if not_needed:
+        systemctl("stop", UNIT)
+    else:
+        systemctl("restart", UNIT)
+        wait_active()
     result = {"time": int(time.time()), "rows": rows, "chosen": chosen, "baseline": baseline,
-              "notNeeded": bool(best) and best["score"] <= baseline["score"]}
+              "notNeeded": not_needed}
     save_state("autopick.json", result)
     out(dict(result, ok=True))
 

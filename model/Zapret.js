@@ -3,20 +3,29 @@
 // Pure helpers shared by Service.qml, BarWidget.qml and App.qml; tested in
 // node by tests/run.js (no QML here).
 
-var PRESET_TITLES = {
-  "general": "General", "alt": "ALT", "alt3": "ALT3", "alt5": "ALT5", "alt11": "ALT11", "alt12": "ALT12",
-  "fake-tls-auto": "FAKE TLS AUTO", "fake-tls-auto-alt2": "FAKE TLS AUTO ALT2", "simple-fake": "SIMPLE FAKE",
-  "voice": "VOICE", "custom-safe": "CUSTOM SAFE", "custom-balanced": "CUSTOM BALANCED",
-  "custom-aggressive": "CUSTOM AGGRESSIVE"
+function titleWord(w) {
+  var s = String(w || "")
+  if (!s) return ""
+  var m = s.match(/^alt(\d*)$/i)
+  if (m) return m[1] ? "ALT " + m[1] : "ALT"
+  var low = s.toLowerCase()
+  if (low === "exp") return "EXP"
+  if (low === "tls") return "TLS"
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
+}
+
+function niceTitle(stem) {
+  return String(stem || "").split("-").filter(function(p) { return p !== "" }).map(titleWord).join(" ")
 }
 
 function presetTitle(name) {
   var n = String(name || "")
   if (n === "(off)") return "Без обхода"
-  if (n === "fs-general") return "general"
-  if (n.indexOf("fs-general-") === 0) return n.substring("fs-general-".length).split("-").join(" ").toUpperCase()
-  if (PRESET_TITLES[n]) return PRESET_TITLES[n]
-  return n.indexOf("my-") === 0 ? n.substring(3) : n
+  if (n === "fs-general") return "General"
+  if (n.indexOf("fs-general-") === 0) return niceTitle(n.substring("fs-general-".length))
+  if (n.indexOf("fs-") === 0) return niceTitle(n.substring(3))
+  if (n.indexOf("my-") === 0) return n.substring(3)
+  return niceTitle(n)
 }
 
 function groupTitle(g) {
@@ -101,16 +110,84 @@ function parseLine(line) {
 
 // Autopick table rows sorted best first, with a percent.
 function autopickRows(ap) {
-  var rows = ap && ap.rows ? ap.rows.slice() : []
-  if (ap && ap.baseline) rows.push(ap.baseline)
-  // best first; on a tie the chosen one, then the no-bypass baseline
-  function rank(r) { return r.preset === ap.chosen ? 0 : r.preset === "(off)" ? 1 : 2 }
-  rows.sort(function(a, b) { return (b.score | 0) - (a.score | 0) || rank(a) - rank(b) })
+  var a = ap || {}
+  var rows = a.rows ? a.rows.slice() : []
+  if (a.baseline) rows.push(a.baseline)
+  var chosen = a.chosen || ""
+  // score desc, then the chosen one, then the no-bypass baseline,
+  // then tested before untested, then name asc.
+  rows.sort(function(x, y) {
+    var d = (y.score | 0) - (x.score | 0)
+    if (d) return d
+    var cx = x.preset === chosen ? 0 : 1, cy = y.preset === chosen ? 0 : 1
+    if (cx !== cy) return cx - cy
+    var bx = x.preset === "(off)" ? 0 : 1, by = y.preset === "(off)" ? 0 : 1
+    if (bx !== by) return bx - by
+    var tx = (x.total | 0) > 0 ? 0 : 1, ty = (y.total | 0) > 0 ? 0 : 1
+    if (tx !== ty) return tx - ty
+    var nx = String(x.preset || ""), ny = String(y.preset || "")
+    return nx < ny ? -1 : nx > ny ? 1 : 0
+  })
   return rows.map(function(r) {
     return { preset: r.preset, title: presetTitle(r.preset), score: r.score, total: r.total,
              pct: r.total > 0 ? Math.round(100 * Math.max(0, r.score) / r.total) : 0,
-             error: r.error || "", chosen: ap.chosen === r.preset, baseline: r.preset === "(off)" }
+             error: r.error || "", chosen: chosen === r.preset, baseline: r.preset === "(off)" }
   })
+}
+
+// Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick".
+function verdict(st, check, autopick) {
+  var s = stateOf(st)
+  var on = (s === "on" || s === "starting")
+  var ap = autopick || {}
+  var hasPick = !!(ap && ap.time)
+  var notNeeded = !!(ap && ap.notNeeded)
+  var cats = categories(check)
+  var failing = cats.filter(function(c) { return !c.good })
+  var names = failing.map(function(c) { return c.label }).join("/")
+  if (cats.length === 0) {
+    if (!on && notNeeded) return { text: "В этой сети обход сейчас не нужен", tone: "neutral", action: "none" }
+    if (!on && !hasPick) return { text: "Запустите автоподбор, чтобы найти рабочую стратегию", tone: "neutral", action: "autopick" }
+    return { text: "Проверок ещё не было", tone: "neutral", action: "none" }
+  }
+  if (failing.length === 0) {
+    if (!on && notNeeded) return { text: "В этой сети обход сейчас не нужен", tone: "neutral", action: "none" }
+    return { text: "Всё открывается", tone: "good", action: "none" }
+  }
+  if (on) return { text: names + " не открываются — попробуйте другую стратегию", tone: "warn", action: "none" }
+  if (notNeeded) return { text: "В этой сети обход сейчас не нужен", tone: "neutral", action: "none" }
+  if (!hasPick) return { text: names + " не открываются — запустите автоподбор", tone: "bad", action: "autopick" }
+  return { text: names + " не открываются — включите обход", tone: "bad", action: "on" }
+}
+
+// Short human label for a curl probe error line.
+function curlError(err) {
+  var s = String(err || "")
+  if (!s.trim()) return "ошибка"
+  var l = s.toLowerCase()
+  if (s.indexOf("(28)") !== -1 || l.indexOf("timed out") !== -1 || l.indexOf("timeout") !== -1 || l.indexOf("timed-out") !== -1) return "таймаут"
+  if (s.indexOf("(35)") !== -1 || l.indexOf("tls") !== -1 || l.indexOf("ssl") !== -1) return "ошибка TLS (DPI?)"
+  if (s.indexOf("(6)") !== -1 || l.indexOf("resolve") !== -1) return "DNS не отвечает"
+  if (s.indexOf("(7)") !== -1 || l.indexOf("refused") !== -1) return "соединение отклонено"
+  if (s.indexOf("(56)") !== -1 || l.indexOf("reset") !== -1) return "соединение сброшено"
+  return "ошибка"
+}
+
+// Bar popup strategy list: the active one first, then the autopick top 5,
+// deduped. Falls back to the first 5 presets when there are no autopick rows.
+function popupPresets(presets, autopick, active) {
+  var names = ((presets || []).map(function(p) {
+    return typeof p === "string" ? p : (p && p.name)
+  }).filter(function(n) { return !!n }))
+  var top = autopickRows(autopick).filter(function(r) {
+    return !r.baseline && (r.total | 0) > 0
+  }).slice(0, 5).map(function(r) { return r.preset })
+  if (top.length === 0) top = names.slice(0, 5)
+  var out = []
+  function push(n) { if (n && out.indexOf(n) === -1) out.push(n) }
+  push(active)
+  top.forEach(push)
+  return out.slice(0, 6)
 }
 
 var TEST_TITLES = { curl_test_http: "HTTP", curl_test_https_tls12: "TLS 1.2", curl_test_https_tls13: "TLS 1.3",
