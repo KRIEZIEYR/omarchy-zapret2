@@ -22,6 +22,7 @@ allowlist of nfqws2 options and Lua desync functions.
   set <key> <value>            preset, game (off|tcp|udp|all), ipset (loaded|none|any),
                                voice (compatible|standard|off), ipv6 (on|off), autostart (on|off)
   presets                      built-in and custom strategies
+  presets update               fetch fresh Flowseal strategies
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
   list show <name> | list save <name>              user lists (save reads stdin)
   lists update                 fetch fresh upstream lists (Flowseal)
@@ -83,7 +84,7 @@ MAX_SMALL = 64 * 1024
 # ipset "none" like Flowseal's shipped default: the strategy touches only
 # hostlist domains; "loaded" applies it to ~33k networks and can break sites
 # that are not blocked at all.
-DEFAULTS = {"preset": "general", "game": "off", "ipset": "none", "voice": "compatible",
+DEFAULTS = {"preset": "fs-general", "game": "off", "ipset": "none", "voice": "compatible",
             "ipv6": True, "autostart": False}
 ENUMS = {"game": ("off", "tcp", "udp", "all"), "ipset": ("loaded", "none", "any"),
          "voice": ("compatible", "standard", "off")}
@@ -690,6 +691,12 @@ def ports_for(settings, sections):
     return merge_ports(tcp), merge_ports(udp)
 
 
+def drop_empty_user_lists(args, lists, counts):
+    # an empty user list would only add noise; base lists always have entries
+    return [a for a in args if not any(a == "%s=%s/%s.txt" % (o, lists, n) for n in USER_LISTS
+                                       if not counts.get(n) for o in ("--hostlist", "--hostlist-exclude", "--ipset-exclude"))]
+
+
 def render_args(preset, sections, settings, engine, lists, fake_dirs, counts):
     """The full nfqws2 command line (without the binary)."""
     def blob_path(f):
@@ -740,8 +747,7 @@ def render_args(preset, sections, settings, engine, lists, fake_dirs, counts):
             line = line.replace(k, v)
         args.append(line)
     # an empty user list would only add noise; base lists always have entries
-    args = [a for a in args if not any(a == "%s=%s/%s.txt" % (o, lists, n) for n in USER_LISTS
-                                       if not counts.get(n) for o in ("--hostlist", "--hostlist-exclude", "--ipset-exclude"))]
+    args = drop_empty_user_lists(args, lists, counts)
     while args and args[-1] == "--new":
         args.pop()
     return args
@@ -816,6 +822,29 @@ def custom_names():
     return [n for n in names if n.startswith("my-") and RE_NAME.match(n)]
 
 
+def flowseal_names():
+    found = set()
+    for base in (var_path("flowseal"), os.path.join(DATA, "presets", "flowseal")):
+        try:
+            files = os.listdir(base)
+        except OSError:
+            continue
+        for f in files:
+            if f.endswith(".txt"):
+                n = f[:-4]
+                if n.startswith("fs-") and RE_NAME.match(n):
+                    found.add(n)
+    return sorted(found)
+
+
+def all_presets():
+    out = [{"name": n, "about": "Flowseal " + n[len("fs-"):].replace("-", " "), "group": "flowseal"}
+           for n in flowseal_names()]
+    out += [{"name": n, "about": a, "group": "next"} for n, a in PRESETS.items()]
+    out += [{"name": n, "about": "own strategy", "group": "custom"} for n in custom_names()]
+    return out
+
+
 def unit_state(unit):
     r = sh("systemctl", "show", "-p", "ActiveState,SubState,Result,NRestarts,ExecMainStatus", unit, timeout=10)
     st = dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
@@ -851,8 +880,7 @@ def cmd_status():
     rec = load_record()
     st = {"ok": True, "installed": installed(), "engine": rec.get("version") if rec else None,
           "appCurrent": True, "settings": load_settings(),
-          "presets": [{"name": n, "about": a} for n, a in PRESETS.items()]
-          + [{"name": n, "about": "own strategy"} for n in custom_names()],
+          "presets": all_presets(),
           "check": load_state("check.json", {}), "autopick": load_state("autopick.json", {})}
     if rec and rec.get("uid") != os.getuid():
         st["error"] = "zapret2 is set up for another user on this machine"
@@ -876,8 +904,54 @@ def cmd_status():
 
 
 def cmd_presets():
-    out({"ok": True, "builtin": [{"name": n, "about": a} for n, a in PRESETS.items()],
-         "custom": custom_names()})
+    out({"ok": True, "presets": all_presets()})
+
+
+FS_CONTENTS_API = "https://api.github.com/repos/Flowseal/zapret-discord-youtube/contents/"
+FS_RAW_PREFIX = "https://raw.githubusercontent.com/Flowseal/"
+
+
+def cmd_presets_update():
+    require_installed()
+    try:
+        entries = json.loads(http_get(FS_CONTENTS_API, MAX_LIST).decode("utf-8", "replace"))
+    except (Fail, ValueError) as e:
+        raise Fail("download failed: %s" % e)
+    if not isinstance(entries, list):
+        raise Fail("unexpected listing from GitHub")
+    updated, skipped = [], {}
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        fname = e.get("name", "")
+        if not re.match(r"^general.*\.bat$", fname):
+            continue
+        url = e.get("download_url", "")
+        if not (isinstance(url, str) and url.startswith(FS_RAW_PREFIX)):
+            skipped[fname] = "unexpected download location"
+            continue
+        try:
+            slug = fs_slug(fname)
+            text = http_get(url, MAX_SMALL * 4).decode("utf-8", "replace")
+            text = translate_bat(text, fname)
+        except (Fail, ValueError) as ex:
+            skipped[fname] = str(ex)
+            continue
+        atomic_write(var_path("flowseal", slug + ".txt"), text)
+        updated.append(slug)
+    updated.sort()
+    try:
+        current = [f for f in os.listdir(var_path("flowseal")) if f.startswith("fs-") and f.endswith(".txt")]
+    except OSError:
+        current = []
+    for f in current:
+        if f[:-4] not in updated:
+            try:
+                os.unlink(os.path.join(var_path("flowseal"), f))
+            except OSError:
+                pass
+    out({"ok": True, "updated": updated, "skipped": skipped})
+    restart_if_active()
 
 
 def cmd_on():
@@ -931,7 +1005,7 @@ def cmd_set(key, value):
     require_installed()
     s = load_settings()
     if key == "preset":
-        if value not in PRESETS and value not in custom_names():
+        if value not in {p["name"] for p in all_presets()}:
             raise Fail("no such strategy: %s" % value)
         s["preset"] = value
     elif key in ENUMS:
@@ -1120,7 +1194,9 @@ def cmd_autopick(args):
     require_installed()
     if unit_state(BC_UNIT).get("ActiveState") in ("active", "activating"):
         raise Fail("blockcheck is running: stop it first")
-    names = [n for n in (args[0].split(",") if args else list(PRESETS)) if n in PRESETS or n in custom_names()]
+    names = [p["name"] for p in all_presets() if p["group"] != "custom"]
+    valid = set(names) | set(custom_names())
+    names = [n for n in (args[0].split(",") if args else names) if n in valid]
     if not names:
         raise Fail("no strategies to try")
     s = load_settings()
@@ -1617,7 +1693,8 @@ def install_app():
 
 
 def ensure_var(uid, gid):
-    for d in (VAR, os.path.join(VAR, "lists"), os.path.join(VAR, "lists", "upstream"), os.path.join(VAR, "custom")):
+    for d in (VAR, os.path.join(VAR, "lists"), os.path.join(VAR, "lists", "upstream"), os.path.join(VAR, "custom"),
+              os.path.join(VAR, "flowseal")):
         try:
             st = os.lstat(d)
         except FileNotFoundError:
@@ -1720,6 +1797,15 @@ def prepare_lists(uid):
 
 
 def load_preset_for_run(name, uid):
+    if name.startswith("fs-"):
+        text = read_nofollow(os.path.join(VAR, "flowseal", name + ".txt"), MAX_SMALL * 4, owner=uid)
+        if text is None:
+            try:
+                with open(os.path.join(DATA, "presets", "flowseal", name + ".txt"), encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                raise Fail("no such strategy: %s" % name)
+        return parse_full(text)
     if name in PRESETS:
         with open(os.path.join(DATA, "presets", name + ".txt"), encoding="utf-8") as f:
             return parse_preset(f.read())
@@ -1742,18 +1828,27 @@ def cmd_run():
     try:
         sections = load_preset_for_run(settings["preset"], uid)
     except Fail as e:
-        print("omarchy-zapret2: %s; falling back to general" % e, file=sys.stderr)
-        settings["preset"] = "general"
-        sections = load_preset_for_run("general", uid)
+        print("omarchy-zapret2: %s; falling back to %s" % (e, DEFAULTS["preset"]), file=sys.stderr)
+        settings["preset"] = DEFAULTS["preset"]
+        sections = load_preset_for_run(DEFAULTS["preset"], uid)
     engine = os.path.realpath(os.path.join(SYS_ENGINE, "current"))
     if not engine.startswith(SYS_ENGINE + "/"):
         raise Fail("engine link points outside %s" % SYS_ENGINE)
     lists, counts = prepare_lists(uid)
-    args = render_args(settings["preset"], sections, settings, engine, lists,
-                       [os.path.join(engine, "files", "fake")], counts)
+    if "full" in sections:
+        args = ["--qnum=%d" % QNUM, "--user=nobody", "--fwmark=0x%x" % MARK, "--ctrack-disable=0",
+                "--ipcache-lifetime=8400", "--ipcache-hostname=1",
+                "--lua-init=@%s/lua/zapret-lib.lua" % engine, "--lua-init=@%s/lua/zapret-antidpi.lua" % engine]
+        args += ["--blob=%s:@%s" % (name, os.path.join(engine, "files", "fake", f))
+                 for name, f in sorted(BLOB_FILES.items())]
+        full_args, (tcp, udp) = render_full(sections["full"], settings, engine, lists, counts)
+        args = drop_empty_user_lists(args + full_args, lists, counts)
+    else:
+        args = render_args(settings["preset"], sections, settings, engine, lists,
+                           [os.path.join(engine, "files", "fake")], counts)
+        tcp, udp = ports_for(settings, sections)
     conf = os.path.join(RUN, "nfqws2.conf")
     atomic_write(conf, "\n".join(args) + "\n")
-    tcp, udp = ports_for(settings, sections)
     rules = os.path.join(RUN, "rules.nft")
     atomic_write(rules, render_nft(tcp, udp, settings["ipv6"]))
     r = sh(tool("nft") or "nft", "-f", rules, timeout=20, env={"PATH": "/usr/bin:/bin"})
@@ -1824,6 +1919,8 @@ def main(argv):
 
     if cmd == "status":
         cmd_status()
+    elif cmd == "presets" and args[:1] == ["update"]:
+        cmd_presets_update()
     elif cmd == "presets":
         cmd_presets()
     elif cmd in ("on", "off", "restart"):

@@ -96,7 +96,7 @@ class Validation(unittest.TestCase):
         self.assertEqual(s, zm.DEFAULTS)
         s = zm.clean_settings({"preset": "my-own", "game": "all", "ipv6": False})
         self.assertEqual((s["preset"], s["game"], s["ipv6"]), ("my-own", "all", False))
-        self.assertEqual(zm.clean_settings({"preset": "my-../x"})["preset"], "general")
+        self.assertEqual(zm.clean_settings({"preset": "my-../x"})["preset"], zm.DEFAULTS["preset"])
         self.assertEqual(zm.clean_settings([1, 2]), zm.DEFAULTS)
 
 
@@ -230,6 +230,71 @@ class Blockcheck(unittest.TestCase):
         self.assertIn("--lua-desync=fake:blob=fake_default_quic:repeats=6", secs["QUIC"])
         with self.assertRaises(zm.Fail):
             zm.strategy_from_found(found[2])
+
+
+class Flowseal(unittest.TestCase):
+    def test_every_flowseal_preset_parses(self):
+        d = os.path.join(zm.DATA, "presets", "flowseal")
+        files = sorted(f for f in os.listdir(d) if f.endswith(".txt"))
+        self.assertTrue(files)
+        for f in files:
+            with self.subTest(name=f):
+                with open(os.path.join(d, f), encoding="utf-8") as fh:
+                    secs = zm.parse_full(fh.read())
+                self.assertTrue(secs["full"])
+
+    SAMPLE_BAT = (
+        "@echo off\r\n"
+        "set LISTS=lists\r\n"
+        "set BIN=bin\\\r\n"
+        '"C:\\zapret\\winws.exe" ^\r\n'
+        "--wf-tcp=80,443 ^\r\n"
+        "--wf-udp=443 ^\r\n"
+        "--filter-tcp=80,443 ^\r\n"
+        "--hostlist=%LISTS%list-general.txt ^\r\n"
+        "--dpi-desync=fake,multisplit ^\r\n"
+        "--dpi-desync-fooling=ts ^\r\n"
+        "--dpi-desync-cutoff=n3 ^\r\n"
+        "--dpi-desync-fake-tls=%BIN%tls_clienthello_www_google_com.bin ^\r\n"
+        "--dpi-desync-split-pos=1 ^\r\n"
+        "--new ^\r\n"
+        "--filter-tcp=%GameFilterTCP% ^\r\n"
+        "--dpi-desync=fake\r\n"
+    )
+
+    def test_translate_bat_sample(self):
+        text = zm.translate_bat(self.SAMPLE_BAT, "general.bat")
+        self.assertIn("@tcp=80,443", text)
+        self.assertIn("@udp=443", text)
+        self.assertIn("--hostlist={{LISTS}}/list-general.txt", text)
+        self.assertIn("--out-range=<n3", text)
+        self.assertIn("blob=fs_tls_clienthello_www_google_com", text)
+        self.assertIn("tcp_ts=-1000", text)
+        self.assertIn("--lua-desync=multisplit:", text)
+        self.assertIn("--lua-desync=fake:", text)
+        self.assertIn("--filter-tcp={{GAME_TCP}}", text)
+        zm.parse_full(text)
+
+    def test_check_desync_func_params(self):
+        with self.assertRaises(zm.Fail):
+            zm.check_desync("fake:fool=x")
+        with self.assertRaises(zm.Fail):
+            zm.check_desync("fake:ipfrag=evil")
+        zm.check_desync("fake:ipfrag=ipfrag2")
+
+    def test_render_full_ipset_modes(self):
+        lines = ["@tcp=80,443", "@udp=443", "--filter-tcp=80,443",
+                 "--ipset={{LISTS}}/ipset-all.txt", "--payload=known", "--lua-desync=multisplit:pos=1"]
+        args, _ = zm.render_full(lines, dict(zm.DEFAULTS, ipset="none"), "/E", "/L", {})
+        self.assertIn("--ipset=/L/ipset-none.txt", args)
+        self.assertNotIn("--ipset=/L/ipset-all.txt", args)
+        args, _ = zm.render_full(lines, dict(zm.DEFAULTS, ipset="loaded"), "/E", "/L",
+                                 {"ipset-all": 5})
+        self.assertIn("--ipset=/L/ipset-all.txt", args)
+        args, _ = zm.render_full(lines, dict(zm.DEFAULTS, ipset="loaded"), "/E", "/L", {})
+        self.assertIn("--ipset=/L/ipset-none.txt", args)
+        args, _ = zm.render_full(lines, dict(zm.DEFAULTS, ipset="any"), "/E", "/L", {"ipset-all": 5})
+        self.assertFalse(any(a.startswith("--ipset=") for a in args))
 
 
 if __name__ == "__main__":
