@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "model/Zapret.js" as Model
@@ -25,6 +24,7 @@ Item {
 
   readonly property string pluginId: "krieziey.omarchy-zapret2"
   property bool opened: false
+  property bool closingFromHost: false
   property int tab: 0
   readonly property var tabs: ["Обзор", "Стратегии", "Списки", "Подбор", "Движок", "Настройки"]
 
@@ -41,10 +41,15 @@ Item {
     try { p = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
     if (p.tab !== undefined) tab = Math.max(0, Math.min(tabs.length - 1, p.tab | 0))
     opened = true
+    closingFromHost = false
+    window.visible = true
     if (ready) { svc.appOpen = true; svc.refresh() }
   }
 
   function close() {
+    closingFromHost = true
+    window.visible = false
+    closingFromHost = false
     opened = false
     if (ready) svc.appOpen = false
   }
@@ -119,27 +124,22 @@ Item {
   }
 
   // --- window --------------------------------------------------------------
-  PanelWindow {
-    visible: root.opened
-    anchors { top: true; bottom: true; left: true; right: true }
-    color: "transparent"
-    exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "omarchy-zapret2"
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
-
-    Rectangle {
-      anchors.fill: parent
-      color: Qt.rgba(0, 0, 0, 0.55)
-      MouseArea { anchors.fill: parent; onClicked: root.dismiss() }
-    }
+  // A regular toplevel window: Hyprland tiles, floats and closes it like any app.
+  FloatingWindow {
+    id: window
+    title: "Zapret2"
+    visible: false
+    color: root.bg
+    implicitWidth: Style.space(900)
+    implicitHeight: Style.space(620)
+    minimumSize: Qt.size(Style.space(640), Style.space(440))
+    // closed by the window manager (Super+W, close button): tell the shell
+    onVisibleChanged: if (!visible && !root.closingFromHost) root.dismiss()
 
     Item {
       id: keys
       anchors.fill: parent
       focus: true
-      Component.onCompleted: forceActiveFocus()
-      Keys.onEscapePressed: root.dismiss()
       Keys.onPressed: function(e) {
         if ((e.modifiers & Qt.ControlModifier) && e.key >= Qt.Key_1 && e.key <= Qt.Key_6) {
           root.tab = e.key - Qt.Key_1
@@ -152,13 +152,8 @@ Item {
 
       Rectangle {
         id: card
-        anchors.centerIn: parent
-        width: Math.min(Style.space(900), parent.width - Style.space(48))
-        height: Math.min(Style.space(620), parent.height - Style.space(48))
+        anchors.fill: parent
         color: root.bg
-        radius: Style.cornerRadius
-        border.color: Color.popups.border
-        border.width: Math.max(1, Style.space(2))
         MouseArea { anchors.fill: parent; onClicked: keys.forceActiveFocus() }
 
         RowLayout {
@@ -206,7 +201,7 @@ Item {
 
             Hint {
               Layout.fillWidth: true
-              text: root.ready && root.svc.busy ? "Выполняется: " + root.svc.busyLabel + "…" : "Esc: закрыть · Ctrl+T: вкл/выкл"
+              text: root.ready && root.svc.busy ? "Выполняется: " + root.svc.busyLabel + "…" : "Ctrl+1…6: вкладки · Ctrl+T: вкл/выкл"
             }
           }
 

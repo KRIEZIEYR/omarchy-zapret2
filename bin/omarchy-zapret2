@@ -138,10 +138,20 @@ BLOB_FILES = {
     "discord_voice": "quic_initial_dbankcloud_ru.bin",
     "game_udp": "quic_initial_dbankcloud_ru.bin",
 }
-BLOBS = frozenset(BLOB_FILES) | {"fake_default_tls", "fake_default_http", "fake_default_quic"}
+# Flowseal's fakes, bundled in data/fake-flowseal: fs_<file stem>
+FS_FAKES = os.path.join(DATA, "fake-flowseal")
+try:
+    FS_BLOB_FILES = {"fs_" + f[:-4].lower(): f for f in sorted(os.listdir(FS_FAKES)) if f.endswith(".bin")}
+except OSError:
+    FS_BLOB_FILES = {}
+FS_CLONE = "fs_orig"          # tls_client_hello_clone target: the original ClientHello
+BLOBS = (frozenset(BLOB_FILES) | frozenset(FS_BLOB_FILES)
+         | {"fake_default_tls", "fake_default_http", "fake_default_quic", FS_CLONE})
 BLOB_KEYS = ("blob", "pattern", "seqovl_pattern")
+# parameters that name a Lua function: `fool` always, `ipfrag` unless the built-in fragmenter
+FUNC_KEYS = {"fool": (), "ipfrag": ("", "ipfrag2")}
 
-RE_TOKEN = re.compile(r"^[A-Za-z0-9_.,+\-]{0,200}$")
+RE_TOKEN = re.compile(r"^[A-Za-z0-9_.,+=\-]{0,200}$")
 RE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 RE_RANGE = re.compile(r"^[nadspbx]?\d{0,9}(-|<)[nadspbx]?\d{0,9}$|^[ax]$")
 RE_PORTS = re.compile(r"^\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*$")
@@ -255,7 +265,7 @@ def clean_settings(raw):
     if not isinstance(raw, dict):
         return s
     p = raw.get("preset")
-    if isinstance(p, str) and (p in PRESETS or (p.startswith("my-") and RE_NAME.match(p))):
+    if isinstance(p, str) and (p in PRESETS or (p.startswith(("my-", "fs-")) and RE_NAME.match(p))):
         s["preset"] = p
     for k, allowed in ENUMS.items():
         if raw.get(k) in allowed:
@@ -285,6 +295,8 @@ def check_desync(spec):
             raise Fail("bad desync parameter: %s" % p)
         if eq and k in BLOB_KEYS and v not in BLOBS and not RE_HEX.match(v):
             raise Fail("unknown blob: %s" % v)
+        if k in FUNC_KEYS and v not in FUNC_KEYS[k]:
+            raise Fail("parameter not allowed: %s" % k)
 
 
 def check_line(line, section):
@@ -364,6 +376,270 @@ def clean_list(text, kind):
 
 def list_kind(name):
     return "ipset" if name.startswith("ipset") else "host"
+
+
+# --------------------------------------------------------------- Flowseal (zapret1 / winws) presets
+
+# A "full" preset is a whole nfqws2 profile list (Flowseal's own profiles) instead
+# of the [SECTION] blocks above. Lines: `@tcp=`/`@udp=` (ports for nftables), and
+# nfqws2 options with {{LISTS}}, {{GAME_TCP}}, {{GAME_UDP}} placeholders.
+LIST_NAMES = BASE_LISTS + USER_LISTS
+FULL_FILTERS = ("--filter-tcp", "--filter-udp", "--filter-l7", "--filter-l3", "--hostlist", "--hostlist-exclude",
+                "--ipset", "--ipset-exclude", "--hostlist-domains", "--hostlist-exclude-domains")
+GAME = ("{{GAME_TCP}}", "{{GAME_UDP}}")
+
+
+def check_full_ports(val):
+    parts = [p for p in val.split(",") if p not in GAME]
+    if parts:
+        check_ports(",".join(parts))
+
+
+def check_full_line(line):
+    if line == "--new":
+        return
+    if line.startswith(("@tcp=", "@udp=")):
+        check_full_ports(line[5:])
+        return
+    opt, eq, val = line.partition("=")
+    if opt in ("--filter-tcp", "--filter-udp"):
+        check_full_ports(val)
+    elif opt == "--filter-l7":
+        if [v for v in val.split(",") if v not in L7]:
+            raise Fail("unknown protocol: %s" % val)
+    elif opt == "--filter-l3":
+        if [v for v in val.split(",") if v not in ("ipv4", "ipv6")]:
+            raise Fail("bad --filter-l3: %s" % val)
+    elif opt in ("--hostlist", "--hostlist-exclude", "--ipset", "--ipset-exclude"):
+        if not (val.startswith("{{LISTS}}/") and val.endswith(".txt") and val[10:-4] in LIST_NAMES):
+            raise Fail("unknown list: %s" % val)
+    elif opt in ("--hostlist-domains", "--hostlist-exclude-domains"):
+        if [d for d in val.split(",") if not RE_DOMAIN.match(d)]:
+            raise Fail("bad domain list: %s" % val)
+    else:
+        check_line(line, "FULL")
+
+
+def parse_full(text):
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        check_full_line(line)
+        lines.append(line)
+    if not any(l.startswith("--lua-desync=") for l in lines):
+        raise Fail("the preset has no desync at all")
+    return {"full": lines}
+
+
+def bat_tokens(text):
+    """The winws command line of a Flowseal .bat as (option, value) pairs."""
+    text = text.replace("\r", "")
+    m = re.search(r'winws\.exe"\s+(.*?)(?:\n\s*\n|\Z)', text, re.S)
+    if not m:
+        raise Fail("no winws.exe command line")
+    body = re.sub(r"\^\s*\n", " ", m.group(1))
+    out = []
+    for tok in re.findall(r'--[a-z0-9-]+(?:=(?:"[^"]*"|\S+))?', body):
+        opt, _, val = tok.partition("=")
+        out.append((opt, val.strip('"')))
+    return out
+
+
+def bat_path(val, kind):
+    """%LISTS%x.txt -> {{LISTS}}/x.txt; %BIN%x.bin -> fs_ blob name; 0x.. stays."""
+    if kind == "list":
+        name = val.replace("%LISTS%", "")
+        if not name.endswith(".txt") or name[:-4] not in LIST_NAMES:
+            raise Fail("unknown list %s" % val)
+        return "{{LISTS}}/" + name
+    if RE_HEX.match(val):
+        return val
+    stem = val.replace("%BIN%", "")
+    if not stem.endswith(".bin"):
+        raise Fail("unsupported fake %s" % val)
+    blob = "fs_" + stem[:-4].lower()
+    if blob not in FS_BLOB_FILES:
+        raise Fail("fake file not bundled: %s" % stem)
+    return blob
+
+
+def bat_ports(val):
+    return val.replace("%GameFilterTCP%", "{{GAME_TCP}}").replace("%GameFilterUDP%", "{{GAME_UDP}}")
+
+
+def translate_profile(opts):
+    """One winws profile (between --new) as nfqws2 lines."""
+    get = lambda k, d=None: next((v for o, v in opts if o == k), d)
+    every = lambda k: [v for o, v in opts if o == k]
+    out = []
+    for o, v in opts:
+        if o in ("--filter-tcp", "--filter-udp"):
+            out.append("%s=%s" % (o, bat_ports(v)))
+        elif o in ("--filter-l7", "--filter-l3", "--hostlist-domains", "--hostlist-exclude-domains"):
+            out.append("%s=%s" % (o, v))
+        elif o in ("--hostlist", "--hostlist-exclude", "--ipset", "--ipset-exclude"):
+            out.append("%s=%s" % (o, bat_path(v, "list")))
+    known = {"--filter-tcp", "--filter-udp", "--filter-l7", "--filter-l3", "--hostlist", "--hostlist-exclude",
+             "--ipset", "--ipset-exclude", "--hostlist-domains", "--hostlist-exclude-domains", "--dpi-desync",
+             "--dpi-desync-repeats", "--dpi-desync-fooling", "--dpi-desync-badseq-increment", "--dpi-desync-fake-tls",
+             "--dpi-desync-fake-http", "--dpi-desync-fake-quic", "--dpi-desync-fake-discord", "--dpi-desync-fake-stun",
+             "--dpi-desync-fake-unknown", "--dpi-desync-fake-unknown-udp", "--dpi-desync-fake-tls-mod",
+             "--dpi-desync-split-pos", "--dpi-desync-split-seqovl", "--dpi-desync-split-seqovl-pattern",
+             "--dpi-desync-fakedsplit-pattern", "--dpi-desync-hostfakesplit-mod", "--dpi-desync-cutoff",
+             "--dpi-desync-any-protocol", "--ip-id"}
+    unknown = sorted({o for o, _ in opts} - known)
+    if unknown:
+        raise Fail("unsupported winws options: %s" % ", ".join(unknown))
+    modes = [m for m in (get("--dpi-desync") or "").split(",") if m]
+    if not modes:
+        return out                                   # a pass-through profile
+    tcp = get("--filter-tcp") is not None
+    anyproto = get("--dpi-desync-any-protocol") == "1"
+    cutoff = get("--dpi-desync-cutoff")
+    if cutoff:
+        if not re.match(r"^[nds]\d{1,6}$", cutoff):
+            raise Fail("unsupported cutoff %s" % cutoff)
+        out.append("--out-range=<" + cutoff)          # winws: desync only before N
+    fool = []
+    for f in (get("--dpi-desync-fooling") or "").split(","):
+        if f == "ts":
+            fool.append("tcp_ts=-1000")
+        elif f == "md5sig":
+            fool.append("tcp_md5")
+        elif f == "badseq":
+            fool.append("tcp_seq=%s:tcp_ack=-66000" % int(get("--dpi-desync-badseq-increment", "-10000"), 0))
+        elif f == "badsum":
+            fool.append("badsum")
+        elif f:
+            raise Fail("unsupported fooling %s" % f)
+    fool = ":".join(fool)
+    ipid = "ip_id=zero" if get("--ip-id") == "zero" else ""
+    repeats = get("--dpi-desync-repeats")
+    mod = get("--dpi-desync-fake-tls-mod")
+    mod = "" if mod in (None, "none") else mod
+
+    def call(func, *params):
+        return "--lua-desync=" + ":".join([func] + [p for p in params if p])
+
+    for mode in modes:
+        if mode == "fake":
+            fakes = []
+            if tcp:
+                tls = every("--dpi-desync-fake-tls") or ["!"]
+                for v in tls:
+                    if v in ("!", "^!"):
+                        if v == "^!":
+                            fakes.append(("tls_client_hello", None, call("tls_client_hello_clone", "blob=" + FS_CLONE)))
+                        fakes.append(("tls_client_hello", FS_CLONE if v == "^!" else "fake_default_tls", True))
+                    else:
+                        b = bat_path(v, "bin")
+                        fakes.append(("tls_client_hello", b, b.startswith("fs_tls_")))
+                for v in every("--dpi-desync-fake-http") or ["!"]:
+                    fakes.append(("http_req", "fake_default_http" if v == "!" else bat_path(v, "bin"), False))
+                if anyproto:
+                    for v in every("--dpi-desync-fake-unknown"):
+                        fakes.append(("unknown", bat_path(v, "bin"), False))
+            else:
+                explicit = any(every(k) for k in ("--dpi-desync-fake-discord", "--dpi-desync-fake-stun",
+                                                  "--dpi-desync-fake-unknown-udp"))
+                # winws' default QUIC fake only where the profile names no other UDP fake
+                for v in every("--dpi-desync-fake-quic") or ([] if explicit else ["!"]):
+                    fakes.append(("quic_initial", "fake_default_quic" if v == "!" else bat_path(v, "bin"), False))
+                for v in every("--dpi-desync-fake-discord"):
+                    fakes.append(("discord_ip_discovery", bat_path(v, "bin"), False))
+                for v in every("--dpi-desync-fake-stun"):
+                    fakes.append(("stun", bat_path(v, "bin"), False))
+                if anyproto:
+                    for v in every("--dpi-desync-fake-unknown-udp"):
+                        fakes.append(("unknown", bat_path(v, "bin"), False))
+            for payload, blob, tlsmod in fakes:
+                out.append("--payload=" + payload)
+                if blob is None:
+                    out.append(tlsmod)                    # the clone call itself
+                    continue
+                out.append(call("fake", "blob=" + blob, fool, "repeats=" + repeats if repeats else "",
+                                "tls_mod=" + mod if tlsmod and mod else "", ipid))
+        elif mode in ("multisplit", "multidisorder", "fakedsplit", "hostfakesplit"):
+            out.append("--payload=" + ("all" if anyproto else "known"))
+            pos = get("--dpi-desync-split-pos", "")
+            seqovl = get("--dpi-desync-split-seqovl")
+            pat = get("--dpi-desync-split-seqovl-pattern")
+            if mode in ("multisplit", "multidisorder"):
+                out.append(call(mode, "pos=" + pos if pos else "", "seqovl=" + seqovl if seqovl else "",
+                                "seqovl_pattern=" + bat_path(pat, "bin") if pat else "", ipid))
+            elif mode == "fakedsplit":
+                fpat = get("--dpi-desync-fakedsplit-pattern")
+                out.append(call(mode, "pos=" + pos.split(",")[0] if pos else "",
+                                "pattern=" + bat_path(fpat, "bin") if fpat else "", fool, ipid))
+            else:
+                hmod = dict(kv.partition("=")[::2] for kv in (get("--dpi-desync-hostfakesplit-mod") or "").split(",") if kv)
+                # winws altorder has no nfqws2 counterpart; the split itself is kept
+                out.append(call(mode, "host=" + hmod["host"] if hmod.get("host") else "", fool, ipid))
+        elif mode == "syndata":
+            out.append("--payload=empty")
+            out.append(call("syndata"))
+        else:
+            raise Fail("unsupported desync mode %s" % mode)
+    return out
+
+
+def translate_bat(text, title=""):
+    """A Flowseal general*.bat as a full preset (text)."""
+    toks = bat_tokens(text)
+    wf = {o: bat_ports(v) for o, v in toks if o in ("--wf-tcp", "--wf-udp")}
+    profiles, cur = [], []
+    for o, v in toks:
+        if o in ("--wf-tcp", "--wf-udp", "--wf-raw-part", "--wf-l3"):
+            continue
+        if o == "--new":
+            profiles.append(cur)
+            cur = []
+        else:
+            cur.append((o, v))
+    profiles.append(cur)
+    lines = ["# Flowseal zapret-discord-youtube, translated to nfqws2: %s" % title,
+             "@tcp=" + wf.get("--wf-tcp", "80,443"), "@udp=" + wf.get("--wf-udp", "443")]
+    body = []
+    for prof in profiles:
+        if body:
+            body.append("--new")
+        body += translate_profile(prof)
+    text = "\n".join(lines + body) + "\n"
+    parse_full(text)
+    return text
+
+
+def fs_slug(filename):
+    """'general (FAKE TLS AUTO ALT2).bat' -> 'fs-general-fake-tls-auto-alt2'."""
+    base = re.sub(r"\.bat$", "", filename, flags=re.I).lower()
+    slug = "fs-" + re.sub(r"[^a-z0-9]+", "-", base).strip("-")
+    if not RE_NAME.match(slug):
+        raise Fail("name too long: %s" % filename)
+    return slug
+
+
+def render_full(lines, settings, engine, lists, counts):
+    """A full preset as nfqws2 args and (tcp, udp) nft ports."""
+    game_tcp = "1024-65535" if settings["game"] in ("tcp", "all") else "12"
+    game_udp = "1024-65535" if settings["game"] in ("udp", "all") else "12"
+    loaded = ["--ipset=%s/%s.txt" % (lists, n) for n in ("ipset-all", "ipset-all-user") if counts.get(n)]
+    ipset_all = {"loaded": loaded or ["--ipset=%s/ipset-none.txt" % lists],
+                 "none": ["--ipset=%s/ipset-none.txt" % lists], "any": []}[settings["ipset"]]
+    args = ["--blob=%s:@%s" % (b, os.path.join(FS_FAKES, f)) for b, f in sorted(FS_BLOB_FILES.items())]
+    ports = {"tcp": [], "udp": []}
+    for line in lines:
+        if line.startswith(("@tcp=", "@udp=")):
+            game = game_tcp if line[1] == "t" else game_udp
+            parts = [game if p in GAME else p for p in line[5:].split(",")]
+            ports[line[1:4]] = [p for p in parts if p != "12"]
+            continue
+        if line == "--ipset={{LISTS}}/ipset-all.txt":
+            args += ipset_all
+            continue
+        args.append(line.replace("{{LISTS}}", lists).replace("{{GAME_TCP}}", game_tcp).replace("{{GAME_UDP}}", game_udp))
+    return args, (merge_ports(ports["tcp"] or ["80", "443"]), merge_ports(ports["udp"] or ["443"]))
 
 
 # --------------------------------------------------------------- rendering
