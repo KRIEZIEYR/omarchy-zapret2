@@ -1,28 +1,48 @@
 test("preset titles", () => {
-  eq(Model.presetTitle("general"), "General")
-  eq(Model.presetTitle("alt"), "ALT")
-  eq(Model.presetTitle("alt5"), "ALT 5")
-  eq(Model.presetTitle("fake-tls-auto"), "Fake TLS Auto")
-  eq(Model.presetTitle("fake-tls-auto-alt2"), "Fake TLS Auto ALT 2")
-  eq(Model.presetTitle("simple-fake"), "Simple Fake")
-  eq(Model.presetTitle("voice"), "Voice")
-  eq(Model.presetTitle("custom-safe"), "Custom Safe")
-  eq(Model.presetTitle("custom-balanced"), "Custom Balanced")
-  eq(Model.presetTitle("custom-aggressive"), "Custom Aggressive")
+  eq(Model.presetTitle("general"), "NEXT · General")
+  eq(Model.presetTitle("alt"), "NEXT · ALT")
+  eq(Model.presetTitle("alt5"), "NEXT · ALT 5")
+  eq(Model.presetTitle("alt11"), "NEXT · ALT 11")
+  eq(Model.presetTitle("fake-tls-auto"), "NEXT · Fake TLS Auto")
+  eq(Model.presetTitle("fake-tls-auto-alt2"), "NEXT · Fake TLS Auto ALT 2")
+  eq(Model.presetTitle("simple-fake"), "NEXT · Simple Fake")
+  eq(Model.presetTitle("voice"), "NEXT · Voice")
+  eq(Model.presetTitle("custom-safe"), "NEXT · Custom Safe")
+  eq(Model.presetTitle("custom-balanced"), "NEXT · Custom Balanced")
+  eq(Model.presetTitle("custom-aggressive"), "NEXT · Custom Aggressive")
   eq(Model.presetTitle("my-home"), "home")
   eq(Model.presetTitle(undefined), "")
+  eq(Model.presetTitle(""), "")
   eq(Model.presetTitle("(off)"), "Без обхода")
   eq(Model.presetTitle("fs-general"), "General")
   eq(Model.presetTitle("fs-general-alt2"), "ALT 2")
   eq(Model.presetTitle("fs-general-fake-tls-auto-alt2"), "Fake TLS Auto ALT 2")
   eq(Model.presetTitle("fs-general-simple-fake"), "Simple Fake")
   eq(Model.presetTitle("fs-general-exp"), "EXP")
+  eq(Model.presetTitle("fs-alt11"), "ALT 11")
 })
 
 test("group titles", () => {
   eq(Model.groupTitle("flowseal"), "Flowseal")
   eq(Model.groupTitle("next"), "Zapret 2 NEXT")
   eq(Model.groupTitle("custom"), "Свои")
+})
+
+test("doctor names", () => {
+  eq(Model.doctorName("Setup"), "Установка")
+  eq(Model.doctorName("System files"), "Системные файлы")
+  eq(Model.doctorName("Plugin and system copy"), "Плагин и системная копия")
+  eq(Model.doctorName("nfqws2"), "nfqws2")
+  eq(Model.doctorName("nft"), "nft")
+  eq(Model.doctorName("curl"), "curl")
+  eq(Model.doctorName("pkexec"), "pkexec")
+  eq(Model.doctorName("host/nslookup"), "host/nslookup")
+  eq(Model.doctorName("No other zapret"), "Нет других zapret")
+  eq(Model.doctorName("No VPN tunnel"), "Нет VPN-туннеля")
+  eq(Model.doctorName("Flowseal presets"), "Пресеты Flowseal")
+  eq(Model.doctorName("Service"), "Служба")
+  eq(Model.doctorName("unknown item"), "unknown item")
+  eq(Model.doctorName(undefined), "")
 })
 
 test("state", () => {
@@ -33,7 +53,7 @@ test("state", () => {
   eq(Model.stateOf({ installed: true, active: "failed" }), "error")
   eq(Model.stateOf({ installed: true, active: "activating", restarts: 2 }), "error")
   eq(Model.stateOf({ installed: true, active: "activating", restarts: 0 }), "starting")
-  eq(Model.summary({ installed: true, active: "active", settings: { preset: "alt5" } }), "Zapret2 · Включён · ALT 5")
+  eq(Model.summary({ installed: true, active: "active", settings: { preset: "alt5" } }), "Zapret2 · Включён · NEXT · ALT 5")
   eq(Model.summary({ installed: true, active: "active", settings: { preset: "fs-general-alt2" } }), "Zapret2 · Включён · Flowseal ALT 2")
   eq(Model.summary({ installed: true, active: "active", settings: { preset: "fs-general" } }), "Zapret2 · Включён · Flowseal General")
 })
@@ -86,17 +106,48 @@ test("verdict", () => {
   const picked = { time: 1000, chosen: "alt", notNeeded: false, rows: [] }
   const notNeeded = { time: 1000, chosen: "(off)", notNeeded: true, rows: [] }
 
-  eq(Model.verdict(on, allOk, picked), { text: "Всё открывается", tone: "good", action: "none" })
-  eq(Model.verdict(off, allOk, notNeeded), { text: "В этой сети обход сейчас не нужен", tone: "neutral", action: "none" })
-  eq(Model.verdict(off, someFail, picked), { text: "YouTube/Discord не открываются — включите обход", tone: "bad", action: "on" })
+  eq(Model.verdict(on, allOk, picked), { text: "Всё открывается", tone: "good", action: "none", note: "" })
+  eq(Model.verdict(off, allOk, notNeeded), { text: "Сайты открываются и без обхода (возможно, обход уже работает на роутере или в VPN)", tone: "neutral", action: "none", note: "" })
+  eq(Model.verdict(off, someFail, picked), { text: "YouTube/Discord частично: не открываются", tone: "warn", action: "autopick", note: "" })
   eq(Model.verdict(on, someFail, picked).tone, "warn")
-  eq(Model.verdict(on, someFail, picked).action, "none")
+  eq(Model.verdict(on, someFail, picked).action, "autopick")
   eq(Model.verdict(off, someFail, null).action, "autopick")
   eq(Model.verdict(off, someFail, {}).action, "autopick")
-  eq(Model.verdict(off, {}, null), { text: "Запустите автоподбор, чтобы найти рабочую стратегию", tone: "neutral", action: "autopick" })
-  eq(Model.verdict(off, null, notNeeded), { text: "В этой сети обход сейчас не нужен", tone: "neutral", action: "none" })
+  eq(Model.verdict(off, {}, null), { text: "Запустите автоподбор, чтобы найти рабочую стратегию", tone: "neutral", action: "autopick", note: "" })
+  eq(Model.verdict(off, null, notNeeded), { text: "Сайты открываются и без обхода (возможно, обход уже работает на роутере или в VPN)", tone: "neutral", action: "none", note: "" })
   eq(Model.verdict(null, null, null).action, "autopick")
-  eq(Model.verdict(on, {}, picked), { text: "Проверок ещё не было", tone: "neutral", action: "none" })
+  eq(Model.verdict(on, {}, picked), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })
+})
+
+test("verdict partial never says not needed", () => {
+  const off = { installed: true, active: "inactive" }
+  const partial = { categories: { youtube: { label: "YouTube", ok: 2, total: 3 }, google: { label: "Google", ok: 2, total: 2 } } }
+  const notNeeded = { time: 1000, chosen: "(off)", notNeeded: true, rows: [] }
+  const v = Model.verdict(off, partial, notNeeded)
+  eq(v.tone, "warn")
+  eq(v.action, "autopick")
+  if (v.text.indexOf("не нужен") !== -1) throw new Error("partial must not say not needed: " + v.text)
+  if (v.text.indexOf("частично") === -1) throw new Error("partial text must say частично: " + v.text)
+})
+
+test("verdict QUIC-only failure", () => {
+  const off = { installed: true, active: "inactive" }
+  const quicOnly = { categories: { youtube: { label: "YouTube", ok: 1, total: 2, results: [
+    { url: "https://youtube.com", ok: true, http3: false, error: "" },
+    { url: "https://youtube.com", ok: false, http3: true, error: "(28) timeout" },
+  ] } } }
+  const v = Model.verdict(off, quicOnly, null)
+  eq(v, { text: "YouTube частично: QUIC не проходит", tone: "warn", action: "autopick", note: "" })
+})
+
+test("verdict note carries check context", () => {
+  const off = { installed: true, active: "inactive" }
+  const allOk = { categories: { youtube: { label: "YouTube", ok: 3, total: 3 } } }
+  const wasOff = Object.assign({ time: 1000, active: false }, allOk)
+  const wasOn = Object.assign({ time: 1000, active: true }, allOk)
+  eq(Model.verdict(off, wasOff, null, 1000 + 300).note, "по проверке 5 мин назад, обход был выключен")
+  eq(Model.verdict(off, wasOn, null, 1000 + 300).note, "по проверке 5 мин назад, обход был включён")
+  eq(Model.verdict(off, wasOff, null, 1000 + 10).note, "по проверке только что, обход был выключен")
 })
 
 test("curlError", () => {
@@ -124,7 +175,7 @@ test("popupPresets", () => {
 })
 test("autopick baseline row", () => {
   const rows = Model.autopickRows({ chosen: "alt5", baseline: { preset: "(off)", score: 12, total: 14 }, rows: [{ preset: "alt5", score: 12, total: 14 }, { preset: "general", score: 1, total: 14 }] })
-  eq(rows.map(r => r.title), ["ALT 5", "Без обхода", "General"])
+  eq(rows.map(r => r.title), ["NEXT · ALT 5", "Без обхода", "NEXT · General"])
   const tie = Model.autopickRows({ chosen: "alt", baseline: { preset: "(off)", score: 11, total: 14 }, rows: [{ preset: "voice", score: 11, total: 14 }, { preset: "alt", score: 11, total: 14 }] })
   eq(tie.map(r => r.preset), ["alt", "(off)", "voice"])
   eq(rows[1].baseline, true)

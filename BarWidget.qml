@@ -216,7 +216,7 @@ Panel {
           spacing: Style.space(4)
           RowLayout {
             Layout.fillWidth: true
-            PanelSectionHeader { text: "ПРОВЕРКА"; Layout.fillWidth: true }
+            PanelSectionHeader { text: "Доступность"; Layout.fillWidth: true }
             Text {
               text: root.ready ? Model.ago(root.svc.check.time) : ""
               color: root.dim
@@ -232,16 +232,17 @@ Panel {
               Text {
                 Layout.fillWidth: true
                 text: modelData.label
-                color: root.fg
+                color: modelData.good ? root.fg : Color.urgent
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
+                font.bold: !modelData.good
               }
               Text {
                 text: modelData.ok + "/" + modelData.total
-                color: modelData.good ? root.fg : modelData.ok === 0 ? Color.urgent : root.dim
+                color: modelData.good ? root.fg : Color.urgent
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
-                font.bold: true
+                font.bold: !modelData.good
               }
             }
           }

@@ -372,6 +372,67 @@ class NewFeatures(unittest.TestCase):
         self.assertEqual(zm.apply_hosts_block(removed, None), original)
 
 
+class PresetsShow(unittest.TestCase):
+    def _show(self, *args):
+        emitted = {}
+        with mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_presets_show(list(args))
+        return emitted
+
+    def test_next(self):
+        res = self._show("general")
+        self.assertTrue(res.get("ok"))
+        self.assertEqual(res.get("name"), "general")
+        self.assertIn("[TCP_TLS]", res.get("text", ""))
+
+    def test_fs_bundled(self):
+        d = os.path.join(zm.DATA, "presets", "flowseal")
+        name = sorted(f[:-4] for f in os.listdir(d) if f.endswith(".txt"))[0]
+        self.assertTrue(name.startswith("fs-"))
+        res = self._show(name)
+        self.assertTrue(res.get("ok"))
+        self.assertEqual(res.get("name"), name)
+        self.assertTrue(res.get("text"))
+
+    def test_fs_var_override(self):
+        d = os.path.join(zm.DATA, "presets", "flowseal")
+        name = sorted(f[:-4] for f in os.listdir(d) if f.endswith(".txt"))[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "flowseal"))
+            with open(os.path.join(var, "flowseal", name + ".txt"), "w", encoding="utf-8") as f:
+                f.write("# override\n@tcp=80,443\n@udp=443\n--payload=known\n--lua-desync=multisplit:pos=1\n")
+            with mock.patch.object(zm, "VAR", var):
+                res = self._show(name)
+        self.assertTrue(res.get("ok"))
+        self.assertEqual(res.get("name"), name)
+        self.assertIn("# override", res.get("text", ""))
+
+    def test_my(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "custom"))
+            with open(os.path.join(var, "custom", "my-foo.txt"), "w", encoding="utf-8") as f:
+                f.write(MINIMAL)
+            with mock.patch.object(zm, "VAR", var):
+                res = self._show("my-foo")
+                self.assertTrue(res.get("ok"))
+                self.assertEqual(res.get("name"), "my-foo")
+                self.assertIn("[TCP_TLS]", res.get("text", ""))
+                res = self._show("foo")                     # short name resolves to my-foo
+                self.assertEqual(res.get("name"), "my-foo")
+
+    def test_not_found(self):
+        with self.assertRaises(zm.Fail):
+            self._show("no-such-xyz")
+        with self.assertRaises(zm.Fail):
+            self._show("fs-no-such-xyz")
+        with self.assertRaises(zm.Fail):
+            self._show("my-no-such-xyz")
+        with self.assertRaises(zm.Fail):
+            self._show()
+
+
 class AutopickServiceState(unittest.TestCase):
     def _run(self, baseline_score, preset_scores):
         """Run cmd_autopick with stubbed side effects; return (calls, result)."""

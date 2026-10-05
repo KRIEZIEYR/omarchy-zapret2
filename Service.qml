@@ -222,6 +222,10 @@ Item {
   function saveList(name, text, cb) { act(["list", "save", name], "сохранение списка", "", cb, text) }
   function saveCustom(name, text, cb) { act(["custom", "save", name], "сохранение стратегии", "Стратегия сохранена", cb, text) }
   function removeCustom(name) { act(["custom", "rm", name], "удаление стратегии", "Стратегия удалена") }
+  function presetText(name, cb) {
+    var p = _aux.running ? _aux2 : _aux
+    run(p, ["presets", "show", name], function(r) { cb(r) }, "чтение")
+  }
 
   function runDoctor() {
     run(_aux, ["doctor"], function(r) { if (r.data) doctorItems = r.data.items || [] }, "диагностика")

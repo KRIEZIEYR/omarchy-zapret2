@@ -20,12 +20,13 @@ function niceTitle(stem) {
 
 function presetTitle(name) {
   var n = String(name || "")
+  if (!n) return ""
   if (n === "(off)") return "Без обхода"
   if (n === "fs-general") return "General"
   if (n.indexOf("fs-general-") === 0) return niceTitle(n.substring("fs-general-".length))
   if (n.indexOf("fs-") === 0) return niceTitle(n.substring(3))
   if (n.indexOf("my-") === 0) return n.substring(3)
-  return niceTitle(n)
+  return "NEXT · " + niceTitle(n)
 }
 
 function groupTitle(g) {
@@ -34,6 +35,16 @@ function groupTitle(g) {
   if (n === "next") return "Zapret 2 NEXT"
   if (n === "custom") return "Свои"
   return n
+}
+
+var DOCTOR_NAMES = { "Setup": "Установка", "System files": "Системные файлы",
+                     "Plugin and system copy": "Плагин и системная копия",
+                     "No other zapret": "Нет других zapret", "No VPN tunnel": "Нет VPN-туннеля",
+                     "Flowseal presets": "Пресеты Flowseal", "Service": "Служба" }
+
+function doctorName(name) {
+  var n = String(name || "")
+  return DOCTOR_NAMES.hasOwnProperty(n) ? DOCTOR_NAMES[n] : n
 }
 
 // "on" | "off" | "starting" | "error" | "setup" | "unknown"
@@ -135,8 +146,29 @@ function autopickRows(ap) {
   })
 }
 
+// Check context for the verdict note (never part of text).
+function checkNote(check, now) {
+  if (!check || !check.time) return ""
+  var a = ago(check.time, now)
+  return "по проверке " + (a ? a + ", " : "") + "обход был " + (check.active ? "включён" : "выключен")
+}
+
+// Short reason for failing categories: "QUIC" when only http3 probes fail,
+// otherwise the first curl error; fallback when no host details exist.
+function failReason(check, failing) {
+  var cats = (check && check.categories) || {}
+  var failed = []
+  for (var i = 0; i < failing.length; i++) {
+    var r = (cats[failing[i].key] && cats[failing[i].key].results) || []
+    for (var j = 0; j < r.length; j++) if (!r[j].ok) failed.push(r[j])
+  }
+  if (failed.length > 0 && failed.every(function(h) { return h.http3 })) return "QUIC не проходит"
+  if (failed.length > 0) return curlError(failed[0].error)
+  return "не открываются"
+}
+
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick".
-function verdict(st, check, autopick) {
+function verdict(st, check, autopick, now) {
   var s = stateOf(st)
   var on = (s === "on" || s === "starting")
   var ap = autopick || {}
@@ -144,20 +176,21 @@ function verdict(st, check, autopick) {
   var notNeeded = !!(ap && ap.notNeeded)
   var cats = categories(check)
   var failing = cats.filter(function(c) { return !c.good })
-  var names = failing.map(function(c) { return c.label }).join("/")
+  var note = checkNote(check, now)
   if (cats.length === 0) {
-    if (!on && notNeeded) return { text: "В этой сети обход сейчас не нужен", tone: "neutral", action: "none" }
-    if (!on && !hasPick) return { text: "Запустите автоподбор, чтобы найти рабочую стратегию", tone: "neutral", action: "autopick" }
-    return { text: "Проверок ещё не было", tone: "neutral", action: "none" }
+    if (!on && notNeeded) return { text: "Сайты открываются и без обхода (возможно, обход уже работает на роутере или в VPN)", tone: "neutral", action: "none", note: note }
+    if (!on && !hasPick) return { text: "Запустите автоподбор, чтобы найти рабочую стратегию", tone: "neutral", action: "autopick", note: note }
+    return { text: "Проверок ещё не было", tone: "neutral", action: "none", note: note }
   }
   if (failing.length === 0) {
-    if (!on && notNeeded) return { text: "В этой сети обход сейчас не нужен", tone: "neutral", action: "none" }
-    return { text: "Всё открывается", tone: "good", action: "none" }
+    if (!on && notNeeded) return { text: "Сайты открываются и без обхода (возможно, обход уже работает на роутере или в VPN)", tone: "neutral", action: "none", note: note }
+    return { text: "Всё открывается", tone: "good", action: "none", note: note }
   }
-  if (on) return { text: names + " не открываются — попробуйте другую стратегию", tone: "warn", action: "none" }
-  if (notNeeded) return { text: "В этой сети обход сейчас не нужен", tone: "neutral", action: "none" }
-  if (!hasPick) return { text: names + " не открываются — запустите автоподбор", tone: "bad", action: "autopick" }
-  return { text: names + " не открываются — включите обход", tone: "bad", action: "on" }
+  // Any category below full: the bypass may still help, never "не нужен".
+  var names = failing.map(function(c) { return c.label }).join("/")
+  var partial = failing.some(function(c) { return c.ok > 0 })
+  return { text: names + (partial ? " частично" : "") + ": " + failReason(check, failing),
+           tone: "warn", action: "autopick", note: note }
 }
 
 // Short human label for a curl probe error line.

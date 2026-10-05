@@ -65,7 +65,7 @@ Item {
   onTabChanged: {
     if (!ready) return
     if (tab === 4) { svc.runDoctor(); svc.loadLogs() }
-    if (tab === 3) svc.refreshBlockcheck()
+    if (tab === 3) { svc.refreshBlockcheck(); if (svc.doctorItems.length === 0) svc.runDoctor() }
   }
 
   // --- small building blocks ---------------------------------------------
@@ -105,6 +105,7 @@ Item {
   component Editor: ScrollView {
     property alias text: area.text
     property alias readOnly: area.readOnly
+    property alias placeholderText: area.placeholderText
     property alias area: area
     Layout.fillWidth: true
     Layout.fillHeight: true
@@ -301,7 +302,6 @@ Item {
                   + (root.svc.st.restarts > 0 ? " · перезапусков " + root.svc.st.restarts : "")
             }
           }
-          Label { text: root.ready && root.svc.isOn ? "Включён" : "Выключен" }
           ToggleSwitch {
             enabled: root.ready && root.svc.installed
             checked: root.ready && root.svc.isOn
@@ -325,6 +325,15 @@ Item {
             if (!root.ready) return Color.popups.text
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
             return v.tone === "good" ? Color.accent : (v.tone === "bad" || v.tone === "warn") ? Color.urgent : Color.popups.text
+          }
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: text !== ""
+          text: {
+            if (!root.ready) return ""
+            var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
+            return v.note || ""
           }
         }
         RowLayout {
@@ -391,8 +400,8 @@ Item {
               }
               Label {
                 Layout.fillWidth: true
-                font.bold: true
-                color: modelData.good ? root.fg : modelData.ok === 0 ? Color.urgent : root.dim
+                font.bold: !modelData.good
+                color: modelData.good ? root.fg : Color.urgent
                 text: {
                   var open = !!ov.expanded[catKey]
                   var base = modelData.label + " " + modelData.ok + "/" + modelData.total
@@ -435,6 +444,12 @@ Item {
     spacing: Style.space(10)
     property string editName: ""
     property bool editing: false
+    property string selectedName: ""
+    property string shownName: ""
+    property string shownText: ""
+    property bool showing: false
+    property string showError: ""
+    property var moreOpen: ({})
 
     function edit(name) {
       editing = true
@@ -448,90 +463,255 @@ Item {
           + "[QUIC]\n--lua-desync=fake:blob=quic_google:repeats=6\n"
     }
 
-    RowLayout {
-      Layout.fillWidth: true
-      visible: !sp.editing
-      Hint { Layout.fillWidth: true; text: "Не знаете, что выбрать? Запустите «Подбор» — он проверит все стратегии." }
-      Button { bordered: true; text: "Обновить из Flowseal"; onClicked: root.svc.updatePresets() }
-      Button { bordered: true; text: "Новая стратегия"; onClicked: sp.edit("") }
+    function show(name) {
+      showing = true
+      shownName = name
+      shownText = ""
+      showError = "Загрузка…"
+      root.svc.presetText(name, function(r) {
+        if (r.ok) { shownText = r.data.text; showError = "" }
+        else showError = r.message
+      })
     }
 
-    ListView {
-      Layout.fillWidth: true
-      Layout.fillHeight: true
-      visible: !sp.editing
-      clip: true
-      spacing: Style.space(4)
-      model: {
-        if (!root.ready) return []
-        var list = root.svc.presets.slice()
-        var rows = Model.autopickRows(root.svc.autopickResult)
-        var byPreset = {}
-        for (var i = 0; i < rows.length; i++) byPreset[rows[i].preset] = rows[i]
-        var order = []
-        for (var j = 0; j < list.length; j++) if (order.indexOf(list[j].group) === -1) order.push(list[j].group)
-        list.sort(function(a, b) {
-          var ga = order.indexOf(a.group), gb = order.indexOf(b.group)
-          if (ga !== gb) return ga - gb
-          var ra = byPreset[a.name], rb = byPreset[b.name]
-          var sa = (ra && (ra.total | 0) > 0) ? ra.score : -1, sb = (rb && (rb.total | 0) > 0) ? rb.score : -1
+    function copyAsOwn() {
+      editing = true
+      showing = false
+      editName = shownName.replace(/^my-/, "").replace(/^fs-/, "")
+      editor.text = shownText
+    }
+
+    function isSectionFormat(text) { return String(text || "").indexOf("[TCP_") !== -1 }
+
+    function pickRow(name) {
+      var rows = Model.autopickRows(root.svc.autopickResult)
+      for (var i = 0; i < rows.length; i++) if (rows[i].preset === name) return rows[i]
+      return null
+    }
+
+    function baseScore() {
+      var rows = Model.autopickRows(root.svc.autopickResult)
+      for (var i = 0; i < rows.length; i++) if (rows[i].baseline) return rows[i].score
+      return -1
+    }
+
+    function isWorse(name) {
+      var r = pickRow(name)
+      if (!r || r.baseline || (r.total | 0) === 0) return false
+      var b = baseScore()
+      return b >= 0 && r.score < b
+    }
+
+    function isTested(name) {
+      var r = pickRow(name)
+      return !!(r && ((r.total | 0) > 0 || r.error !== ""))
+    }
+
+    function flowsealSource(name) {
+      var s = String(name || "")
+      if (s.indexOf("fs-") !== 0) return ""
+      var rest = s.substring(3)
+      var dash = rest.indexOf("-")
+      if (dash === -1) return rest + ".bat"
+      return rest.substring(0, dash) + " (" + rest.substring(dash + 1).split("-").join(" ").toUpperCase() + ").bat"
+    }
+
+    function rowSubtitle(p) {
+      var parts = []
+      if (p.group === "flowseal") parts.push(sp.flowsealSource(p.name))
+      var r = sp.pickRow(p.name)
+      if (r && (r.total | 0) > 0) {
+        var s = r.score + "/" + r.total + " в подборе"
+        if (sp.isWorse(p.name)) s += " · хуже, чем без обхода"
+        parts.push(s)
+      } else if (r && r.error !== "") parts.push(r.error)
+      else parts.push("не проверялась")
+      if (root.ready && root.svc.preset === p.name) parts.push("активна")
+      if (r && r.chosen) parts.push("лучшая")
+      return parts.join(" · ")
+    }
+
+    function groups() {
+      if (!root.ready) return []
+      var order = []
+      var per = {}
+      var list = root.svc.presets.slice()
+      for (var j = 0; j < list.length; j++) {
+        var g = list[j].group || ""
+        if (order.indexOf(g) === -1) { order.push(g); per[g] = [] }
+        per[g].push(list[j])
+      }
+      var out = []
+      for (var k = 0; k < order.length; k++) {
+        var items = per[order[k]].slice()
+        items.sort(function(a, b) {
+          var ta = sp.isTested(a.name) ? 0 : 1, tb = sp.isTested(b.name) ? 0 : 1
+          if (ta !== tb) return ta - tb
+          var ra = sp.pickRow(a.name), rb = sp.pickRow(b.name)
+          var sa = ra ? ra.score : -1, sb = rb ? rb.score : -1
           if (sa !== sb) return sb - sa
           var ca = (ra && ra.chosen) ? 0 : 1, cb = (rb && rb.chosen) ? 0 : 1
           if (ca !== cb) return ca - cb
           return a.name.localeCompare(b.name, undefined, { numeric: true })
         })
-        return list
+        var tested = [], untested = []
+        for (var m = 0; m < items.length; m++) {
+          if (sp.isTested(items[m].name)) tested.push(items[m])
+          else untested.push(items[m])
+        }
+        out.push({ group: order[k], tested: tested, untested: untested })
       }
-      section.property: "group"
-      section.criteria: ViewSection.FullString
-      section.delegate: Label {
-        required property string section
-        visible: section !== ""
-        width: ListView.view.width
-        font.bold: true
-        color: root.dim
-        text: typeof Model.groupTitle === "function" ? Model.groupTitle(section) : section
-      }
-      delegate: Rectangle {
-        required property var modelData
-        width: ListView.view.width
-        height: row.implicitHeight + Style.space(14)
-        radius: Style.cornerRadius
-        color: root.ready && root.svc.preset === modelData.name ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.16)
-             : hover.hovered ? root.faint : "transparent"
-        border.color: root.ready && root.svc.preset === modelData.name ? Color.accent : "transparent"
-        HoverHandler { id: hover }
-        TapHandler { onTapped: if (root.svc.preset !== modelData.name) root.svc.setOption("preset", modelData.name) }
-        RowLayout {
-          id: row
-          anchors.fill: parent
-          anchors.margins: Style.space(7)
-          ColumnLayout {
+      return out
+    }
+
+    function groupRows(g) {
+      var rows = g.tested.slice()
+      if (g.untested.length === 0) return rows
+      if (sp.moreOpen[g.group]) return rows.concat(g.untested).concat([{ name: "", collapse: true, group: g.group }])
+      rows.push({ name: "", expander: g.untested.length, group: g.group })
+      return rows
+    }
+
+    function toggleMore(group) {
+      var e = Object.assign({}, sp.moreOpen)
+      e[group] = !e[group]
+      sp.moreOpen = e
+    }
+
+    RowLayout {
+      Layout.fillWidth: true
+      visible: !sp.editing && !sp.showing
+      Button { bordered: true; text: "Подобрать автоматически"; onClicked: { root.tab = 3; root.svc.autopick([]) } }
+      Button { bordered: true; text: "Обновить из Flowseal"; onClicked: root.svc.updatePresets() }
+      Button { bordered: true; text: "Новая стратегия"; onClicked: sp.edit("") }
+    }
+
+    ScrollView {
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      visible: !sp.editing && !sp.showing
+      clip: true
+      contentWidth: availableWidth
+      ColumnLayout {
+        width: parent.width
+        spacing: Style.space(10)
+        Repeater {
+          model: sp.groups()
+          delegate: ColumnLayout {
+            required property var modelData
             Layout.fillWidth: true
-            spacing: 0
-            Label { Layout.fillWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
-            Hint {
+            spacing: Style.space(4)
+            Label {
               Layout.fillWidth: true
-              text: {
-                var rows = Model.autopickRows(root.svc.autopickResult)
-                var r = null
-                for (var i = 0; i < rows.length; i++) if (rows[i].preset === modelData.name) r = rows[i]
-                var parts = []
-                if (r && (r.total | 0) > 0) parts.push(r.score + "/" + r.total + " в подборе")
-                else if (r && r.error !== "") parts.push(r.error)
-                else parts.push("не проверялась")
-                if (root.ready && root.svc.preset === modelData.name) parts.push("активна")
-                if (r && r.chosen) parts.push("лучшая")
-                return parts.join(" · ")
+              font.bold: true
+              color: root.dim
+              text: typeof Model.groupTitle === "function" ? Model.groupTitle(modelData.group) : modelData.group
+            }
+            Repeater {
+              model: sp.groupRows(modelData)
+              delegate: Rectangle {
+                id: stratRect
+                required property var modelData
+                property bool isSpecial: modelData.expander !== undefined || modelData.collapse === true
+                Layout.fillWidth: true
+                height: stratRow.implicitHeight + Style.space(14)
+                radius: Style.cornerRadius
+                color: !isSpecial && root.ready && root.svc.preset === modelData.name
+                         ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.16)
+                       : hover.hovered ? root.faint : "transparent"
+                border.color: !isSpecial && root.ready && root.svc.preset === modelData.name ? Color.accent
+                            : !isSpecial && sp.selectedName === modelData.name ? root.line : "transparent"
+                HoverHandler { id: hover }
+                TapHandler {
+                  onTapped: {
+                    if (modelData.expander !== undefined || modelData.collapse === true) sp.toggleMore(modelData.group)
+                    else sp.selectedName = modelData.name
+                  }
+                }
+                RowLayout {
+                  id: stratRow
+                  anchors.fill: parent
+                  anchors.margins: Style.space(7)
+                  Label {
+                    Layout.fillWidth: true
+                    visible: stratRect.isSpecial
+                    color: root.dim
+                    text: modelData.collapse === true ? "▾ Свернуть" : "▸ Ещё " + modelData.expander + " не проверялись"
+                  }
+                  ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: !stratRect.isSpecial
+                    spacing: 0
+                    Label { Layout.fillWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
+                    Hint {
+                      Layout.fillWidth: true
+                      color: sp.isWorse(modelData.name) ? Color.urgent : root.dim
+                      text: sp.rowSubtitle(modelData)
+                    }
+                  }
+                  Button {
+                    visible: !stratRect.isSpecial && sp.selectedName === modelData.name
+                    bordered: true
+                    enabled: root.svc.preset !== modelData.name
+                    text: "Применить"
+                    onClicked: root.svc.setOption("preset", modelData.name)
+                  }
+                  Button {
+                    visible: !stratRect.isSpecial && sp.selectedName === modelData.name
+                    bordered: true
+                    text: "Показать"
+                    onClicked: sp.show(modelData.name)
+                  }
+                  Button { visible: !stratRect.isSpecial && modelData.name.indexOf("my-") === 0; text: "Изменить"; onClicked: sp.edit(modelData.name) }
+                  Button {
+                    visible: !stratRect.isSpecial && modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
+                    text: "Удалить"
+                    onClicked: root.svc.removeCustom(modelData.name)
+                  }
+                }
               }
             }
           }
-          Button { visible: modelData.name.indexOf("my-") === 0; text: "Изменить"; onClicked: sp.edit(modelData.name) }
-          Button {
-            visible: modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
-            text: "Удалить"
-            onClicked: root.svc.removeCustom(modelData.name)
-          }
+        }
+      }
+    }
+
+    ColumnLayout {
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      visible: sp.showing
+      spacing: Style.space(8)
+      RowLayout {
+        Layout.fillWidth: true
+        Label { Layout.fillWidth: true; font.bold: true; text: Model.presetTitle(sp.shownName) }
+        Button { text: "Закрыть"; onClicked: sp.showing = false }
+      }
+      Hint {
+        Layout.fillWidth: true
+        visible: sp.showError !== ""
+        text: sp.showError
+      }
+      Hint {
+        Layout.fillWidth: true
+        visible: sp.shownText !== "" && !sp.isSectionFormat(sp.shownText)
+        text: "Полный пресет Flowseal: его можно только посмотреть. Свои стратегии используют формат секций ([TCP_HTTP], [TCP_TLS], …)."
+      }
+      Editor {
+        readOnly: true
+        text: sp.shownText
+      }
+      RowLayout {
+        Button {
+          bordered: true
+          visible: root.ready && root.svc.preset !== sp.shownName
+          text: "Применить"
+          onClicked: root.svc.setOption("preset", sp.shownName)
+        }
+        Button {
+          bordered: true
+          visible: sp.shownText !== "" && sp.isSectionFormat(sp.shownText)
+          text: "Скопировать как свою"
+          onClicked: sp.copyAsOwn()
         }
       }
     }
@@ -614,7 +794,11 @@ Item {
       text: lp.editable ? "По одному домену (поддомены включаются сами) или IP/CIDR на строку. Неверные строки отбрасываются. Сохранение перезапускает обход."
                         : "Встроенный список. Свои записи добавляйте в «Мои …»."
     }
-    Editor { id: listEditor; readOnly: !lp.editable }
+    Editor {
+      id: listEditor
+      readOnly: !lp.editable
+      placeholderText: "example.com\nsub.example.org\n# по одному домену на строку"
+    }
     RowLayout {
       visible: lp.editable
       Button {
@@ -655,7 +839,7 @@ Item {
           Layout.fillWidth: true
           visible: root.ready && root.svc.autopickResult.notNeeded === true && root.svc.busyLabel !== "автоподбор"
           color: Color.accent
-          text: "Без обхода открывается не хуже: в этой сети обход сейчас не нужен"
+          text: "Без обхода открывается не хуже: обход сейчас не нужен, или он уже работает на роутере или в VPN"
         }
         Label {
           visible: root.ready && root.svc.progressInfo !== null && root.svc.busyLabel === "автоподбор"
@@ -688,16 +872,41 @@ Item {
         }
       }
 
+        Hint {
+          Layout.fillWidth: true
+          visible: root.ready && root.svc.autopickResult.time !== undefined && (root.svc.autopickResult.rows || []).length > 0
+          text: "● — выбрана сейчас"
+        }
+
       Card {
         RowLayout {
           Layout.fillWidth: true
           Label { Layout.fillWidth: true; font.bold: true; text: "Глубокий поиск: blockcheck2" }
           Button {
             bordered: true
+            enabled: {
+              if (!root.ready || root.svc.blockcheckRunning) return true
+              var items = root.svc.doctorItems || []
+              for (var i = 0; i < items.length; i++)
+                if (items[i].name === "host/nslookup" && !items[i].ok) return false
+              return true
+            }
             text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить"
             onClicked: root.svc.blockcheckRunning ? root.svc.blockcheckStop()
                        : root.svc.blockcheckStart(domains.text.split(/[\s,]+/).filter(function(d) { return d !== "" }), level.value)
           }
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: {
+            if (!root.ready || root.svc.blockcheckRunning) return false
+            var items = root.svc.doctorItems || []
+            for (var i = 0; i < items.length; i++)
+              if (items[i].name === "host/nslookup" && !items[i].ok) return true
+            return false
+          }
+          color: Color.urgent
+          text: "нужен bind: omarchy pkg add bind"
         }
         Hint {
           Layout.fillWidth: true
@@ -711,7 +920,7 @@ Item {
             Layout.preferredWidth: Style.space(160)
             showLabel: false
             value: "quick"
-            options: [{ value: "quick", label: "quick" }, { value: "standard", label: "standard" }, { value: "force", label: "force" }]
+            options: [{ value: "quick", label: "быстрый (минуты)" }, { value: "standard", label: "стандартный (до часа)" }, { value: "force", label: "полный (часы)" }]
             onChanged: function(v) { value = v }
           }
         }
@@ -732,8 +941,17 @@ Item {
         }
         Hint {
           visible: root.ready && root.svc.blockcheck !== null && root.svc.blockcheck.lines > 0
-          text: root.ready && root.svc.blockcheck ? (root.svc.blockcheck.done ? "Готово. " : root.svc.blockcheckRunning ? "Идёт поиск… " : "")
-                + root.svc.blockcheck.lines + " строк журнала" : ""
+          text: {
+            if (!root.ready || !root.svc.blockcheck) return ""
+            var bc = root.svc.blockcheck
+            var prefix = bc.done ? "Готово. " : root.svc.blockcheckRunning ? "Идёт поиск… " : ""
+            var tail = bc.tail || []
+            for (var i = tail.length - 1; i >= 0; i--) {
+              var s = String(tail[i])
+              if (s.substring(0, 2) === "- " || s.charAt(0) === "*") return prefix + s
+            }
+            return prefix + bc.lines + " строк журнала"
+          }
         }
         RowLayout {
           Layout.fillWidth: true
@@ -783,14 +1001,14 @@ Item {
         RowLayout {
           Layout.fillWidth: true
           Label { Layout.fillWidth: true; font.bold: true; text: "Диагностика" }
-          Button { text: "Повторить"; onClicked: root.svc.runDoctor() }
+          Button { bordered: true; text: "Повторить"; onClicked: root.svc.runDoctor() }
         }
         Repeater {
           model: root.ready ? root.svc.doctorItems : []
           delegate: RowLayout {
             required property var modelData
             Layout.fillWidth: true
-            Label { Layout.preferredWidth: Style.space(170); text: (modelData.ok ? "✓ " : "✗ ") + modelData.name; color: modelData.ok ? root.fg : Color.urgent }
+            Label { Layout.preferredWidth: Style.space(170); text: (modelData.ok ? "✓ " : "✗ ") + (typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name); color: modelData.ok ? root.fg : Color.urgent }
             Hint { Layout.fillWidth: true; text: modelData.detail }
           }
         }
@@ -800,13 +1018,14 @@ Item {
         RowLayout {
           Layout.fillWidth: true
           Label { Layout.fillWidth: true; font.bold: true; text: "Журнал службы" }
-          Button { text: "Обновить"; onClicked: root.svc.loadLogs() }
+          Button { bordered: true; text: "Обновить"; onClicked: root.svc.loadLogs() }
         }
         Hint { visible: root.ready && root.svc.logNote !== ""; Layout.fillWidth: true; text: root.ready ? root.svc.logNote : "" }
         Editor {
           Layout.preferredHeight: Style.space(240)
           Layout.fillHeight: false
           readOnly: true
+          area.wrapMode: TextEdit.Wrap
           text: root.ready ? root.svc.logLines.join("\n") : ""
         }
       }
@@ -825,6 +1044,8 @@ Item {
   }
 
   component SettingsPage: ScrollView {
+    id: stp
+    property bool showExtra: false
     clip: true
     contentWidth: availableWidth
     ColumnLayout {
@@ -865,9 +1086,50 @@ Item {
           onChanged: function(v) { root.svc.setOption("game", v) }
         }
         Hint { Layout.fillWidth: true; text: "Обход для игр по IP-сетям (ipset). Нагружает сильнее: включайте, если игра не подключается." }
+        Dropdown {
+          Layout.fillWidth: true
+          label: "IP-сети (ipset)"
+          value: root.ready ? (root.svc.settings.ipset || "loaded") : "loaded"
+          options: [{ value: "loaded", label: "По списку" }, { value: "none", label: "Выключено" }, { value: "any", label: "Любой IP" }]
+          onChanged: function(v) { root.svc.setOption("ipset", v) }
+        }
         RowLayout {
           Layout.fillWidth: true
-          visible: root.ready && (root.svc.settings.game || "off") !== "off"
+          visible: root.ready && (root.svc.settings.game || "off") !== "off" && (root.svc.settings.ipset || "loaded") === "none"
+          Hint {
+            Layout.fillWidth: true
+            color: Color.urgent
+            text: "Игровой фильтр работает по IP-сетям: включите «IP-сети: По списку»"
+          }
+          Button { bordered: true; text: "Включить"; onClicked: root.svc.setOption("ipset", "loaded") }
+        }
+        Dropdown {
+          Layout.fillWidth: true
+          label: "Голос Discord"
+          value: root.ready ? (root.svc.settings.voice || "compatible") : "compatible"
+          options: [{ value: "compatible", label: "Совместимый" }, { value: "standard", label: "Стандартный" }, { value: "off", label: "Выключен" }]
+          onChanged: function(v) { root.svc.setOption("voice", v) }
+        }
+        Hint {
+          Layout.fillWidth: true
+          text: {
+            var v = root.ready ? (root.svc.settings.voice || "compatible") : "compatible"
+            if (v === "standard") return "Стандартный — подмена нулями, звонки могут не работать"
+            if (v === "off") return "Выключен — голосовой трафик идёт без подмены"
+            return "Совместимый — мягкая подмена для звонков Discord"
+          }
+        }
+      }
+
+      Card {
+        RowLayout {
+          Layout.fillWidth: true
+          Label { Layout.fillWidth: true; font.bold: true; text: (stp.showExtra ? "▾ " : "▸ ") + "Дополнительно" }
+          TapHandler { onTapped: stp.showExtra = !stp.showExtra }
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          visible: stp.showExtra && root.ready && (root.svc.settings.game || "off") !== "off"
           ColumnLayout {
             Layout.fillWidth: true
             spacing: Style.space(2)
@@ -893,33 +1155,21 @@ Item {
         }
         Dropdown {
           Layout.fillWidth: true
-          label: "IP-сети (ipset)"
-          value: root.ready ? (root.svc.settings.ipset || "loaded") : "loaded"
-          options: [{ value: "loaded", label: "По списку" }, { value: "none", label: "Выключено" }, { value: "any", label: "Любой IP" }]
-          onChanged: function(v) { root.svc.setOption("ipset", v) }
-        }
-        Dropdown {
-          Layout.fillWidth: true
-          label: "Голос Discord"
-          value: root.ready ? (root.svc.settings.voice || "compatible") : "compatible"
-          options: [{ value: "compatible", label: "Совместимый" }, { value: "standard", label: "Стандартный" }, { value: "off", label: "Выключен" }]
-          onChanged: function(v) { root.svc.setOption("voice", v) }
-        }
-        Dropdown {
-          Layout.fillWidth: true
+          visible: stp.showExtra
           label: "Фейк для голоса Discord"
           value: root.ready ? (root.svc.settings.discordFake || "default") : "default"
           options: (root.ready && root.svc.fakeChoices ? root.svc.fakeChoices : ["default"]).map(function(n) {
-            return { value: n, label: n === "default" ? "По умолчанию" : String(n).replace(/^fs_/, "") }
+            return { value: n, label: n === "default" ? "По умолчанию" : String(n).replace(/^fs_/, "").replace(/_/g, " ") }
           })
           onChanged: function(v) { root.svc.setOption("discordfake", v) }
         }
         Dropdown {
           Layout.fillWidth: true
+          visible: stp.showExtra
           label: "Фейк для игр"
           value: root.ready ? (root.svc.settings.gameFake || "default") : "default"
           options: (root.ready && root.svc.fakeChoices ? root.svc.fakeChoices : ["default"]).map(function(n) {
-            return { value: n, label: n === "default" ? "По умолчанию" : String(n).replace(/^fs_/, "") }
+            return { value: n, label: n === "default" ? "По умолчанию" : String(n).replace(/^fs_/, "").replace(/_/g, " ") }
           })
           onChanged: function(v) { root.svc.setOption("gamefake", v) }
         }
@@ -959,9 +1209,33 @@ Item {
         Label { font.bold: true; text: "Горячие клавиши" }
         Hint {
           Layout.fillWidth: true
-          text: "Добавьте в ~/.config/hypr/bindings.lua, например:\n"
-              + "omarchy-shell krieziey.omarchy-zapret2 toggle — окно приложения\n"
-              + "omarchy-shell krieziey.omarchy-zapret2 toggleBypass — включить/выключить обход"
+          text: "Добавьте в ~/.config/hypr/bindings.lua, например:"
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          TextField {
+            id: hotkeyApp
+            Layout.fillWidth: true
+            readOnly: true
+            selectByMouse: true
+            text: "omarchy-shell krieziey.omarchy-zapret2 toggle"
+          }
+          Button { bordered: true; text: "Скопировать"; onClicked: Quickshell.execDetached(["wl-copy", hotkeyApp.text]) }
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          TextField {
+            id: hotkeyBypass
+            Layout.fillWidth: true
+            readOnly: true
+            selectByMouse: true
+            text: "omarchy-shell krieziey.omarchy-zapret2 toggleBypass"
+          }
+          Button { bordered: true; text: "Скопировать"; onClicked: Quickshell.execDetached(["wl-copy", hotkeyBypass.text]) }
+        }
+        Hint {
+          Layout.fillWidth: true
+          text: "Первая команда — окно приложения, вторая — включить/выключить обход"
         }
       }
     }

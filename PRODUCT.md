@@ -63,8 +63,11 @@ and Zapret 2 NEXT stay visible in the README.
 
 ## Evidence on Hand
 
-Real measurements from the author's network (2026-10): without bypass 11/14
-checks pass; tcp_ts strategies keep 11/14; tcp_md5 strategies drop to 2/14.
+Real measurements from the author's network (2026-10). That network already
+runs zapret on the router, so these numbers only show which strategies break
+nothing, not DPI-bypass efficacy: without bypass 12/14; all 22 translated
+Flowseal strategies 11-12/14; NEXT tcp_md5 presets drop to 2-4/14. Efficacy
+against real ISP DPI is untested so far.
 No users, testimonials or download numbers exist yet; do not invent them.
 
 ## Product Principles

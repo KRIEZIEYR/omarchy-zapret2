@@ -1053,6 +1053,37 @@ def cmd_presets():
     out({"ok": True, "presets": all_presets()})
 
 
+def cmd_presets_show(args):
+    if len(args) != 1:
+        raise Fail("usage: presets show <name>")
+    raw = args[0]
+    if raw in PRESETS:
+        try:
+            with open(os.path.join(DATA, "presets", raw + ".txt"), encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            raise Fail("no such strategy: %s" % raw)
+        out({"ok": True, "name": raw, "text": text})
+        return
+    if raw.startswith("fs-"):
+        if not RE_NAME.match(raw):
+            raise Fail("no such strategy: %s" % raw)
+        text = read_nofollow(var_path("flowseal", raw + ".txt"), MAX_SMALL * 4)
+        if text is None:
+            try:
+                with open(os.path.join(DATA, "presets", "flowseal", raw + ".txt"), encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                raise Fail("no such strategy: %s" % raw)
+        out({"ok": True, "name": raw, "text": text})
+        return
+    name = custom_name(raw)
+    text = read_nofollow(var_path("custom", name + ".txt"), MAX_SMALL)
+    if text is None:
+        raise Fail("no such strategy: %s" % raw)
+    out({"ok": True, "name": name, "text": text})
+
+
 FS_CONTENTS_API = "https://api.github.com/repos/Flowseal/zapret-discord-youtube/contents/"
 FS_RAW_PREFIX = "https://raw.githubusercontent.com/Flowseal/"
 
@@ -2177,6 +2208,8 @@ def main(argv):
         cmd_status()
     elif cmd == "presets" and args[:1] == ["update"]:
         cmd_presets_update()
+    elif cmd == "presets" and args[:1] == ["show"]:
+        cmd_presets_show(args[1:])
     elif cmd == "presets":
         cmd_presets()
     elif cmd in ("on", "off", "restart"):
