@@ -5,7 +5,7 @@ const vm = require("vm")
 
 const src = fs.readFileSync(path.join(__dirname, "..", "model", "Zapret.js"), "utf8").replace(/^\.pragma library\s*/, "")
 const Model = {}
-vm.runInNewContext(src + "\nObject.assign(Model, { presetTitle, groupTitle, doctorName, stateOf, stateText, summary, categories, checkLine, ago, lastJson, parseLine, autopickRows, verdict, curlError, popupPresets, findingTitle, countLines })", { Model })
+vm.runInNewContext(src + "\nObject.assign(Model, { presetTitle, groupTitle, doctorName, stateOf, stateText, summary, categories, checkLine, ago, lastJson, parseLine, autopickRows, verdict, curlError, popupPresets, findingTitle, countLines, luminance, contrastRatio, pickBad, groupSearchRows, doctorDetail, shortLog })", { Model })
 
 let failed = 0, passed = 0
 global.test = (name, fn) => {

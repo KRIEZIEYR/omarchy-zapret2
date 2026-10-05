@@ -181,3 +181,83 @@ test("autopick baseline row", () => {
   eq(rows[1].baseline, true)
   eq(rows[1].chosen, false)
 })
+
+test("verdict stale check", () => {
+  const on = { installed: true, active: "active", settings: { preset: "alt5" } }
+  const off = { installed: true, active: "inactive", settings: { preset: "alt5" } }
+  const cats = { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } }
+  const fresh = { time: 1000, preset: "alt5", active: true, categories: cats }
+  eq(Model.verdict(on, Object.assign({}, fresh, { preset: "general" }), null),
+    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия general, обход был включён" })
+  eq(Model.verdict(on, Object.assign({}, fresh, { active: false }), null),
+    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия alt5, обход был выключен" })
+  eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Всё открывается")
+  eq(Model.verdict(on, fresh, null, 1010), { text: "Всё открывается", tone: "good", action: "none", note: "по проверке только что, обход был включён" })
+  eq(Model.verdict(on, null, null), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })
+})
+
+test("luminance and contrast", () => {
+  const near = (a, b, d) => { if (Math.abs(a - b) > d) throw new Error(a + " not ≈ " + b) }
+  near(Model.luminance("#000000"), 0, 0.001)
+  near(Model.luminance("#ffffff"), 1, 0.001)
+  near(Model.luminance("#fff"), 1, 0.001)
+  near(Model.luminance("000"), 0, 0.001)
+  near(Model.contrastRatio("#000000", "#ffffff"), 21, 0.01)
+  near(Model.contrastRatio("#ffffff", "#000000"), 21, 0.01)
+  eq(Model.pickBad("#ffffff", "#000000"), "#ffffff")
+  eq(Model.pickBad("#e06c75", "#e06c75"), "#e06c75")
+  eq(Model.pickBad("#777777", "#888888", "#123456"), "#123456")
+})
+
+test("groupSearchRows", () => {
+  eq(Model.groupSearchRows([]), { baseline: null, best: null, ties: [], rest: [] })
+  eq(Model.groupSearchRows(null), { baseline: null, best: null, ties: [], rest: [] })
+  eq(Model.groupSearchRows(undefined), { baseline: null, best: null, ties: [], rest: [] })
+  const rows = [
+    { preset: "(off)", score: 2, total: 10, baseline: true },
+    { preset: "general", score: 8, total: 10 },
+    { preset: "alt", score: 10, total: 10 },
+    { preset: "voice", score: 10, total: 10 },
+    { preset: "alt3", score: 5, total: 10 },
+  ]
+  const g = Model.groupSearchRows(rows)
+  eq(g.baseline.preset, "(off)")
+  eq(g.best.preset, "alt")
+  eq(g.ties.map(r => r.preset), ["voice"])
+  eq(g.rest.map(r => r.preset), ["general", "alt3"])
+  const flagged = Model.groupSearchRows([{ preset: "a", score: 1, isBaseline: true }, { preset: "b", score: 5 }, { preset: "c", score: 3 }])
+  eq(flagged.baseline.preset, "a")
+  eq(flagged.best.preset, "b")
+  eq(flagged.rest.map(r => r.preset), ["c"])
+  const noFlag = Model.groupSearchRows([{ preset: "a", score: 1 }, { preset: "b", score: 2 }])
+  eq(noFlag.baseline.preset, "a")
+  eq(noFlag.best.preset, "b")
+  eq(noFlag.ties, [])
+  eq(noFlag.rest, [])
+  const onlyBase = Model.groupSearchRows([{ preset: "(off)", score: 2, baseline: true }])
+  eq(onlyBase.baseline.preset, "(off)")
+  eq(onlyBase.best, null)
+})
+
+test("doctorDetail", () => {
+  eq(Model.doctorDetail("Setup", "run setup"), "запустите установку")
+  eq(Model.doctorDetail("Plugin and system copy", "the plugin was updated: run setup --app-only (Update system part)"), "плагин обновлён: установите обновление системной части")
+  eq(Model.doctorDetail("host/nslookup", "blockcheck2 needs them: omarchy pkg add bind"), "нужны для blockcheck2: omarchy pkg add bind")
+  eq(Model.doctorDetail("host/nslookup", "for blockcheck2"), "для blockcheck2")
+  eq(Model.doctorDetail("System files", "142 files intact"), "142 файлов в порядке")
+  eq(Model.doctorDetail("System files", "1 file intact"), "1 файлов в порядке")
+  eq(Model.doctorDetail("No VPN tunnel", "omarchy-xray TUN is on: traffic leaves through the tunnel, the bypass does not apply"), "включён TUN omarchy-xray: трафик идёт в туннель, обход не применяется")
+  eq(Model.doctorDetail("nft", "install nftables/curl/polkit"), "установите nftables/curl/polkit")
+  eq(Model.doctorDetail("nft", "install nftables"), "установите nftables")
+  eq(Model.doctorDetail("curl", "install curl"), "установите curl")
+  eq(Model.doctorDetail("pkexec", "install polkit"), "установите polkit")
+  eq(Model.doctorDetail("Setup", "another user"), "another user")
+  eq(Model.doctorDetail("Setup", "please run setup now"), "please запустите установку now")
+})
+
+test("shortLog", () => {
+  eq(Model.shortLog("2026-10-05T23:09:53+03:00 thinkbook systemd[1]: msg"), "23:09:53 msg")
+  eq(Model.shortLog("23:09:53 thinkbook systemd[1]: hello world"), "23:09:53 hello world")
+  eq(Model.shortLog("Oct 05 23:09:53 thinkbook systemd[1]: hi"), "23:09:53 hi")
+  eq(Model.shortLog("plain line without time"), "plain line without time")
+})

@@ -35,6 +35,7 @@ Item {
   readonly property color dim: Qt.rgba(fg.r, fg.g, fg.b, 0.6)
   readonly property color faint: Qt.rgba(fg.r, fg.g, fg.b, 0.08)
   readonly property color line: Qt.rgba(fg.r, fg.g, fg.b, 0.18)
+  readonly property color bad: Model.pickBad(Color.urgent, Color.popups.background, "#e06c75")
 
   function open(payloadJson) {
     var p = {}
@@ -102,6 +103,44 @@ Item {
     }
   }
 
+  component PickRow: RowLayout {
+    required property var row
+    property int baseScore: -1
+    property bool selected: false
+    signal picked(string preset)
+    HoverHandler { id: hover }
+    TapHandler { onTapped: { if (row && !row.baseline) picked(row.preset) } }
+    Label {
+      Layout.preferredWidth: Style.space(180)
+      text: ((row && row.chosen) ? "● " : "") + ((row && row.title) || "")
+      font.bold: !!(row && row.chosen)
+    }
+    Rectangle {
+      Layout.fillWidth: true
+      height: Style.space(6)
+      radius: height / 2
+      color: root.faint
+      Rectangle {
+        width: parent.width * ((row && row.pct) || 0) / 100
+        height: parent.height
+        radius: parent.radius
+        color: ((row && row.pct) || 0) === 100 ? Color.accent : (row && !row.baseline && baseScore >= 0 && (row.score || 0) < baseScore ? root.bad : root.dim)
+      }
+    }
+    Hint {
+      Layout.preferredWidth: Style.space(160)
+      text: (row && row.error) ? String(row.error) : ((row && row.score) || 0) + "/" + ((row && row.total) || 0)
+      elide: Text.ElideRight
+      wrapMode: Text.NoWrap
+    }
+    Button {
+      text: "Применить"
+      visible: hover.hovered || selected
+      enabled: !!row && !row.baseline && root.ready && root.svc.preset !== row.preset
+      onClicked: { picked(row.preset); root.svc.setOption("preset", row.preset) }
+    }
+  }
+
   component Editor: ScrollView {
     property alias text: area.text
     property alias readOnly: area.readOnly
@@ -114,6 +153,7 @@ Item {
     TextArea {
       id: area
       color: root.fg
+      placeholderTextColor: Qt.rgba(root.dim.r, root.dim.g, root.dim.b, 0.5)
       font.family: root.monoFamily
       font.pixelSize: Style.font.bodySmall
       selectByMouse: true
@@ -173,7 +213,7 @@ Item {
               Layout.bottomMargin: Style.space(10)
               ZapretIcon {
                 iconSize: Style.space(28)
-                color: root.ready && root.svc.bypassState === "error" ? Color.urgent : root.fg
+                color: root.ready && root.svc.bypassState === "error" ? root.bad : root.fg
                 filled: root.ready && root.svc.isOn
                 warning: root.ready && root.svc.errorText !== ""
               }
@@ -214,7 +254,16 @@ Item {
 
             Hint {
               Layout.fillWidth: true
-              text: root.ready && root.svc.busy ? "Выполняется: " + root.svc.busyLabel + "…" : "Ctrl+1…6: вкладки · Ctrl+T: вкл/выкл"
+              visible: root.ready && root.svc.busy
+              text: root.ready ? "Выполняется: " + root.svc.busyLabel + "…" : ""
+            }
+            Hint {
+              Layout.fillWidth: true
+              text: "Ctrl+1…6 — вкладки"
+            }
+            Hint {
+              Layout.fillWidth: true
+              text: "Ctrl+T — вкл/выкл"
             }
           }
 
@@ -232,7 +281,7 @@ Item {
               textFormat: Text.PlainText
               wrapMode: Text.Wrap
               text: !root.ready ? "" : root.svc.errorText !== "" ? root.svc.errorText : root.svc.flashText
-              color: root.ready && root.svc.errorText !== "" ? Color.urgent : Color.accent
+              color: root.ready && root.svc.errorText !== "" ? root.bad : Color.accent
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
@@ -291,7 +340,7 @@ Item {
             Text {
               Layout.fillWidth: true
               text: root.ready ? Model.stateText(root.svc.st) : ""
-              color: root.ready && root.svc.bypassState === "error" ? Color.urgent : root.fg
+              color: root.ready && root.svc.bypassState === "error" ? root.bad : root.fg
               font.family: root.fontFamily
               font.pixelSize: Style.font.body * 1.4
               font.bold: true
@@ -324,7 +373,7 @@ Item {
           color: {
             if (!root.ready) return Color.popups.text
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
-            return v.tone === "good" ? Color.accent : (v.tone === "bad" || v.tone === "warn") ? Color.urgent : Color.popups.text
+            return v.tone === "good" ? Color.accent : (v.tone === "bad" || v.tone === "warn") ? root.bad : Color.popups.text
           }
         }
         Hint {
@@ -344,12 +393,14 @@ Item {
             text: {
               if (!root.ready) return "Включить обход"
               var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
+              if (v.action === "check") return "Проверить"
               if (v.action === "autopick") return "Подобрать стратегию"
               return root.svc.isOn ? "Выключить обход" : "Включить обход"
             }
             onClicked: {
               var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
-              if (v.action === "autopick") { root.tab = 3; root.svc.autopick([]) }
+              if (v.action === "check") root.svc.runCheck()
+              else if (v.action === "autopick") { root.tab = 3; root.svc.autopick([]) }
               else root.svc.toggle()
             }
           }
@@ -376,12 +427,6 @@ Item {
           Hint { text: root.ready ? Model.ago(root.svc.check.time) : "" }
           Button { bordered: true; text: "Проверить"; onClicked: root.svc.runCheck() }
         }
-        Hint {
-          Layout.fillWidth: true
-          visible: root.ready && root.svc.check.preset !== undefined
-          text: root.ready ? "Последняя проверка: стратегия " + Model.presetTitle(root.svc.check.preset)
-                             + (root.svc.check.active ? ", обход был включён" : ", обход был выключен") : ""
-        }
         Repeater {
           model: root.ready ? Model.categories(root.svc.check) : []
           delegate: ColumnLayout {
@@ -401,10 +446,11 @@ Item {
               Label {
                 Layout.fillWidth: true
                 font.bold: !modelData.good
-                color: modelData.good ? root.fg : Color.urgent
+                color: modelData.good ? root.fg : root.bad
                 text: {
                   var open = !!ov.expanded[catKey]
-                  var base = modelData.label + " " + modelData.ok + "/" + modelData.total
+                  var glyph = modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")
+                  var base = glyph + modelData.label + " " + modelData.ok + "/" + modelData.total
                   if (modelData.good) return (open ? "▾ " : "▸ ") + base
                   var hosts = (root.ready && root.svc.check.categories[modelData.key]) ? root.svc.check.categories[modelData.key].results : []
                   var failed = hosts.filter(function(h) { return !h.ok })
@@ -423,7 +469,7 @@ Item {
                 Hint {
                   Layout.fillWidth: true
                   text: (modelData.ok ? "✓ " : "✗ ") + modelData.url.replace("https://", "") + (modelData.http3 ? " (QUIC)" : "")
-                  color: modelData.ok ? root.dim : Color.urgent
+                  color: modelData.ok ? root.dim : root.bad
                 }
                 Hint {
                   text: modelData.ok ? Math.round(modelData.time * 1000) + " мс" : Model.curlError(modelData.error)
@@ -450,6 +496,10 @@ Item {
     property bool showing: false
     property string showError: ""
     property var moreOpen: ({})
+    property string armDelete: ""
+    Timer { id: disarmTimer; interval: 3000; onTriggered: sp.armDelete = "" }
+    onVisibleChanged: if (visible) Qt.callLater(scrollToActive)
+    Component.onCompleted: if (visible) Qt.callLater(scrollToActive)
 
     function edit(name) {
       editing = true
@@ -522,7 +572,7 @@ Item {
       var r = sp.pickRow(p.name)
       if (r && (r.total | 0) > 0) {
         var s = r.score + "/" + r.total + " в подборе"
-        if (sp.isWorse(p.name)) s += " · хуже, чем без обхода"
+        if (sp.isWorse(p.name)) s += " · ⚠ хуже, чем без обхода"
         parts.push(s)
       } else if (r && r.error !== "") parts.push(r.error)
       else parts.push("не проверялась")
@@ -578,15 +628,38 @@ Item {
       sp.moreOpen = e
     }
 
+    function scrollToActive() {
+      if (!root.ready || !root.svc.preset) return
+      var groups = sp.groups()
+      for (var gi = 0; gi < groups.length; gi++) {
+        var rows = sp.groupRows(groups[gi])
+        for (var ri = 0; ri < rows.length; ri++) {
+          if (rows[ri].name !== "" && rows[ri].name === root.svc.preset) {
+            var gItem = groupRep.itemAt(gi)
+            if (gItem && gItem.rowsRep) {
+              var rItem = gItem.rowsRep.itemAt(ri)
+              if (rItem) stratScroll.contentItem.contentY = Math.max(0, gItem.y + rItem.y - stratScroll.height / 2)
+            }
+            return
+          }
+        }
+        var un = groups[gi].untested
+        for (var ui = 0; ui < un.length; ui++) {
+          if (un[ui].name === root.svc.preset) { sp.toggleMore(groups[gi].group); Qt.callLater(scrollToActive); return }
+        }
+      }
+    }
+
     RowLayout {
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
       Button { bordered: true; text: "Подобрать автоматически"; onClicked: { root.tab = 3; root.svc.autopick([]) } }
-      Button { bordered: true; text: "Обновить из Flowseal"; onClicked: root.svc.updatePresets() }
+      Button { bordered: true; text: "Обновить стратегии из Flowseal"; onClicked: root.svc.updatePresets() }
       Button { bordered: true; text: "Новая стратегия"; onClicked: sp.edit("") }
     }
 
     ScrollView {
+      id: stratScroll
       Layout.fillWidth: true
       Layout.fillHeight: true
       visible: !sp.editing && !sp.showing
@@ -596,6 +669,7 @@ Item {
         width: parent.width
         spacing: Style.space(10)
         Repeater {
+          id: groupRep
           model: sp.groups()
           delegate: ColumnLayout {
             required property var modelData
@@ -608,6 +682,7 @@ Item {
               text: typeof Model.groupTitle === "function" ? Model.groupTitle(modelData.group) : modelData.group
             }
             Repeater {
+              id: rowsRep
               model: sp.groupRows(modelData)
               delegate: Rectangle {
                 id: stratRect
@@ -625,7 +700,10 @@ Item {
                 TapHandler {
                   onTapped: {
                     if (modelData.expander !== undefined || modelData.collapse === true) sp.toggleMore(modelData.group)
-                    else sp.selectedName = modelData.name
+                    else {
+                      sp.selectedName = modelData.name
+                      if (sp.armDelete !== "" && sp.armDelete !== modelData.name) sp.armDelete = ""
+                    }
                   }
                 }
                 RowLayout {
@@ -645,7 +723,7 @@ Item {
                     Label { Layout.fillWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
                     Hint {
                       Layout.fillWidth: true
-                      color: sp.isWorse(modelData.name) ? Color.urgent : root.dim
+                      color: sp.isWorse(modelData.name) ? root.bad : root.dim
                       text: sp.rowSubtitle(modelData)
                     }
                   }
@@ -665,8 +743,11 @@ Item {
                   Button { visible: !stratRect.isSpecial && modelData.name.indexOf("my-") === 0; text: "Изменить"; onClicked: sp.edit(modelData.name) }
                   Button {
                     visible: !stratRect.isSpecial && modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
-                    text: "Удалить"
-                    onClicked: root.svc.removeCustom(modelData.name)
+                    text: sp.armDelete === modelData.name ? "Точно удалить?" : "Удалить"
+                    onClicked: {
+                      if (sp.armDelete === modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(modelData.name) }
+                      else { sp.armDelete = modelData.name; disarmTimer.restart() }
+                    }
                   }
                 }
               }
@@ -787,7 +868,7 @@ Item {
         onChanged: function(v) { lp.current = v }
       }
       Hint { Layout.fillWidth: true; text: lp.info }
-      Button { bordered: true; text: "Обновить из Flowseal"; onClicked: root.svc.updateLists() }
+      Button { bordered: true; text: "Обновить списки из Flowseal"; onClicked: root.svc.updateLists() }
     }
     Hint {
       Layout.fillWidth: true
@@ -815,6 +896,10 @@ Item {
   component SearchPage: ScrollView {
     id: se
     property bool showFull: false
+    property string pickSel: ""
+    property bool tiesOpen: false
+    property var pickGroup: Model.groupSearchRows(Model.autopickRows(root.ready ? root.svc.autopickResult : null))
+    property int pickBase: pickGroup && pickGroup.baseline ? (Number(pickGroup.baseline.score) || 0) : -1
     clip: true
     contentWidth: availableWidth
     ColumnLayout {
@@ -847,26 +932,58 @@ Item {
                 : root.svc.progressInfo.step === 0 ? "Замер без обхода…"
                 : "Шаг " + root.svc.progressInfo.step + " из " + root.svc.progressInfo.of + ": " + Model.presetTitle(root.svc.progressInfo.preset)
         }
-        Repeater {
-          model: root.ready ? Model.autopickRows(root.svc.autopickResult) : []
-          delegate: RowLayout {
-            required property var modelData
+        ColumnLayout {
+          Layout.fillWidth: true
+          visible: root.ready && se.pickGroup.baseline !== null
+          spacing: Style.space(4)
+          PickRow {
+            visible: se.pickGroup.baseline !== null
+            row: se.pickGroup.baseline || {}
+            baseScore: se.pickBase
+            selected: se.pickSel !== "" && se.pickGroup.baseline !== null && se.pickSel === se.pickGroup.baseline.preset
+            onPicked: function(p) { se.pickSel = p }
+          }
+          Rectangle {
             Layout.fillWidth: true
-            Label { Layout.preferredWidth: Style.space(180); text: (modelData.chosen ? "● " : "") + modelData.title; font.bold: modelData.chosen }
-            Rectangle {
+            Layout.preferredHeight: 1
+            color: root.line
+            visible: se.pickGroup.best !== null
+          }
+          PickRow {
+            visible: se.pickGroup.best !== null
+            row: se.pickGroup.best || {}
+            baseScore: se.pickBase
+            selected: se.pickSel !== "" && se.pickGroup.best !== null && se.pickSel === se.pickGroup.best.preset
+            onPicked: function(p) { se.pickSel = p }
+          }
+          RowLayout {
+            Layout.fillWidth: true
+            visible: se.pickGroup.ties.length > 0
+            TapHandler { onTapped: se.tiesOpen = !se.tiesOpen }
+            Label {
               Layout.fillWidth: true
-              height: Style.space(6)
-              radius: height / 2
-              color: root.faint
-              Rectangle { width: parent.width * modelData.pct / 100; height: parent.height; radius: parent.radius; color: modelData.pct === 100 ? Color.accent : root.dim }
+              color: root.dim
+              text: "ещё " + se.pickGroup.ties.length + " с тем же результатом " + (se.tiesOpen ? "▾" : "▸")
             }
-            Hint { Layout.preferredWidth: Style.space(160); text: modelData.error !== "" ? modelData.error : modelData.score + "/" + modelData.total; elide: Text.ElideRight; wrapMode: Text.NoWrap }
-            // kept in the layout when hidden so every bar has the same length
-            Button {
-              text: "Выбрать"
-              enabled: !modelData.baseline && root.svc.preset !== modelData.preset
-              opacity: enabled ? 1 : 0
-              onClicked: root.svc.setOption("preset", modelData.preset)
+          }
+          Repeater {
+            model: se.tiesOpen ? se.pickGroup.ties : []
+            delegate: PickRow {
+              required property var modelData
+              row: modelData
+              baseScore: se.pickBase
+              selected: se.pickSel !== "" && se.pickSel === modelData.preset
+              onPicked: function(p) { se.pickSel = p }
+            }
+          }
+          Repeater {
+            model: se.pickGroup.rest
+            delegate: PickRow {
+              required property var modelData
+              row: modelData
+              baseScore: se.pickBase
+              selected: se.pickSel !== "" && se.pickSel === modelData.preset
+              onPicked: function(p) { se.pickSel = p }
             }
           }
         }
@@ -905,7 +1022,7 @@ Item {
               if (items[i].name === "host/nslookup" && !items[i].ok) return true
             return false
           }
-          color: Color.urgent
+          color: root.bad
           text: "нужен bind: omarchy pkg add bind"
         }
         Hint {
@@ -993,7 +1110,7 @@ Item {
         Hint { Layout.fillWidth: true; text: "bol-van/zapret2: nfqws2 + Lua. Обновление скачивает последний релиз, сверяет sha256 и спрашивает пароль. Предыдущая версия остаётся рядом." }
         RowLayout {
           Button { bordered: true; text: "Обновить движок"; enabled: root.ready && root.svc.installed; onClicked: root.svc.engineUpdate() }
-          Button { bordered: true; text: "Обновить системную часть"; enabled: root.ready && root.svc.installed; onClicked: root.svc.updateApp() }
+          Button { bordered: true; visible: !root.ready || root.svc.appCurrent; text: "Обновить системную часть"; enabled: root.ready && root.svc.installed; onClicked: root.svc.updateApp() }
         }
       }
 
@@ -1008,8 +1125,27 @@ Item {
           delegate: RowLayout {
             required property var modelData
             Layout.fillWidth: true
-            Label { Layout.preferredWidth: Style.space(170); text: (modelData.ok ? "✓ " : "✗ ") + (typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name); color: modelData.ok ? root.fg : Color.urgent }
-            Hint { Layout.fillWidth: true; text: modelData.detail }
+            Label { Layout.preferredWidth: Style.space(170); text: (modelData.ok ? "✓ " : "✗ ") + (typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name); color: modelData.ok ? root.fg : root.bad }
+            Hint {
+              Layout.fillWidth: true
+              visible: text !== ""
+              text: {
+                var d = Model.doctorDetail(modelData.name, modelData.detail)
+                var dn = typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name
+                if ((modelData.name === "Setup" || dn === "Установка") && root.ready && root.svc.st && root.svc.st.engine && d.indexOf(String(root.svc.st.engine)) !== -1) return ""
+                return d
+              }
+            }
+            Button {
+              visible: !modelData.ok && (String(modelData.name).indexOf("host") !== -1 || String(modelData.name).indexOf("nslookup") !== -1 || String(modelData.detail).indexOf("bind") !== -1)
+              text: "Скопировать команду"
+              onClicked: Quickshell.execDetached(["wl-copy", "omarchy pkg add bind"])
+            }
+            Button {
+              visible: !modelData.ok && String(modelData.name).indexOf("Plugin and system copy") !== -1
+              text: "Установить обновление"
+              onClicked: root.svc.updateApp()
+            }
           }
         }
       }
@@ -1026,7 +1162,7 @@ Item {
           Layout.fillHeight: false
           readOnly: true
           area.wrapMode: TextEdit.Wrap
-          text: root.ready ? root.svc.logLines.join("\n") : ""
+          text: root.ready ? root.svc.logLines.map(function(l) { return Model.shortLog(l) }).join("\n") : ""
         }
       }
 
@@ -1046,6 +1182,7 @@ Item {
   component SettingsPage: ScrollView {
     id: stp
     property bool showExtra: false
+    property bool hostsConfirm: false
     clip: true
     contentWidth: availableWidth
     ColumnLayout {
@@ -1098,7 +1235,7 @@ Item {
           visible: root.ready && (root.svc.settings.game || "off") !== "off" && (root.svc.settings.ipset || "loaded") === "none"
           Hint {
             Layout.fillWidth: true
-            color: Color.urgent
+            color: root.bad
             text: "Игровой фильтр работает по IP-сетям: включите «IP-сети: По списку»"
           }
           Button { bordered: true; text: "Включить"; onClicked: root.svc.setOption("ipset", "loaded") }
@@ -1187,8 +1324,18 @@ Item {
           ToggleSwitch {
             checked: root.ready && root.svc.hostsOn === true
             busy: root.ready && root.svc.busy
-            onToggled: root.svc.hostsSet(!root.svc.hostsOn)
+            onToggled: {
+              if (!root.svc.hostsOn && !stp.hostsConfirm) stp.hostsConfirm = true
+              else root.svc.hostsSet(!root.svc.hostsOn)
+            }
           }
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          visible: stp.hostsConfirm && !(root.ready && root.svc.hostsOn)
+          Hint { Layout.fillWidth: true; text: "Изменит /etc/hosts, нужен пароль" }
+          Button { bordered: true; text: "Включить"; onClicked: { stp.hostsConfirm = false; root.svc.hostsSet(true) } }
+          Button { text: "Отмена"; onClicked: stp.hostsConfirm = false }
         }
       }
 

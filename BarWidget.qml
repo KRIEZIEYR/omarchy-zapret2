@@ -23,6 +23,7 @@ Panel {
   readonly property string fontFamily: Style.font.family
   readonly property color fg: Color.popups.text
   readonly property color dim: Qt.rgba(fg.r, fg.g, fg.b, 0.6)
+  readonly property color bad: Model.pickBad(Color.urgent, Color.popups.background, "#e06c75")
 
   function findService() {
     if (svc) return
@@ -128,7 +129,7 @@ Panel {
           spacing: Style.space(10)
           ZapretIcon {
             iconSize: Style.space(22)
-            color: root.ready && root.svc.bypassState === "error" ? Color.urgent : root.fg
+            color: root.ready && root.svc.bypassState === "error" ? root.bad : root.fg
             filled: root.ready && root.svc.isOn
           }
           ColumnLayout {
@@ -146,8 +147,8 @@ Panel {
               textFormat: Text.PlainText
               text: !root.ready ? "Загрузка…"
                   : root.svc.busy ? "Выполняется: " + root.svc.busyLabel + "…"
-                  : Model.stateText(root.svc.st) + (root.svc.installed && root.svc.st.engine ? " · " + root.svc.st.engine : "")
-              color: root.ready && root.svc.bypassState === "error" ? Color.urgent : root.dim
+                  : Model.stateText(root.svc.st) + (root.svc.installed && root.svc.isOn && root.svc.preset ? " · стратегия " + Model.presetTitle(root.svc.preset) : "")
+              color: root.ready && root.svc.bypassState === "error" ? root.bad : root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
             }
@@ -166,7 +167,7 @@ Panel {
           textFormat: Text.PlainText
           wrapMode: Text.Wrap
           text: !root.ready ? "" : root.svc.errorText !== "" ? root.svc.errorText : root.svc.flashText
-          color: root.ready && root.svc.errorText !== "" ? Color.urgent : root.fg
+          color: root.ready && root.svc.errorText !== "" ? root.bad : root.fg
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
         }
@@ -231,15 +232,15 @@ Panel {
               Layout.fillWidth: true
               Text {
                 Layout.fillWidth: true
-                text: modelData.label
-                color: modelData.good ? root.fg : Color.urgent
+                text: (modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")) + modelData.label
+                color: modelData.good ? root.fg : root.bad
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: !modelData.good
               }
               Text {
                 text: modelData.ok + "/" + modelData.total
-                color: modelData.good ? root.fg : Color.urgent
+                color: modelData.good ? root.fg : root.bad
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: !modelData.good

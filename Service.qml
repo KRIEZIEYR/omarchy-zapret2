@@ -150,8 +150,8 @@ Item {
       act(["on"], "включение", "Zapret2 включён при входе")
   }
 
-  function turnOn() { act(["on"], "включение", "Обход включён") }
-  function turnOff() { act(["off"], "выключение", "Обход выключен") }
+  function turnOn() { act(["on"], "включение", "Обход включён", function(r) { if (r.ok && installed) runCheck() }) }
+  function turnOff() { act(["off"], "выключение", "Обход выключен", function(r) { if (r.ok && installed) runCheck() }) }
   function toggle() {
     if (!installed) { openApp(); return }
     if (isOn) turnOff(); else turnOn()
@@ -159,7 +159,9 @@ Item {
 
   function setOption(key, value) {
     var text = key === "preset" ? "Стратегия: " + Model.presetTitle(value) : "Сохранено"
-    act(["set", key, String(value)], "настройка", text)
+    act(["set", key, String(value)], "настройка", text, function(r) {
+      if (r.ok && key === "preset" && installed) runCheck()
+    })
   }
 
   function runCheck() {

@@ -167,8 +167,20 @@ function failReason(check, failing) {
   return "не открываются"
 }
 
-// Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick".
+// Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
 function verdict(st, check, autopick, now) {
+  if (check !== null && check !== undefined && typeof check === "object" && check.preset !== undefined) {
+    var curPreset = (st && st.settings) ? String(st.settings.preset || "") : ""
+    var curOn = (stateOf(st) === "on" || stateOf(st) === "starting")
+    var presetMismatch = check.preset !== undefined && String(check.preset) !== curPreset
+    var activeMismatch = check.active !== undefined && (!!check.active) !== curOn
+    if (presetMismatch || activeMismatch) {
+      var checked = (check.preset !== undefined && check.preset !== null && String(check.preset) !== "")
+          ? String(check.preset) : curPreset
+      return { text: "", tone: "neutral", action: "check",
+               note: "Проверка устарела: стратегия " + checked + ", обход был " + (check.active ? "включён" : "выключен") }
+    }
+  }
   var s = stateOf(st)
   var on = (s === "on" || s === "starting")
   var ap = autopick || {}
@@ -228,6 +240,85 @@ var TEST_TITLES = { curl_test_http: "HTTP", curl_test_https_tls12: "TLS 1.2", cu
 
 function findingTitle(f) {
   return (TEST_TITLES[f.test] || f.test) + " · " + f.domain + " · " + f.ip
+}
+
+// Relative luminance of a hex color (0..1, WCAG). Accepts "#rgb" or "#rrggbb".
+function luminance(hex) {
+  var s = String(hex || "").replace(/^#/, "")
+  if (/^[0-9a-fA-F]{3}$/.test(s))
+    s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2)
+  if (!/^[0-9a-fA-F]{6}$/.test(s)) return 0
+  var r = parseInt(s.substr(0, 2), 16) / 255
+  var g = parseInt(s.substr(2, 2), 16) / 255
+  var b = parseInt(s.substr(4, 2), 16) / 255
+  function lin(c) { return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) }
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+// WCAG contrast ratio of two hex colors: (L1 + 0.05) / (L2 + 0.05).
+function contrastRatio(a, b) {
+  var l1 = luminance(a), l2 = luminance(b)
+  if (l1 < l2) { var t = l1; l1 = l2; l2 = t }
+  return (l1 + 0.05) / (l2 + 0.05)
+}
+
+// Urgent color kept only when readable on the background, else the fallback.
+function pickBad(urgent, bg, fallback) {
+  var fb = fallback || "#e06c75"
+  return contrastRatio(urgent, bg) >= 3 ? urgent : fb
+}
+
+// Split search rows into the no-bypass baseline and the ranked rest:
+// baseline (flagged baseline/isBaseline/"(off)", else the first row),
+// best (single max-score row, first on tie), ties (same score as best),
+// rest (everything else). Empty input gives nulls and empty lists.
+function groupSearchRows(rows) {
+  var list = Array.isArray(rows) ? rows.slice() : []
+  if (list.length === 0) return { baseline: null, best: null, ties: [], rest: [] }
+  var bi = -1, i
+  for (i = 0; i < list.length; i++) {
+    var fl = list[i] || {}
+    if (fl.baseline || fl.isBaseline || fl.preset === "(off)") { bi = i; break }
+  }
+  var baseline = bi !== -1 ? list.splice(bi, 1)[0] : list.shift()
+  if (list.length === 0) return { baseline: baseline, best: null, ties: [], rest: [] }
+  function scoreOf(r) { var n = Number(r && r.score); return isNaN(n) ? 0 : n }
+  var max = scoreOf(list[0])
+  for (i = 1; i < list.length; i++) if (scoreOf(list[i]) > max) max = scoreOf(list[i])
+  var best = null, ties = [], rest = []
+  for (i = 0; i < list.length; i++) {
+    if (scoreOf(list[i]) !== max) { rest.push(list[i]); continue }
+    if (best === null) best = list[i]; else ties.push(list[i])
+  }
+  return { baseline: baseline, best: best, ties: ties, rest: rest }
+}
+
+// Localise a doctor item detail to Russian; unknown details pass through.
+function doctorDetail(name, detail) {
+  var s = detail === null || detail === undefined ? "" : String(detail)
+  if (!s) return s
+  s = s.split("the plugin was updated: run setup --app-only (Update system part)").join("плагин обновлён: установите обновление системной части")
+  s = s.split("blockcheck2 needs them: omarchy pkg add bind").join("нужны для blockcheck2: omarchy pkg add bind")
+  s = s.replace(/^omarchy-xray TUN is on:.*$/, "включён TUN omarchy-xray: трафик идёт в туннель, обход не применяется")
+  s = s.replace(/(\d+)\s*files? intact/g, "$1 файлов в порядке")
+  s = s.split("install nftables/curl/polkit").join("установите nftables/curl/polkit")
+  s = s.replace(/install (.+)/g, "установите $1")
+  s = s.split("for blockcheck2").join("для blockcheck2")
+  s = s.split("run setup").join("запустите установку")
+  return s
+}
+
+// "2026-10-05T23:09:53+03:00 host proc[1]: msg" -> "23:09:53 msg".
+// Journal short format ("Oct 05 23:09:53 host proc[1]: msg") works too;
+// anything else passes through unchanged.
+function shortLog(line) {
+  var s = line === null || line === undefined ? "" : String(line)
+  if (!s) return s
+  var m = s.match(/^(?:\d{4}-\d{2}-\d{2}T)?(\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:Z|[\+\-]\d{2}:?\d{2})?\s+(?:\S+\s+)?(?:\S+\[\d+\]:\s+)?(.*)$/)
+  if (m) return m[1] + " " + m[2]
+  var j = s.match(/^[A-Z][a-z]{2}\s+\d{1,2}\s+(\d{2}:\d{2}:\d{2})\s+(?:\S+\s+)?(?:\S+\[\d+\]:\s+)?(.*)$/)
+  if (j) return j[1] + " " + j[2]
+  return s
 }
 
 // Lines of a list editor: trimmed, without blanks.
