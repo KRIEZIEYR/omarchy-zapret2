@@ -169,6 +169,7 @@ function failReason(check, failing) {
 }
 
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
+var NOT_NEEDED_TEXT = "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)"
 function verdict(st, check, autopick, now) {
   if (check !== null && check !== undefined && typeof check === "object" && check.preset !== undefined) {
     var curPreset = (st && st.settings) ? String(st.settings.preset || "") : ""
@@ -191,12 +192,12 @@ function verdict(st, check, autopick, now) {
   var failing = cats.filter(function(c) { return !c.good })
   var note = checkNote(check, now)
   if (cats.length === 0) {
-    if (!on && notNeeded) return { text: "Сайты открываются и без обхода (возможно, обход уже работает на роутере или в VPN)", tone: "neutral", action: "none", note: note }
+    if (!on && notNeeded) return { text: NOT_NEEDED_TEXT, tone: "neutral", action: "none", note: note }
     if (!on && !hasPick) return { text: "Запустите автоподбор, чтобы найти рабочую стратегию", tone: "neutral", action: "autopick", note: note }
     return { text: "Проверок ещё не было", tone: "neutral", action: "none", note: note }
   }
   if (failing.length === 0) {
-    if (!on && notNeeded) return { text: "Сайты открываются и без обхода (возможно, обход уже работает на роутере или в VPN)", tone: "neutral", action: "none", note: note }
+    if (!on) return { text: NOT_NEEDED_TEXT, tone: "neutral", action: "none", note: note }
     return { text: "Всё открывается", tone: "good", action: "none", note: note }
   }
   // Any category below full: the bypass may still help, never "не нужен".
@@ -234,6 +235,43 @@ function popupPresets(presets, autopick, active) {
   push(active)
   top.forEach(push)
   return out.slice(0, 6)
+}
+
+// Popup dropdown label: "General · 12/14 · лучшая", plus
+// "⚠ хуже, чем без обхода" when worse than the no-bypass baseline.
+// Score part is omitted when score/total is missing or total <= 0.
+function presetLabel(name, score, total, isBest, worseThanBaseline) {
+  if (name && typeof name === "object") {
+    var row = name
+    var presetName = row.preset !== undefined ? row.preset : row.name
+    var rowBest = row.chosen === true || row.isBest === true || row.best === true
+    var explicitBest = (typeof score === "boolean") ? score : rowBest
+    var explicitWorse = (typeof score === "boolean") ? total
+      : (typeof total === "boolean" ? total : row.worseThanBaseline)
+    return presetLabel(presetName, row.score, row.total, explicitBest, explicitWorse)
+  }
+  if (score && typeof score === "object") {
+    var obj = score
+    // Called as presetLabel(name, {score, total}, isBest, worse):
+    // total holds isBest, isBest holds worse.
+    return presetLabel(name, obj.score, obj.total, total, isBest)
+  }
+  if (typeof total === "boolean") {
+    // Shorthand presetLabel(name, score, isBest, worse).
+    return presetLabel(name, score, undefined, total, isBest)
+  }
+  var title = presetTitle(name)
+  var parts = []
+  if (title) parts.push(title)
+  else if (name) parts.push(String(name))
+  var sc = Number(score), tt = Number(total)
+  if (score !== null && score !== undefined && total !== null && total !== undefined
+      && !isNaN(sc) && !isNaN(tt) && tt > 0) {
+    parts.push((sc | 0) + "/" + (tt | 0))
+  }
+  if (isBest) parts.push("лучшая")
+  if (worseThanBaseline) parts.push("⚠ хуже, чем без обхода")
+  return parts.join(" · ")
 }
 
 var TEST_TITLES = { curl_test_http: "HTTP", curl_test_https_tls12: "TLS 1.2", curl_test_https_tls13: "TLS 1.3",
@@ -329,6 +367,8 @@ function blockcheckPhase(line) {
 }
 
 // Short per-row verdict for autopick rows: which categories still fail.
+// When something fails, passing categories are marked with ✓, e.g.
+// "YouTube ✗ QUIC · Discord ✓". All-open rows say "всё открывается".
 function breaksText(row) {
   if (!row) return "не проверялась"
   var cats = row.categories || {}
@@ -351,20 +391,25 @@ function breaksText(row) {
   }
   if (total > 0 && score >= total) return "всё открывается"
   var labels = { youtube: "YouTube", discord: "Discord", google: "Google", cloudflare: "Cloudflare" }
-  var failing = []
+  var parts = []
+  var hasFail = false
   for (i = 0; i < keys.length; i++) {
     var k = keys[i]
     var c = cats[k]
     var ok = 0, tt = 0
     if (c && typeof c === "object" && !Array.isArray(c)) { ok = c.ok | 0; tt = c.total | 0 }
     else if (Array.isArray(c)) { ok = c[0] | 0; tt = c[1] | 0 }
-    if (tt > 0 && ok < tt) {
-      var label = labels.hasOwnProperty(k) ? labels[k] : k
-      if (k === "youtube" && ok > 0) failing.push(label + " ✗ QUIC")
-      else failing.push(label + " ✗")
+    if (!(tt > 0)) continue
+    var label = labels.hasOwnProperty(k) ? labels[k] : k
+    if (ok < tt) {
+      hasFail = true
+      if (k === "youtube" && ok > 0) parts.push(label + " ✗ QUIC")
+      else parts.push(label + " ✗")
+    } else {
+      parts.push(label + " ✓")
     }
   }
-  if (failing.length > 0) return failing.join(" · ")
+  if (hasFail) return parts.join(" · ")
   if (total > 0 && score < total) return "не проверялась"
   return "всё открывается"
 }

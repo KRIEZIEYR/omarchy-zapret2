@@ -157,12 +157,30 @@ Item {
     if (isOn) turnOff(); else turnOn()
   }
 
+  // Choosing a game filter other than "off" needs ipsets: auto-enable them
+  // when they were "none", so the game filter works without a second step.
+  // The red warning row itself lives in App.qml (App lane removes it); the
+  // state it needs (settings.game/settings.ipset) and this flash stay here.
   function setOption(key, value) {
-    var text = key === "preset" ? "Стратегия: " + Model.presetTitle(value) : "Сохранено"
-    act(["set", key, String(value)], "настройка", text, function(r) {
+    var v = String(value)
+    if (key === "game" && v !== "off" && (settings.ipset || "loaded") === "none") {
+      act(["set", "game", v], "настройка", "", function(r) {
+        if (!r.ok) return
+        act(["set", "ipset", "loaded"], "настройка", "IP-сети включены для игрового фильтра")
+      })
+      return
+    }
+    var text = key === "preset" ? "Стратегия: " + Model.presetTitle(v) : "Сохранено"
+    act(["set", key, v], "настройка", text, function(r) {
       if (r.ok && key === "preset" && installed) runCheck()
     })
   }
+
+  // Explicit-target toggles for the App settings switches (immune to the
+  // ToggleSwitch.checked flip timing): App lane should call these from
+  // onToggled instead of deriving on/off from `checked`.
+  function toggleAutostart() { setOption("autostart", settings.autostart === true ? "off" : "on") }
+  function toggleIpv6() { setOption("ipv6", settings.ipv6 !== false ? "off" : "on") }
 
   function runCheck() {
     longJob(["check"], "проверка", function(d) { return d ? Model.checkLine(d) : "Готово" })

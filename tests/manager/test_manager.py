@@ -482,5 +482,94 @@ class AutopickServiceState(unittest.TestCase):
         self.assertNotEqual(calls[-1], ("stop", zm.UNIT))
 
 
+class CustomFullPresets(unittest.TestCase):
+    FULL_MINIMAL = ("@tcp=80,443\n@udp=443\n--filter-tcp=80,443\n"
+                    "--payload=known\n--lua-desync=multisplit:pos=1\n")
+    FULL_FILTER_ONLY = ("--filter-tcp=80,443\n--payload=known\n"
+                        "--lua-desync=multisplit:pos=1\n")
+
+    def test_detect_full_vs_simple(self):
+        self.assertFalse(zm.is_full_preset_text(MINIMAL))
+        voice = (MINIMAL + "[VOICE_COMPATIBLE]\n--filter-udp=19294-19344\n"
+                 "--filter-l7=discord,stun\n--payload=discord_ip_discovery\n"
+                 "--lua-desync=fake:blob=stun:repeats=3\n")
+        self.assertFalse(zm.is_full_preset_text(voice))   # simple stays simple
+        self.assertTrue(zm.is_full_preset_text(self.FULL_MINIMAL))
+        self.assertTrue(zm.is_full_preset_text(self.FULL_FILTER_ONLY))
+
+    def _save(self, var, stdin_text, *args):
+        emitted = {}
+        with mock.patch.object(zm, "require_installed", lambda: None), \
+             mock.patch.object(zm, "VAR", var), \
+             mock.patch.object(zm, "read_stdin", lambda cap: stdin_text), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_custom(list(args))
+        return emitted
+
+    def test_save_full_format_custom_preset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "custom"))
+            res = self._save(var, self.FULL_MINIMAL, "save", "fulltest")
+            self.assertTrue(res.get("ok"))
+            self.assertEqual(res.get("name"), "my-fulltest")
+            path = os.path.join(var, "custom", "my-fulltest.txt")
+            with open(path, encoding="utf-8") as f:
+                stored = f.read()
+            self.assertIn("@tcp=", stored)
+            zm.parse_full(stored)                          # stored validates as full
+            shown = {}
+            with mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "out", lambda obj: shown.update(obj)):
+                zm.cmd_custom(["show", "my-fulltest"])
+            self.assertIn("@tcp=", shown.get("text", ""))
+
+    def test_save_full_rejects_bad_desync(self):
+        bad = "@tcp=80,443\n@udp=443\n--filter-tcp=80,443\n--payload=known\n--lua-desync=luaexec:code=1\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "custom"))
+            with self.assertRaises(zm.Fail):
+                self._save(var, bad, "save", "badfull")
+            self.assertFalse(os.path.exists(os.path.join(var, "custom", "my-badfull.txt")))
+
+    def test_save_simple_still_works(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "custom"))
+            res = self._save(var, MINIMAL, "save", "my-simple")
+            self.assertEqual(res.get("name"), "my-simple")
+            with open(os.path.join(var, "custom", "my-simple.txt"), encoding="utf-8") as f:
+                zm.parse_preset(f.read())
+
+    def test_load_full_custom_preset_for_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "custom"))
+            with open(os.path.join(var, "custom", "my-fullrun.txt"), "w", encoding="utf-8") as f:
+                f.write(self.FULL_MINIMAL)
+            with mock.patch.object(zm, "VAR", var):
+                secs = zm.load_preset_for_run("my-fullrun", os.getuid())
+            self.assertIn("full", secs)
+            self.assertTrue(any(l.startswith("--lua-desync=") for l in secs["full"]))
+            args, (tcp, udp) = zm.render_full(secs["full"], dict(zm.DEFAULTS), "/E", "/L", {})
+            self.assertIn("--lua-desync=multisplit:pos=1", args)
+            self.assertIn("80", tcp)
+            self.assertIn("443", udp)
+
+    def test_load_simple_custom_preset_for_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "custom"))
+            with open(os.path.join(var, "custom", "my-simplerun.txt"), "w", encoding="utf-8") as f:
+                f.write(MINIMAL)
+            with mock.patch.object(zm, "VAR", var):
+                secs = zm.load_preset_for_run("my-simplerun", os.getuid())
+            self.assertNotIn("full", secs)
+            for s in zm.REQUIRED:
+                self.assertTrue(secs[s])
+
+
 if __name__ == "__main__":
     unittest.main()

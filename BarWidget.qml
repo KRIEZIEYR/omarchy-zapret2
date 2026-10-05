@@ -31,6 +31,19 @@ Panel {
     if (sh && typeof sh.serviceFor === "function") svc = sh.serviceFor(pluginId)
   }
 
+  // Popup strategy label with the autopick score. Prefers the shared
+  // Model.presetLabel(name, row, isBest, worseThanBaseline) helper when the
+  // model lane provides it; falls back to local formatting so the popup
+  // keeps working when autopick data is missing.
+  function presetLabelFallback(nm, r, isBest, worse) {
+    var title = Model.presetTitle(nm)
+    if (!r || (r.total | 0) === 0) return title
+    var s = title + " · " + r.score + "/" + r.total
+    if (isBest) s += " · лучшая"
+    if (worse) s += " · ⚠"
+    return s
+  }
+
   onBarChanged: findService()
   onOpenedChanged: {
     if (svc) svc.popupOpen = opened
@@ -202,9 +215,19 @@ Panel {
           value: root.ready ? root.svc.preset : ""
           options: {
             if (!root.ready) return []
+            var rows = Model.autopickRows(root.svc.autopickResult)
+            var base = -1
+            for (var bi = 0; bi < rows.length; bi++) if (rows[bi].baseline) { base = rows[bi].score; break }
+            var rowOf = function(name) {
+              for (var k = 0; k < rows.length; k++) if (rows[k].preset === name) return rows[k]
+              return null
+            }
             return Model.popupPresets(root.svc.presets, root.svc.autopickResult, root.svc.preset).map(function(n) {
               var nm = typeof n === "string" ? n : (n && n.name)
-              return { value: nm, label: Model.presetTitle(nm) }
+              var r = rowOf(nm)
+              var isBest = !!(r && r.chosen)
+              var worse = !!(r && !r.baseline && (r.total | 0) > 0 && base >= 0 && (r.score | 0) < base)
+              return { value: nm, label: Model.presetLabel?.(nm, r, isBest, worse) ?? root.presetLabelFallback(nm, r, isBest, worse) }
             })
           }
           onChanged: function(v) { if (v !== root.svc.preset) root.svc.setOption("preset", v) }

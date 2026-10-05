@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "model/Zapret.js" as Model
@@ -37,6 +38,15 @@ Item {
   readonly property color line: Qt.rgba(fg.r, fg.g, fg.b, 0.18)
   readonly property color bad: Model.pickBad(Color.urgent, Color.popups.background, "#e06c75")
 
+  function copyText(t) {
+    copyProc.command = ["wl-copy", String(t)]
+    copyProc.running = true
+  }
+
+  function fixQuic(s) {
+    return String(s || "").split("может грузиться медленно (QUIC) — попробуйте другую стратегию").join("QUIC не проходит — видео может грузиться медленнее")
+  }
+
   function open(payloadJson) {
     var p = {}
     try { p = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
@@ -67,6 +77,15 @@ Item {
     if (!ready) return
     if (tab === 4) { svc.runDoctor(); svc.loadLogs() }
     if (tab === 3) { svc.refreshBlockcheck(); if (svc.doctorItems.length === 0) svc.runDoctor() }
+  }
+
+  Process {
+    id: copyProc
+    stdinEnabled: false
+    onExited: function(code) {
+      if (!root.ready) return
+      root.svc.flash(code === 0 ? "Скопировано" : "wl-copy не найден")
+    }
   }
 
   // --- small building blocks ---------------------------------------------
@@ -138,8 +157,8 @@ Item {
       wrapMode: Text.NoWrap
     }
     PrimaryButton {
-      visible: hover.hovered || selected
-      enabled: !!row && !row.baseline && root.ready && root.svc.preset !== row.preset
+      visible: !!row && !row.baseline && (!root.ready || root.svc.preset !== row.preset)
+      enabled: !!row && !row.baseline && root.ready && !root.svc.busy && root.svc.preset !== row.preset
       text: "Применить"
       onClicked: { picked(row.preset); root.svc.setOption("preset", row.preset) }
     }
@@ -261,14 +280,6 @@ Item {
               visible: root.ready && root.svc.busy
               text: root.ready ? "Выполняется: " + root.svc.busyLabel + "…" : ""
             }
-            Hint {
-              Layout.fillWidth: true
-              text: "Ctrl+1…6 — вкладки"
-            }
-            Hint {
-              Layout.fillWidth: true
-              text: "Ctrl+T — вкл/выкл"
-            }
           }
 
           Rectangle { Layout.fillHeight: true; width: 1; color: root.line }
@@ -341,6 +352,13 @@ Item {
           if (!root.ready) return false
           return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
         }
+        property bool isNeutral: {
+          if (!root.ready) return false
+          var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
+          if (v.tone !== "neutral" || v.action !== "none") return false
+          var t = String(v.text || "")
+          return t.indexOf("без обхода") !== -1 || t.indexOf("не нужен") !== -1 || t.indexOf("Обход здесь не нужен") !== -1
+        }
         RowLayout {
           Layout.fillWidth: true
           ColumnLayout {
@@ -381,7 +399,7 @@ Item {
           text: {
             if (!root.ready) return ""
             var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
-            return v.text
+            return root.fixQuic(v.text)
           }
           color: {
             if (!root.ready) return Color.popups.text
@@ -408,21 +426,16 @@ Item {
             text: {
               if (!root.ready) return ""
               var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
-              return "⚠ " + (v.note || "")
+              return "⚠ " + (v.note || "") + " — нажмите «Проверить» ниже"
             }
-          }
-          Button {
-            bordered: true
-            text: "Проверить сейчас"
-            enabled: root.ready && root.svc.installed
-            onClicked: root.svc.runCheck()
           }
         }
         RowLayout {
           Layout.fillWidth: true
+          visible: !headCard.isNeutral
           property bool hasPick: root.ready && !!root.svc.autopickResult.time
           PrimaryButton {
-            enabled: root.ready && root.svc.installed
+            enabled: root.ready && root.svc.installed && !root.svc.busy
             visible: !parent.hasPick || !root.svc.isOn
             text: !parent.hasPick ? "Подобрать стратегию" : "Включить"
             onClicked: {
@@ -432,10 +445,20 @@ Item {
           }
           Button {
             bordered: true
-            enabled: root.ready && root.svc.installed
+            enabled: root.ready && root.svc.installed && !root.svc.busy
             visible: parent.hasPick && root.ready && root.svc.isOn
             text: "Выключить"
             onClicked: root.svc.toggle()
+          }
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          visible: headCard.isNeutral
+          Button {
+            bordered: true
+            enabled: root.ready && root.svc.installed && !root.svc.busy
+            text: "Всё равно включить"
+            onClicked: root.svc.turnOn()
           }
         }
       }
@@ -496,7 +519,7 @@ Item {
                   var hosts = (root.ready && root.svc.check.categories[modelData.key]) ? root.svc.check.categories[modelData.key].results : []
                   var failed = hosts.filter(function(h) { return !h.ok })
                   var quicOnly = failed.length > 0 && failed.every(function(h) { return h.http3 })
-                  var reason = quicOnly ? (modelData.label + " может грузиться медленно (QUIC) — попробуйте другую стратегию") : (failed.length > 0 ? Model.curlError(failed[0].error) : "не проходит")
+                  var reason = quicOnly ? "QUIC не проходит — видео может грузиться медленнее" : (failed.length > 0 ? Model.curlError(failed[0].error) : "не проходит")
                   return (open ? "▾ " : "▸ ") + base + " · " + reason
                 }
               }
@@ -540,7 +563,21 @@ Item {
     property var tiesOpen: ({})
     property string filter: ""
     property string armDelete: ""
+    property bool showAll: false
+    property string pendingPreset: ""
     Timer { id: disarmTimer; interval: 4000; onTriggered: sp.armDelete = "" }
+    Timer {
+      id: pendingTimer
+      interval: 600
+      repeat: true
+      running: sp.pendingPreset !== ""
+      onTriggered: {
+        if (!root.ready || root.svc.busy) return
+        var n = sp.pendingPreset
+        sp.pendingPreset = ""
+        if (!root.svc.isOn || root.svc.preset !== n) root.svc.turnOn()
+      }
+    }
     onVisibleChanged: if (visible) Qt.callLater(scrollToActive)
     Component.onCompleted: if (visible) Qt.callLater(scrollToActive)
 
@@ -572,6 +609,31 @@ Item {
       showing = false
       editName = shownName.replace(/^my-/, "").replace(/^fs-/, "")
       editor.text = shownText
+    }
+
+    function saveFullAsOwn() {
+      var base = String(shownName || "").replace(/^my-/, "").replace(/^fs-/, "")
+      if (base === "") base = "full"
+      root.svc.saveCustom(base, shownText, function(r) { if (r.ok) showing = false })
+    }
+
+    function recommendedName() {
+      if (root.ready && root.svc.autopickResult && root.svc.autopickResult.time) {
+        var c = String(root.svc.autopickResult.chosen || "")
+        if (c !== "" && c !== "(off)") return c
+      }
+      return "fs-general"
+    }
+
+    function recommendedText() {
+      var r = sp.pickRow(sp.recommendedName())
+      if (typeof Model.breaksText === "function") return Model.breaksText(r)
+      return "не проверялась"
+    }
+
+    function totalPresets() {
+      if (!root.ready || !root.svc.presets) return 0
+      return root.svc.presets.length
     }
 
     function isSectionFormat(text) { return String(text || "").indexOf("[TCP_") !== -1 }
@@ -611,18 +673,13 @@ Item {
 
     function rowSubtitle(p) {
       var r = sp.pickRow(p.name)
-      var tested = !!(r && ((r.total | 0) > 0 || r.error !== ""))
-      if (tested && typeof Model.breaksText === "function") {
-        var t = Model.breaksText(r)
-        if (sp.isWorse(p.name)) t += " · ⚠ хуже, чем без обхода"
-        return t
-      }
-      if (r && (r.total | 0) > 0) {
-        var s = r.score + "/" + r.total + " в подборе"
-        if (sp.isWorse(p.name)) s += " · ⚠ хуже, чем без обхода"
-        return s
-      } else if (r && r.error !== "") return r.error
-      return "не проверялась"
+      var t = ""
+      if (typeof Model.breaksText === "function") t = Model.breaksText(r)
+      else if (r && (r.total | 0) > 0) t = r.score + "/" + r.total + " в подборе"
+      else if (r && r.error !== "") t = r.error
+      else t = "не проверялась"
+      if (sp.isWorse(p.name)) t += " · ⚠ хуже, чем без обхода"
+      return t
     }
 
     function groups() {
@@ -725,6 +782,24 @@ Item {
       }
     }
 
+    Card {
+      visible: !sp.editing && !sp.showing
+      Label { Layout.fillWidth: true; font.bold: true; text: "Рекомендуемая" }
+      Label { Layout.fillWidth: true; text: Model.presetTitle(sp.recommendedName()) }
+      Hint { Layout.fillWidth: true; text: sp.recommendedText() }
+      RowLayout {
+        Layout.fillWidth: true
+        PrimaryButton {
+          enabled: root.ready && root.svc.installed && !root.svc.busy
+          text: "Включить её"
+          onClicked: {
+            var n = sp.recommendedName()
+            if (root.svc.preset !== n) root.svc.setOption("preset", n)
+            sp.pendingPreset = n
+          }
+        }
+      }
+    }
     RowLayout {
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
@@ -732,9 +807,16 @@ Item {
       Button { bordered: true; text: "Обновить стратегии из Flowseal"; onClicked: root.svc.updatePresets() }
       Button { bordered: true; text: "Новая стратегия"; onClicked: sp.edit("") }
     }
-    TextField {
+    RowLayout {
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
+      HoverHandler { cursorShape: Qt.PointingHandCursor }
+      TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: sp.showAll = !sp.showAll }
+      Label { Layout.fillWidth: true; font.bold: true; text: "Все стратегии (" + sp.totalPresets() + ") " + (sp.showAll ? "▾" : "▸") }
+    }
+    TextField {
+      Layout.fillWidth: true
+      visible: !sp.editing && !sp.showing && sp.showAll
       placeholderText: "Найти стратегию"
       text: sp.filter
       onTextChanged: sp.filter = text
@@ -744,7 +826,7 @@ Item {
       id: stratScroll
       Layout.fillWidth: true
       Layout.fillHeight: true
-      visible: !sp.editing && !sp.showing
+      visible: !sp.editing && !sp.showing && sp.showAll
       clip: true
       contentWidth: availableWidth
       ColumnLayout {
@@ -843,6 +925,12 @@ Item {
                       Layout.fillWidth: true
                       color: sp.isWorse(modelData.name) ? root.bad : root.dim
                       text: sp.rowSubtitle(modelData)
+                    }
+                    Hint {
+                      Layout.fillWidth: true
+                      visible: stratRect.flowSrc !== ""
+                      color: root.dim
+                      text: stratRect.flowSrc
                     }
                   }
                   PrimaryButton {
@@ -971,7 +1059,7 @@ Item {
         if (!r.ok) { info = r.message; return }
         listEditor.text = r.data.text + (r.data.text ? "\n" : "")
         loadedText = listEditor.text
-        info = r.data.count + " записей" + (r.data.truncated ? " (показаны первые 5000)" : "")
+        info = r.data.count + " строк" + (r.data.truncated ? " (показаны первые 5000)" : "")
       })
     }
     function savedMessage(count, dropped) {
@@ -1032,6 +1120,21 @@ Item {
     property bool tiesOpen: false
     property var pickGroup: Model.groupSearchRows(Model.autopickRows(root.ready ? root.svc.autopickResult : null))
     property int pickBase: pickGroup && pickGroup.baseline ? (Number(pickGroup.baseline.score) || 0) : -1
+    property string failingHosts: {
+      if (!root.ready) return "youtube.com discord.com"
+      var cats = (root.svc.check && root.svc.check.categories) ? root.svc.check.categories : {}
+      var out = []
+      for (var k in cats) {
+        var rs = cats[k].results || []
+        for (var i = 0; i < rs.length; i++) {
+          if (rs[i].ok) continue
+          var h = rs[i].host || ""
+          if (!h && rs[i].url) h = String(rs[i].url).replace(/^https?:\/\//, "").split("/")[0]
+          if (h && out.indexOf(h) === -1) out.push(h)
+        }
+      }
+      return out.length > 0 ? out.join(" ") : "youtube.com discord.com"
+    }
     clip: true
     contentWidth: availableWidth
     ColumnLayout {
@@ -1141,8 +1244,10 @@ Item {
             enabled: {
               if (!root.ready || root.svc.blockcheckRunning) return true
               var items = root.svc.doctorItems || []
-              for (var i = 0; i < items.length; i++)
+              for (var i = 0; i < items.length; i++) {
                 if (items[i].name === "host/nslookup" && !items[i].ok) return false
+                if (items[i].name === "No VPN tunnel" && !items[i].ok) return false
+              }
               return true
             }
             text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить"
@@ -1164,11 +1269,22 @@ Item {
         }
         Hint {
           Layout.fillWidth: true
+          visible: {
+            if (!root.ready || root.svc.blockcheckRunning) return false
+            var items = root.svc.doctorItems || []
+            for (var i = 0; i < items.length; i++)
+              if (items[i].name === "No VPN tunnel" && !items[i].ok) return true
+            return false
+          }
+          text: "включён VPN-туннель: blockcheck2 бессмыслен"
+        }
+        Hint {
+          Layout.fillWidth: true
           text: "Официальный перебор стратегий zapret2. Обход на время поиска выключается. quick — минуты, standard и force — до часа и дольше. Найденное можно сохранить как свою стратегию."
         }
         RowLayout {
           Layout.fillWidth: true
-          TextField { id: domains; Layout.fillWidth: true; text: "youtube.com discord.com"; placeholderText: "домены через пробел" }
+          TextField { id: domains; Layout.fillWidth: true; text: se.failingHosts; placeholderText: "домены через пробел" }
           Dropdown {
             id: level
             Layout.preferredWidth: Style.space(160)
@@ -1277,7 +1393,7 @@ Item {
             Button {
               visible: !modelData.ok && (String(modelData.name).indexOf("host") !== -1 || String(modelData.name).indexOf("nslookup") !== -1 || String(modelData.detail).indexOf("bind") !== -1)
               text: "Скопировать команду"
-              onClicked: Quickshell.execDetached(["wl-copy", "omarchy pkg add bind"])
+              onClicked: root.copyText("omarchy pkg add bind")
             }
             Button {
               visible: !modelData.ok && String(modelData.name).indexOf("Plugin and system copy") !== -1
@@ -1338,7 +1454,7 @@ Item {
             Label { Layout.fillWidth: true; font.bold: true; text: "Включать при входе" }
             Hint { Layout.fillWidth: true; text: "Шелл включает обход после входа в систему" }
           }
-          ToggleSwitch { checked: root.ready && root.svc.settings.autostart === true; onToggled: root.svc.setOption("autostart", checked ? "off" : "on") }
+          ToggleSwitch { checked: root.ready && root.svc.settings.autostart === true; onToggled: root.svc.toggleAutostart() }
         }
         RowLayout {
           Layout.fillWidth: true
@@ -1348,7 +1464,7 @@ Item {
             Label { Layout.fillWidth: true; font.bold: true; text: "IPv6" }
             Hint { Layout.fillWidth: true; text: "Обрабатывать и IPv6-соединения" }
           }
-          ToggleSwitch { checked: root.ready && root.svc.settings.ipv6 !== false; onToggled: root.svc.setOption("ipv6", checked ? "off" : "on") }
+          ToggleSwitch { checked: root.ready && root.svc.settings.ipv6 !== false; onToggled: root.svc.toggleIpv6() }
         }
       }
 
@@ -1368,16 +1484,6 @@ Item {
           value: root.ready ? (root.svc.settings.ipset || "loaded") : "loaded"
           options: [{ value: "loaded", label: "По списку" }, { value: "none", label: "Выключено" }, { value: "any", label: "Любой IP" }]
           onChanged: function(v) { root.svc.setOption("ipset", v) }
-        }
-        RowLayout {
-          Layout.fillWidth: true
-          visible: root.ready && (root.svc.settings.game || "off") !== "off" && (root.svc.settings.ipset || "loaded") === "none"
-          Hint {
-            Layout.fillWidth: true
-            color: root.bad
-            text: "Игровой фильтр работает по IP-сетям: включите «IP-сети: По списку»"
-          }
-          Button { bordered: true; text: "Включить"; onClicked: root.svc.setOption("ipset", "loaded") }
         }
         Dropdown {
           Layout.fillWidth: true
@@ -1400,8 +1506,9 @@ Item {
       Card {
         RowLayout {
           Layout.fillWidth: true
+          HoverHandler { cursorShape: Qt.PointingHandCursor }
+          TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: stp.showExtra = !stp.showExtra }
           Label { Layout.fillWidth: true; font.bold: true; text: (stp.showExtra ? "▾ " : "▸ ") + "Дополнительно" }
-          TapHandler { onTapped: stp.showExtra = !stp.showExtra }
         }
         RowLayout {
           Layout.fillWidth: true

@@ -1226,6 +1226,30 @@ def custom_name(name):
     return name
 
 
+def is_full_preset_text(text):
+    """Full (nfqws2 profile list) vs simple ([SECTION]) custom preset.
+
+    Full lines carry @tcp=/@udp= ports or --filter-* selectors; simple ones
+    live under [SECTION] headers (VOICE_COMPATIBLE may also use --filter-*,
+    so a section header wins over a --filter- line, while @tcp=/@udp=
+    always means full)."""
+    has_section = False
+    has_filter = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "@tcp=" in line or "@udp=" in line:
+            return True
+        if re.match(r"^\[[A-Z_]+\]$", line):
+            has_section = True
+        elif line.startswith("--filter-"):
+            has_filter = True
+    if has_section:
+        return False
+    return has_filter
+
+
 def cmd_custom(args):
     require_installed()
     if not args:
@@ -1240,7 +1264,10 @@ def cmd_custom(args):
     path = var_path("custom", name + ".txt")
     if verb == "save":
         text = read_stdin(MAX_SMALL)
-        parse_preset(text)
+        if is_full_preset_text(text):
+            parse_full(text)
+        else:
+            parse_preset(text)
         atomic_write(path, text.strip() + "\n")
         out({"ok": True, "name": name})
     elif verb == "show":
@@ -2099,6 +2126,8 @@ def load_preset_for_run(name, uid):
     text = read_nofollow(os.path.join(VAR, "custom", name + ".txt"), MAX_SMALL, owner=uid)
     if text is None:
         raise Fail("custom strategy %s is gone" % name)
+    if is_full_preset_text(text):
+        return parse_full(text)
     return parse_preset(text)
 
 

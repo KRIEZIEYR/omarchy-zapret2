@@ -99,6 +99,7 @@ test("autopick tie-break: name asc, untested last", () => {
 })
 
 test("verdict", () => {
+  const NOT_NEEDED = "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)"
   const on = { installed: true, active: "active" }
   const off = { installed: true, active: "inactive" }
   const allOk = { categories: { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } } }
@@ -107,16 +108,20 @@ test("verdict", () => {
   const notNeeded = { time: 1000, chosen: "(off)", notNeeded: true, rows: [] }
 
   eq(Model.verdict(on, allOk, picked), { text: "Всё открывается", tone: "good", action: "none", note: "" })
-  eq(Model.verdict(off, allOk, notNeeded), { text: "Сайты открываются и без обхода (возможно, обход уже работает на роутере или в VPN)", tone: "neutral", action: "none", note: "" })
+  eq(Model.verdict(off, allOk, notNeeded), { text: NOT_NEEDED, tone: "neutral", action: "none", note: "" })
   eq(Model.verdict(off, someFail, picked), { text: "YouTube/Discord частично: не открываются", tone: "warn", action: "autopick", note: "" })
   eq(Model.verdict(on, someFail, picked).tone, "warn")
   eq(Model.verdict(on, someFail, picked).action, "autopick")
   eq(Model.verdict(off, someFail, null).action, "autopick")
   eq(Model.verdict(off, someFail, {}).action, "autopick")
   eq(Model.verdict(off, {}, null), { text: "Запустите автоподбор, чтобы найти рабочую стратегию", tone: "neutral", action: "autopick", note: "" })
-  eq(Model.verdict(off, null, notNeeded), { text: "Сайты открываются и без обхода (возможно, обход уже работает на роутере или в VPN)", tone: "neutral", action: "none", note: "" })
+  eq(Model.verdict(off, null, notNeeded), { text: NOT_NEEDED, tone: "neutral", action: "none", note: "" })
   eq(Model.verdict(null, null, null).action, "autopick")
   eq(Model.verdict(on, {}, picked), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })
+  // Fresh check with bypass off and every category full means no bypass needed,
+  // even without an autopick result.
+  eq(Model.verdict(off, allOk, null), { text: NOT_NEEDED, tone: "neutral", action: "none", note: "" })
+  eq(Model.verdict(off, allOk, picked), { text: NOT_NEEDED, tone: "neutral", action: "none", note: "" })
 })
 
 test("verdict partial never says not needed", () => {
@@ -191,7 +196,7 @@ test("verdict stale check", () => {
     { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия general, обход был включён" })
   eq(Model.verdict(on, Object.assign({}, fresh, { active: false }), null),
     { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия alt5, обход был выключен" })
-  eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Всё открывается")
+  eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)")
   eq(Model.verdict(on, fresh, null, 1010), { text: "Всё открывается", tone: "good", action: "none", note: "по проверке только что, обход был включён" })
   eq(Model.verdict(on, null, null), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })
 })
@@ -300,4 +305,43 @@ test("doctorDetail additions", () => {
   eq(Model.doctorDetail("Service", "active (running)"), "работает")
   eq(Model.doctorDetail("Flowseal presets", "bundled presets"), "встроенные пресетов")
   eq(Model.doctorDetail("Service", "3 restarts"), "3 перезапусков")
+})
+
+test("verdict neutral not-needed text", () => {
+  const NOT_NEEDED = "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)"
+  const off = { installed: true, active: "inactive" }
+  const on = { installed: true, active: "active" }
+  const allOk = { categories: { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } } }
+  const notNeeded = { time: 1000, chosen: "(off)", notNeeded: true, rows: [] }
+  const v1 = Model.verdict(off, allOk, notNeeded)
+  eq(v1, { text: NOT_NEEDED, tone: "neutral", action: "none", note: "" })
+  const v2 = Model.verdict(off, allOk, null)
+  eq(v2.text, NOT_NEEDED)
+  eq(v2.tone, "neutral")
+  eq(v2.action, "none")
+  // Bypass on with everything open stays good, never neutral.
+  eq(Model.verdict(on, allOk, notNeeded).tone, "good")
+})
+
+test("breaksText mixed pass and fail", () => {
+  eq(Model.breaksText({ score: 3, total: 5, categories: { youtube: [1, 3], discord: [2, 2] } }), "YouTube ✗ QUIC · Discord ✓")
+  eq(Model.breaksText({ score: 2, total: 5, categories: { youtube: { ok: 0, total: 3 }, discord: { ok: 2, total: 2 } } }), "YouTube ✗ · Discord ✓")
+  eq(Model.breaksText({ score: 5, total: 5, categories: { youtube: [3, 3], discord: [2, 2] } }), "всё открывается")
+})
+
+test("presetLabel", () => {
+  eq(Model.presetLabel("fs-general", 12, 14, true, false), "General · 12/14 · лучшая")
+  eq(Model.presetLabel("fs-general", 8, 14, false, true), "General · 8/14 · ⚠ хуже, чем без обхода")
+  eq(Model.presetLabel("fs-general", 8, 14, false, false), "General · 8/14")
+  // Missing score degrades gracefully.
+  eq(Model.presetLabel("fs-general", null, 0, false, false), "General")
+  eq(Model.presetLabel("fs-general", undefined, undefined, true, false), "General · лучшая")
+  eq(Model.presetLabel("fs-general"), "General")
+  eq(Model.presetLabel("(off)", 14, 14, true, false), "Без обхода · 14/14 · лучшая")
+  // Shorthand (name, score, isBest, worse) without total.
+  eq(Model.presetLabel("fs-general", 12, true, false), "General · лучшая")
+  // Row-object forms.
+  eq(Model.presetLabel({ preset: "fs-general", score: 12, total: 14, chosen: true }), "General · 12/14 · лучшая")
+  eq(Model.presetLabel({ preset: "fs-general", score: 12, total: 14 }, true, false), "General · 12/14 · лучшая")
+  eq(Model.presetLabel("fs-general", { score: 12, total: 14 }, true, false), "General · 12/14 · лучшая")
 })
