@@ -8,6 +8,7 @@ refuse to run unless root:
   _install / _uninstall   through pkexec (or sudo), once per install/update
   _run / _stop            ExecStart / ExecStopPost of omarchy-zapret2.service
   _blockcheck             ExecStart of omarchy-zapret2-blockcheck.service
+  _hosts                  apply or remove the Flowseal hosts block in /etc/hosts
 
 The units run the root-owned copy in /opt/omarchy-zapret2/app, never the
 plugin folder. That copy treats everything under /var/lib/omarchy-zapret2
@@ -20,9 +21,12 @@ allowlist of nfqws2 options and Lua desync functions.
   engine check                 installed vs latest release
   on | off | restart           the bypass service
   set <key> <value>            preset, game (off|tcp|udp|all), ipset (loaded|none|any),
-                               voice (compatible|standard|off), ipv6 (on|off), autostart (on|off)
+                               voice (compatible|standard|off), ipv6 (on|off), autostart (on|off),
+                               gametcp|gameudp <ports>, discordfake|gamefake <default|blob>
   presets                      built-in and custom strategies
   presets update               fetch fresh Flowseal strategies
+  hosts on|off|status          Flowseal hosts block in /etc/hosts
+  discord-cache clear          delete Discord cache folders
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
   list show <name> | list save <name>              user lists (save reads stdin)
   lists update                 fetch fresh upstream lists (Flowseal)
@@ -85,9 +89,18 @@ MAX_SMALL = 64 * 1024
 # hostlist domains; "loaded" applies it to ~33k networks and can break sites
 # that are not blocked at all.
 DEFAULTS = {"preset": "fs-general", "game": "off", "ipset": "none", "voice": "compatible",
-            "ipv6": True, "autostart": False}
+            "ipv6": True, "autostart": False, "gameTcp": "1024-65535", "gameUdp": "1024-65535",
+            "discordFake": "default", "gameFake": "default"}
 ENUMS = {"game": ("off", "tcp", "udp", "all"), "ipset": ("loaded", "none", "any"),
          "voice": ("compatible", "standard", "off")}
+GAME_PORT_DEFAULT = "1024-65535"
+GAME_PORT_MAX_ITEMS = 16
+
+HOSTS_URL = "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/.service/hosts"
+HOSTS_BEGIN = "# >>> omarchy-zapret2 (Flowseal hosts) >>>"
+HOSTS_END = "# <<< omarchy-zapret2 <<<"
+HOSTS_FILE = "/etc/hosts"
+MAX_HOSTS = 256 * 1024
 
 # Lists: bundled defaults (data/lists, may be replaced by `lists update`) and
 # the user's own additions, edited from the app.
@@ -274,7 +287,48 @@ def clean_settings(raw):
     for k in ("ipv6", "autostart"):
         if isinstance(raw.get(k), bool):
             s[k] = raw[k]
+    for k in ("gameTcp", "gameUdp"):
+        v = raw.get(k)
+        if isinstance(v, str) and valid_game_ports(v):
+            s[k] = v
+    for k in ("discordFake", "gameFake"):
+        v = raw.get(k)
+        if v == "default" or (isinstance(v, str) and v in fake_choices()):
+            s[k] = v
     return s
+
+
+def valid_game_ports(text):
+    """check_ports-style validation for custom game filters: comma list of
+    ports/ranges 1-65535, at most GAME_PORT_MAX_ITEMS items."""
+    if not isinstance(text, str) or not RE_PORTS.match(text):
+        return False
+    parts = text.split(",")
+    if not parts or len(parts) > GAME_PORT_MAX_ITEMS:
+        return False
+    try:
+        for part in parts:
+            a, _, b = part.partition("-")
+            if not (1 <= int(a) <= 65535 and (not b or int(a) <= int(b) <= 65535)):
+                return False
+    except ValueError:
+        return False
+    return True
+
+
+def fake_choices():
+    """Allowed discordFake/gameFake values besides 'default': fs_quic_* and fs_stun* blobs."""
+    return sorted(n for n in FS_BLOB_FILES if n.startswith("fs_quic_") or n.startswith("fs_stun"))
+
+
+def game_filter(settings, which):
+    """Custom game filter for one direction; '12' is the disabled sentinel."""
+    key = "gameTcp" if which == "tcp" else "gameUdp"
+    custom = settings.get(key, GAME_PORT_DEFAULT)
+    if not valid_game_ports(custom):
+        custom = GAME_PORT_DEFAULT
+    modes = ("tcp", "all") if which == "tcp" else ("udp", "all")
+    return custom if settings.get("game") in modes else "12"
 
 
 def check_ports(text):
@@ -377,6 +431,83 @@ def clean_list(text, kind):
 
 def list_kind(name):
     return "ipset" if name.startswith("ipset") else "host"
+
+
+def clean_hosts(text):
+    """Flowseal hosts file -> kept '<ip> <domains>' lines. Anything else is dropped."""
+    keep = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            ipaddress.ip_address(parts[0])
+        except ValueError:
+            continue
+        domains = [d.lower().rstrip(".") for d in parts[1:]]
+        if not domains or any(not RE_DOMAIN.match(d) for d in domains):
+            continue
+        keep.append(parts[0] + " " + " ".join(domains))
+    return keep
+
+
+def apply_hosts_block(original_text, lines_or_None):
+    """Rewrite /etc/hosts keeping everything outside the managed block.
+
+    lines_or_None: list of host lines to install, or None to remove the block.
+    Idempotent: re-applying the same lines changes nothing."""
+    if original_text is None:
+        original_text = ""
+    lines = original_text.splitlines()
+    out, i, removed = [], 0, False
+    while i < len(lines):
+        if lines[i].strip() == HOSTS_BEGIN:
+            removed = True
+            i += 1
+            while i < len(lines) and lines[i].strip() != HOSTS_END:
+                i += 1
+            i += 1  # skip HOSTS_END itself when present
+        else:
+            out.append(lines[i])
+            i += 1
+    text = "\n".join(out)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if lines_or_None is None:
+        return text
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if text:
+        text += "\n"
+    text += HOSTS_BEGIN + "\n"
+    for l in lines_or_None:
+        text += l + "\n"
+    text += HOSTS_END + "\n"
+    return text
+
+
+def hosts_state(hosts_path=HOSTS_FILE):
+    """(on, lines): whether the managed block is present and how many entries it holds."""
+    try:
+        text = read_nofollow(hosts_path, MAX_LIST)
+    except Fail:
+        return False, 0
+    if text is None:
+        return False, 0
+    inside, n = False, 0
+    for line in text.splitlines():
+        if line.strip() == HOSTS_BEGIN:
+            inside = True
+            continue
+        if line.strip() == HOSTS_END:
+            inside = False
+            continue
+        if inside and line.strip() and not line.strip().startswith("#"):
+            n += 1
+    return (HOSTS_BEGIN in text and HOSTS_END in text), n
 
 
 # --------------------------------------------------------------- Flowseal (zapret1 / winws) presets
@@ -623,8 +754,8 @@ def fs_slug(filename):
 
 def render_full(lines, settings, engine, lists, counts):
     """A full preset as nfqws2 args and (tcp, udp) nft ports."""
-    game_tcp = "1024-65535" if settings["game"] in ("tcp", "all") else "12"
-    game_udp = "1024-65535" if settings["game"] in ("udp", "all") else "12"
+    game_tcp = game_filter(settings, "tcp")
+    game_udp = game_filter(settings, "udp")
     loaded = ["--ipset=%s/%s.txt" % (lists, n) for n in ("ipset-all", "ipset-all-user") if counts.get(n)]
     ipset_all = {"loaded": loaded or ["--ipset=%s/ipset-none.txt" % lists],
                  "none": ["--ipset=%s/ipset-none.txt" % lists], "any": []}[settings["ipset"]]
@@ -640,6 +771,14 @@ def render_full(lines, settings, engine, lists, counts):
             args += ipset_all
             continue
         args.append(line.replace("{{LISTS}}", lists).replace("{{GAME_TCP}}", game_tcp).replace("{{GAME_UDP}}", game_udp))
+    discord_fake = settings.get("discordFake", "default")
+    game_fake = settings.get("gameFake", "default")
+    if discord_fake not in ("default", None) and discord_fake in fake_choices():
+        args = [a.replace("blob=fs_active_discord_udp", "blob=" + discord_fake) if a.startswith("--lua-desync=") else a
+                for a in args]
+    if game_fake not in ("default", None) and game_fake in fake_choices():
+        args = [a.replace("blob=fs_active_game_udp", "blob=" + game_fake) if a.startswith("--lua-desync=") else a
+                for a in args]
     return args, (merge_ports(ports["tcp"] or ["80", "443"]), merge_ports(ports["udp"] or ["443"]))
 
 
@@ -680,8 +819,10 @@ def ports_for(settings, sections):
     ipset_tcp = [p for p in sections.get("IPSET_TCP_PORTS", [])]
     tcp = ["80", "443", "2053", "2083", "2087", "2096", "8443"] + ipset_tcp
     if settings["game"] in ("tcp", "all"):
-        tcp.append("1024-65535")
-    if settings["game"] in ("udp", "all") or (settings["voice"] == "compatible" and not sections.get("VOICE_COMPATIBLE")):
+        tcp.append(game_filter(settings, "tcp"))
+    if settings["game"] in ("udp", "all"):
+        udp = ["443", game_filter(settings, "udp")]
+    elif settings["voice"] == "compatible" and not sections.get("VOICE_COMPATIBLE"):
         udp = ["443", "1024-65535"]
     else:
         udp = ["443", "19294-19344", "50000-50100"]
@@ -729,8 +870,8 @@ def render_args(preset, sections, settings, engine, lists, fake_dirs, counts):
     tcp_extra = ["80,443"] + sections.get("IPSET_TCP_PORTS", [])
     inline = {
         "{{LISTS}}": lists,
-        "{{GAME_TCP}}": "1024-65535" if settings["game"] in ("tcp", "all") else "12",
-        "{{GAME_UDP}}": "1024-65535" if settings["game"] in ("udp", "all") else "12",
+        "{{GAME_TCP}}": game_filter(settings, "tcp"),
+        "{{GAME_UDP}}": game_filter(settings, "udp"),
         "{{IPSET_TCP_FILTER}}": ",".join(tcp_extra),
     }
     with open(os.path.join(DATA, "profiles.txt"), encoding="utf-8") as f:
@@ -880,7 +1021,8 @@ def cmd_status():
     rec = load_record()
     st = {"ok": True, "installed": installed(), "engine": rec.get("version") if rec else None,
           "appCurrent": True, "settings": load_settings(),
-          "presets": all_presets(),
+          "presets": all_presets(), "fakeChoices": ["default"] + fake_choices(),
+          "hosts": hosts_state()[0],
           "check": load_state("check.json", {}), "autopick": load_state("autopick.json", {})}
     if rec and rec.get("uid") != os.getuid():
         st["error"] = "zapret2 is set up for another user on this machine"
@@ -1016,6 +1158,16 @@ def cmd_set(key, value):
         if value not in ("on", "off"):
             raise Fail("%s takes on or off" % key)
         s[key] = value == "on"
+    elif key.lower() in ("gametcp", "gameudp"):
+        setting = "gameTcp" if key.lower() == "gametcp" else "gameUdp"
+        if not valid_game_ports(value):
+            raise Fail("%s takes a port list like 1024-65535 (up to %d items)" % (key.lower(), GAME_PORT_MAX_ITEMS))
+        s[setting] = value
+    elif key.lower() in ("discordfake", "gamefake"):
+        setting = "discordFake" if key.lower() == "discordfake" else "gameFake"
+        if value != "default" and value not in fake_choices():
+            raise Fail("%s takes default or one of: %s" % (key.lower(), ", ".join(["default"] + fake_choices())))
+        s[setting] = value
     else:
         raise Fail("unknown setting: %s" % key)
     save_settings(s)
@@ -1137,6 +1289,88 @@ def cmd_lists_update():
         atomic_write(var_path("lists", "upstream", name + ".txt"), "\n".join(lines) + "\n")
     restarted = restart_if_active()
     out({"ok": True, "updated": {k: len(v) for k, v in updated.items()}, "skipped": skipped, "restarted": restarted})
+
+
+def cmd_hosts(args):
+    verb = args[0] if args else "status"
+    if verb == "status":
+        on, n = hosts_state()
+        out({"ok": True, "on": on, "lines": n})
+        return
+    require_installed()
+    if verb == "on":
+        data = http_get(HOSTS_URL, MAX_HOSTS)
+        lines = clean_hosts(data.decode("utf-8", "replace"))
+        if not lines:
+            raise Fail("the upstream hosts file looks empty, kept the current one")
+        text = "\n".join(lines) + "\n"
+        d = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "omarchy-zapret2")
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        os.chmod(d, 0o700)
+        path = os.path.join(d, "hosts.txt")
+        atomic_write(path, text, mode=0o600)
+        sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        res = escalated("Hosts", "_hosts", "on", "--file", path, "--sha256", sha)
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        out({"ok": True, "on": True, "lines": len(lines), "result": res})
+    elif verb == "off":
+        res = escalated("Hosts", "_hosts", "off")
+        out({"ok": True, "on": False, "result": res})
+    else:
+        raise Fail("usage: hosts on|off|status")
+
+
+def cmd_hosts_root(args):
+    require_root()
+    uid = caller_uid()
+    opts = dict(zip(args[::2], args[1::2]))
+    if os.path.islink(HOSTS_FILE):
+        raise Fail("%s is a symlink: refusing" % HOSTS_FILE)
+    if args[:1] == ["off"]:
+        text = read_nofollow(HOSTS_FILE, MAX_LIST) or ""
+        atomic_write(HOSTS_FILE, apply_hosts_block(text, None), mode=0o644)
+        out({"ok": True, "on": False})
+        return
+    if args[:1] != ["on"]:
+        raise Fail("usage: _hosts on|off")
+    path, sha = opts.get("--file", ""), opts.get("--sha256", "")
+    if not RE_SHA.match(sha or ""):
+        raise Fail("bad checksum")
+    text = read_nofollow(path, MAX_HOSTS, owner=uid)
+    if text is None:
+        raise Fail("hosts file is gone")
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != sha:
+        raise Fail("the hosts file does not match its checksum")
+    lines = clean_hosts(text)
+    if not lines:
+        raise Fail("the hosts file looks empty")
+    current = read_nofollow(HOSTS_FILE, MAX_LIST) or ""
+    atomic_write(HOSTS_FILE, apply_hosts_block(current, lines), mode=0o644)
+    out({"ok": True, "on": True, "lines": len(lines)})
+
+
+DISCORD_DIRS = ("discord", "discordcanary", "discordptb")
+DISCORD_CACHE_SUBS = ("Cache", "Code Cache", "GPUCache")
+
+
+def cmd_discord_cache(args):
+    if not args or args[0] != "clear":
+        raise Fail("usage: discord-cache clear")
+    bases = [os.path.expanduser("~/.config/" + d) for d in DISCORD_DIRS]
+    bases.append(os.path.expanduser("~/.var/app/com.discordapp.Discord/config/discord"))
+    cleared = []
+    for base in bases:
+        for sub in DISCORD_CACHE_SUBS:
+            target = os.path.join(base, sub)
+            if os.path.islink(target):
+                raise Fail("%s is a symlink: refusing" % target)
+            if os.path.isdir(target):
+                shutil.rmtree(target, ignore_errors=False)
+                cleared.append(target)
+    out({"ok": True, "cleared": cleared})
 
 
 # --------------------------------------------------------------- checks and autopick
@@ -1508,6 +1742,12 @@ def cmd_doctor():
     if installed():
         st = unit_state(UNIT)
         add("Service", st.get("ActiveState") != "failed", "%s (%s), restarts %s" % (st.get("ActiveState"), st.get("SubState"), st.get("NRestarts", "0")))
+    names = flowseal_names()
+    try:
+        updated = any(f.startswith("fs-") and f.endswith(".txt") for f in os.listdir(var_path("flowseal")))
+    except OSError:
+        updated = False
+    add("Flowseal presets", bool(names), "%d presets%s" % (len(names), ", updated set" if updated else ", bundled" if names else ""))
     out({"ok": True, "items": items, "healthy": all(i["ok"] for i in items)})
 
 
@@ -1761,6 +2001,14 @@ def cmd_uninstall(args):
     shutil.rmtree(SYS_BASE, ignore_errors=True)
     shutil.rmtree(RUN_BC, ignore_errors=True)
     removed.append(SYS_BASE)
+    try:
+        if not os.path.islink(HOSTS_FILE):
+            text = read_nofollow(HOSTS_FILE, MAX_LIST)
+            if text is not None and HOSTS_BEGIN in text:
+                atomic_write(HOSTS_FILE, apply_hosts_block(text, None), mode=0o644)
+                removed.append(HOSTS_FILE + " block")
+    except (Fail, OSError):
+        pass
     if "--purge" in args and os.path.isdir(VAR) and not os.path.islink(VAR) and os.lstat(VAR).st_uid == uid:
         shutil.rmtree(VAR)
         removed.append(VAR)
@@ -1934,6 +2182,10 @@ def main(argv):
         cmd_list(args)
     elif cmd == "lists" and args[:1] == ["update"]:
         cmd_lists_update()
+    elif cmd == "hosts":
+        cmd_hosts(args)
+    elif cmd == "discord-cache":
+        cmd_discord_cache(args)
     elif cmd == "check":
         cmd_check()
     elif cmd == "autopick":
@@ -1967,6 +2219,8 @@ def main(argv):
         cmd_blockcheck_run()
     elif cmd == "_blockcheck-done":
         cmd_blockcheck_done()
+    elif cmd == "_hosts":
+        cmd_hosts_root(args)
     else:
         raise Fail("unknown command: %s (see --help)" % " ".join(argv[:2]))
     return 0

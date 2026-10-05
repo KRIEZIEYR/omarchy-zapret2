@@ -297,5 +297,79 @@ class Flowseal(unittest.TestCase):
         self.assertFalse(any(a.startswith("--ipset=") for a in args))
 
 
+class NewFeatures(unittest.TestCase):
+    def test_game_port_validation(self):
+        self.assertEqual(zm.clean_settings({"gameTcp": "8080,9000-9010"})["gameTcp"], "8080,9000-9010")
+        self.assertEqual(zm.clean_settings({"gameUdp": "443"})["gameUdp"], "443")
+        for bad in ("0", "99999", "80-", "abc", "80,,443", "", "1-2-3",
+                    ",".join(str(1000 + i) for i in range(17)), 123, None):
+            with self.subTest(value=bad):
+                key = "gameTcp"
+                self.assertEqual(zm.clean_settings({key: bad})[key], zm.DEFAULTS[key])
+        s = zm.clean_settings({"gameTcp": "7000-7100", "gameUdp": "8000"})
+        self.assertEqual((s["gameTcp"], s["gameUdp"]), ("7000-7100", "8000"))
+
+    def test_game_custom_ports_render(self):
+        lines = ["@tcp=80,443,{{GAME_TCP}}", "@udp=443,{{GAME_UDP}}",
+                 "--filter-tcp={{GAME_TCP}}", "--filter-udp={{GAME_UDP}}",
+                 "--payload=known", "--lua-desync=multisplit:pos=1"]
+        s = dict(zm.DEFAULTS, game="all", gameTcp="7000-7100", gameUdp="8000-8010")
+        args, (tcp, udp) = zm.render_full(lines, s, "/E", "/L", {})
+        self.assertIn("--filter-tcp=7000-7100", args)
+        self.assertIn("--filter-udp=8000-8010", args)
+        self.assertIn("7000-7100", tcp)
+        self.assertIn("8000-8010", udp)
+        s = dict(zm.DEFAULTS, game="off", gameTcp="7000-7100", gameUdp="8000-8010")
+        args, _ = zm.render_full(lines, s, "/E", "/L", {})
+        self.assertIn("--filter-tcp=12", args)
+        self.assertIn("--filter-udp=12", args)
+        self.assertNotIn("--filter-tcp=7000-7100", args)
+
+    def test_fake_validation_and_substitution(self):
+        choices = zm.fake_choices()
+        self.assertTrue(choices)
+        self.assertTrue(all(c.startswith("fs_quic_") or c.startswith("fs_stun") for c in choices))
+        self.assertEqual(zm.clean_settings({"discordFake": choices[0]})["discordFake"], choices[0])
+        self.assertEqual(zm.clean_settings({"discordFake": "nope"})["discordFake"], "default")
+        self.assertEqual(zm.clean_settings({"gameFake": "fs_tls_clienthello_www_google_com"})["gameFake"], "default")
+        lines = ["@tcp=80,443", "@udp=443",
+                 "--lua-desync=fake:blob=fs_active_discord_udp:repeats=6",
+                 "--lua-desync=fake:blob=fs_active_game_udp:repeats=12"]
+        args, _ = zm.render_full(lines, dict(zm.DEFAULTS), "/E", "/L", {})
+        self.assertIn("--lua-desync=fake:blob=fs_active_discord_udp:repeats=6", args)
+        d, g = choices[0], choices[-1]
+        args, _ = zm.render_full(lines, dict(zm.DEFAULTS, discordFake=d, gameFake=g), "/E", "/L", {})
+        self.assertIn("--lua-desync=fake:blob=%s:repeats=6" % d, args)
+        self.assertIn("--lua-desync=fake:blob=%s:repeats=12" % g, args)
+        self.assertFalse(any("fs_active_discord_udp" in a or "fs_active_game_udp" in a
+                             for a in args if a.startswith("--lua-desync=")))
+
+    def test_clean_hosts(self):
+        text = ("127.0.0.1 localhost\n0.0.0.0 example.com ads.example.org # tail\n"
+                "::1 ipv6.example.com\nnot-an-ip example.com\n1.2.3.4 bad_host!\n"
+                "# comment\n\n1.2.3.4 single\n")
+        self.assertEqual(zm.clean_hosts(text),
+                         ["127.0.0.1 localhost", "0.0.0.0 example.com ads.example.org",
+                          "::1 ipv6.example.com", "1.2.3.4 single"])
+
+    def test_apply_hosts_block(self):
+        original = "127.0.0.1 localhost\n8.8.8.8 dns\n"
+        with_block = zm.apply_hosts_block(original, ["0.0.0.0 a.com", "0.0.0.0 b.com"])
+        self.assertIn("127.0.0.1 localhost", with_block)
+        self.assertIn("8.8.8.8 dns", with_block)
+        self.assertIn(zm.HOSTS_BEGIN, with_block)
+        self.assertIn(zm.HOSTS_END, with_block)
+        self.assertIn("0.0.0.0 a.com", with_block)
+        again = zm.apply_hosts_block(with_block, ["0.0.0.0 a.com", "0.0.0.0 b.com"])
+        self.assertEqual(again, with_block)                       # idempotent
+        replaced = zm.apply_hosts_block(with_block, ["0.0.0.0 c.com"])
+        self.assertIn("0.0.0.0 c.com", replaced)
+        self.assertNotIn("0.0.0.0 a.com", replaced)
+        self.assertEqual(replaced.count(zm.HOSTS_BEGIN), 1)
+        removed = zm.apply_hosts_block(replaced, None)
+        self.assertEqual(removed, original)
+        self.assertEqual(zm.apply_hosts_block(removed, None), original)
+
+
 if __name__ == "__main__":
     unittest.main()
