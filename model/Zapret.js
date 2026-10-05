@@ -119,6 +119,31 @@ function parseLine(line) {
   try { return JSON.parse(l) } catch (e) { return null }
 }
 
+// Map manager error output to actionable Russian text for the user.
+function actionErrorText(message) {
+  var s = String(message || "").toLowerCase()
+  if (!s.trim()) return "Неизвестная ошибка"
+  if (s.indexOf("python3") !== -1 || s.indexOf("no such file") !== -1 || s.indexOf("enoent") !== -1) {
+    return "Не найден python3 — установите: omarchy pkg add python"
+  }
+  if (s.indexOf("not installed") !== -1 || s.indexOf("not set up") !== -1 || s.indexOf("engine not found") !== -1) {
+    return "Сначала установите движок (вкладка Обзор → Установить)"
+  }
+  if (s.indexOf("not authorized") !== -1 || s.indexOf("cancelled") !== -1 || s.indexOf("auth canceled") !== -1 || s.indexOf("пользователь отменил") !== -1) {
+    return "Отменено: пароль не введён"
+  }
+  if (s.indexOf("permission denied") !== -1 || s.indexOf("access denied") !== -1) {
+    return "Нет прав: запустите установку (пароль)"
+  }
+  // Exit code fallback
+  var codeMatch = s.match(/код[^\d]*(\d+)/) || s.match(/exit[^\d]*(\d+)/) || s.match(/code[^\d]*(\d+)/)
+  if (codeMatch) return "Команда не выполнилась (код " + codeMatch[1] + "): откройте Движок → Журнал"
+  if (s.indexOf("омархи-запрет") !== -1 || s.indexOf("omarchy-zapret") !== -1) {
+    return "Команда не выполнилась: откройте Движок → Журнал"
+  }
+  return message
+}
+
 // Failed categories in an autopick row: categories where ok < total.
 // Accepts both [ok, total] arrays and {ok, total} objects (see breaksText).
 // Untested rows (no category with total > 0) count as 999 so they sort last.

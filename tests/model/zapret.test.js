@@ -348,3 +348,18 @@ test("presetLabel", () => {
   eq(Model.presetLabel({ preset: "fs-general", score: 12, total: 14 }, true, false), "General · 12/14 · лучшая")
   eq(Model.presetLabel("fs-general", { score: 12, total: 14 }, true, false), "General · 12/14 · лучшая")
 })
+
+test("actionErrorText maps known errors", () => {
+  eq(Model.actionErrorText("python3: not found"), "Не найден python3 — установите: omarchy pkg add python")
+  eq(Model.actionErrorText("No such file or directory: python3"), "Не найден python3 — установите: omarchy pkg add python")
+  eq(Model.actionErrorText("engine not installed"), "Сначала установите движок (вкладка Обзор → Установить)")
+  eq(Model.actionErrorText("not set up"), "Сначала установите движок (вкладка Обзор → Установить)")
+  eq(Model.actionErrorText("not authorized"), "Отменено: пароль не введён")
+  eq(Model.actionErrorText("cancelled by user"), "Отменено: пароль не введён")
+  eq(Model.actionErrorText("auth canceled"), "Отменено: пароль не введён")
+  eq(Model.actionErrorText("permission denied"), "Нет прав: запустите установку (пароль)")
+  eq(Model.actionErrorText("omarchy-zapret2 завершился с кодом 1"), "Команда не выполнилась (код 1): откройте Движок → Журнал")
+  eq(Model.actionErrorText("exit code 2"), "Команда не выполнилась (код 2): откройте Движок → Журнал")
+  eq(Model.actionErrorText("unknown error"), "unknown error")
+  eq(Model.actionErrorText(""), "Неизвестная ошибка")
+})

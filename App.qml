@@ -193,6 +193,7 @@ Item {
             if ((row.score | 0) === baseScore) s += " · = без обхода"
             else if ((row.score | 0) < baseScore) s += " · −" + (baseScore - (row.score | 0)) + " к базе"
             else s += " · +" + ((row.score | 0) - baseScore) + " к базе"
+            s += " · база " + baseScore + "/" + (row.total || 14)
           }
           return s
         }
@@ -421,8 +422,8 @@ Item {
 
             Card {
               id: sysUpdateCard
-              visible: root.ready && root.svc.installed && !root.svc.appCurrent && (root.tab === 0 || root.tab === 4)
-              Label { Layout.fillWidth: true; visible: root.tab === 0; text: "Доступно обновление системной части" }
+              visible: root.ready && root.svc.installed && !root.svc.appCurrent && root.tab === 4
+              Label { Layout.fillWidth: true; text: "Доступно обновление системной части" }
               Button { bordered: true; text: "Обновить (спросит пароль)"; tooltipText: "Установить обновление системной части (спросит пароль)"; onClicked: root.svc.updateApp() }
             }
 
@@ -608,10 +609,11 @@ Item {
             text: {
               if (!root.ready) return "Включить"
               if (root.svc.isOn) return "Выключить"
-              if (headCard.isStale || headCard.isNeutral) return "Включить всё равно"
+              if (headCard.isStale) return "Включить без новой проверки"
+              if (headCard.isNeutral) return "Включить принудительно"
               return "Включить"
             }
-            tooltipText: headCard.isNeutral ? "Включить обход, хотя проверка показывает что он не нужен" : "Включить обход без новой проверки"
+            tooltipText: headCard.isStale ? "Включить обход без новой проверки" : headCard.isNeutral ? "Включить обход, хотя проверка показывает что он не нужен" : "Включить обход"
             onClicked: {
               if (root.svc.isOn) root.svc.turnOff()
               else root.svc.turnOn()
@@ -745,6 +747,7 @@ Item {
     property bool showAll: true
     property bool showAllInit: false
     property bool onlyGood: true
+    property int hiddenWorseCount: 0
     property string pendingPreset: ""
     Timer { id: disarmTimer; interval: 4000; onTriggered: sp.armDelete = "" }
     Timer {
@@ -777,11 +780,20 @@ Item {
       editName = name ? name.replace(/^my-/, "") : ""
       editor.text = ""
       if (name) root.svc.loadText(["custom", "show", name], function(r) { if (r.ok) editor.text = r.data.text })
-      else editor.text = "# Своя стратегия: секции из опций nfqws2 (--lua-desync, --payload, --out-range).\n"
-          + "[TCP_HTTP]\n--lua-desync=fake:blob=http_iana:tcp_md5:repeats=6\n--lua-desync=multisplit:pos=2,host+1\n"
-          + "[TCP_TLS]\n--lua-desync=fake:blob=tls_google:tcp_md5:repeats=6\n--lua-desync=multisplit:pos=2,midsld\n"
-          + "[TCP_GENERIC]\n--lua-desync=fake:blob=tls_google:tcp_md5:repeats=4\n--lua-desync=multisplit:pos=2\n"
-          + "[QUIC]\n--lua-desync=fake:blob=quic_google:repeats=6\n"
+      else editor.text = "# Своя стратегия — секции nfqws2: [TCP_HTTP], [TCP_TLS], [TCP_GENERIC], [QUIC]\n"
+          + "# Опции: --lua-desync, --payload, --out-range и др. (см. man nfqws2)\n"
+          + "# Пример:\n"
+          + "# [TCP_HTTP]\n"
+          + "# --lua-desync=fake:blob=http_iana:tcp_md5:repeats=6\n"
+          + "# --lua-desync=multisplit:pos=2,host+1\n"
+          + "# [TCP_TLS]\n"
+          + "# --lua-desync=fake:blob=tls_google:tcp_md5:repeats=6\n"
+          + "# --lua-desync=multisplit:pos=2,midsld\n"
+          + "# [TCP_GENERIC]\n"
+          + "# --lua-desync=fake:blob=tls_google:tcp_md5:repeats=4\n"
+          + "# --lua-desync=multisplit:pos=2\n"
+          + "# [QUIC]\n"
+          + "# --lua-desync=fake:blob=quic_google:repeats=6\n"
     }
 
     function show(name) {
@@ -910,11 +922,15 @@ Item {
           return sp.flowsealSource(p.name).toLowerCase().indexOf(f) !== -1
         })
       }
+      var hiddenWorse = 0
       if (sp.onlyGood) {
+        var before = list.length
         list = list.filter(function(p) {
           return !sp.isWorse(p.name)
         })
+        hiddenWorse = before - list.length
       }
+      sp.hiddenWorseCount = hiddenWorse
       for (var j = 0; j < list.length; j++) {
         var g = list[j].group || ""
         if (order.indexOf(g) === -1) { order.push(g); per[g] = [] }
@@ -1103,7 +1119,11 @@ Item {
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing && sp.showAll
       spacing: Style.space(8)
-      Label { Layout.fillWidth: true; text: "только не хуже базы"; color: root.dim }
+      Label {
+        Layout.fillWidth: true
+        text: "Скрыть стратегии хуже базы" + (sp.hiddenWorseCount > 0 ? " · скрыто " + sp.hiddenWorseCount : "")
+        color: root.dim
+      }
       ToggleSwitch {
         checked: sp.onlyGood
         foreground: root.fg
@@ -1139,158 +1159,177 @@ Item {
             Repeater {
               id: rowsRep
               model: sp.groupRows(modelData)
-              delegate: CursorSurface {
-                id: stratRect
+              delegate: Item {
+                id: stratItem
                 required property var modelData
                 property bool isSpecial: modelData.expander !== undefined || modelData.collapse === true || modelData.tiesExpander !== undefined || modelData.tiesCollapse === true
-                property bool isActive: !isSpecial && root.ready && root.svc.preset === modelData.name
-                property bool isBest: {
-                  if (isSpecial) return false
-                  var br = sp.pickRow(modelData.name)
-                  return !!(br && br.chosen)
-                }
-                property string flowSrc: !isSpecial ? sp.flowsealSource(modelData.name) : ""
-                property bool expanded: !isSpecial && (sp.selectedName === modelData.name || isActive)
-                property string scoreLine: {
-                  if (isSpecial) return ""
-                  var r = sp.pickRow(modelData.name)
-                  if (!r || (r.total | 0) <= 0) return "не проверялась"
-                  var s = r.score + "/" + r.total
-                  if (sp.isTied(modelData.name)) s += " · = без обхода"
-                  else if (sp.isWorse(modelData.name)) s += " · ⚠ хуже, чем без обхода"
-                  else if (r.chosen) s += " · лучшая"
-                  return s
-                }
-                property string tipText: {
-                  if (isSpecial) return ""
-                  var t = Model.presetTitle(modelData.name)
-                  if (flowSrc !== "") t += "\n" + flowSrc
-                  t += "\nEnter применит"
-                  return t
-                }
-                foreground: root.fg
                 Layout.fillWidth: true
                 implicitHeight: stratRow.implicitHeight + Style.space(14)
-                current: isActive
-                hasCursor: !isSpecial && sp.selectedName === modelData.name
-                Accessible.role: Accessible.Button
-                Accessible.name: isSpecial ? "" : Model.presetTitle(modelData.name) + (isActive ? ", активна" : "") + (sp.isTied(modelData.name) ? ", как без обхода" : (isBest ? ", лучшая" : ""))
-                HoverHandler {
-                  id: hover
-                  onHoveredChanged: {
-                    if (hovered && !stratRect.isSpecial) {
-                      sp.selectedName = stratRect.modelData.name
-                      if (sp.armDelete !== "" && sp.armDelete !== stratRect.modelData.name) sp.armDelete = ""
+
+                // Special rows (expanders, ties) are simple clickable Hint-style rows
+                Loader {
+                  id: stratLoader
+                  anchors.fill: parent
+                  sourceComponent: isSpecial ? specialRow : normalRow
+                }
+
+                component specialRow: Item {
+                  TapHandler {
+                    onTapped: {
+                      if (modelData.expander !== undefined || modelData.collapse === true) sp.toggleMore(modelData.group)
+                      else if (modelData.tiesExpander !== undefined || modelData.tiesCollapse === true) sp.toggleTies(modelData.group)
+                    }
+                  }
+                  RowLayout {
+                    id: stratRow
+                    anchors.fill: parent
+                    anchors.margins: Style.space(7)
+                    Label {
+                      Layout.fillWidth: true
+                      color: root.dim
+                      text: modelData.collapse === true ? "▾ свернуть" : modelData.tiesCollapse === true ? "▾ свернуть" : modelData.tiesExpander !== undefined ? "▸ ещё " + modelData.tiesExpander + " с тем же результатом" : "▸ ещё " + modelData.expander + " не проверялись"
                     }
                   }
                 }
-                TapHandler {
-                  onTapped: {
-                    if (modelData.expander !== undefined || modelData.collapse === true) sp.toggleMore(modelData.group)
-                    else if (modelData.tiesExpander !== undefined || modelData.tiesCollapse === true) sp.toggleTies(modelData.group)
-                    else {
+
+                component normalRow: CursorSurface {
+                  id: stratRect
+                  required property var modelData
+                  property bool isActive: root.ready && root.svc.preset === modelData.name
+                  property bool isBest: {
+                    var br = sp.pickRow(modelData.name)
+                    return !!(br && br.chosen)
+                  }
+                  property string flowSrc: sp.flowsealSource(modelData.name)
+                  property bool expanded: sp.selectedName === modelData.name || isActive
+                  property string scoreLine: {
+                    var r = sp.pickRow(modelData.name)
+                    if (!r || (r.total | 0) <= 0) return "не проверялась"
+                    var s = r.score + "/" + r.total
+                    if (sp.isTied(modelData.name)) s += " · = без обхода"
+                    else if (sp.isWorse(modelData.name)) s += " · ⚠ хуже, чем без обхода"
+                    else if (r.chosen) s += " · лучшая"
+                    return s
+                  }
+                  property string tipText: {
+                    var t = Model.presetTitle(modelData.name)
+                    if (flowSrc !== "") t += "\n" + flowSrc
+                    t += "\nEnter применит"
+                    return t
+                  }
+                  foreground: root.fg
+                  Layout.fillWidth: true
+                  implicitHeight: stratRow.implicitHeight + Style.space(14)
+                  current: isActive
+                  hasCursor: sp.selectedName === modelData.name
+                  Accessible.role: Accessible.Button
+                  Accessible.name: Model.presetTitle(modelData.name) + (isActive ? ", активна" : "") + (sp.isTied(modelData.name) ? ", как без обхода" : (isBest ? ", лучшая" : ""))
+                  HoverHandler {
+                    id: hover
+                    onHoveredChanged: {
+                      if (hovered) {
+                        sp.selectedName = modelData.name
+                        if (sp.armDelete !== "" && sp.armDelete !== modelData.name) sp.armDelete = ""
+                      }
+                    }
+                  }
+                  TapHandler {
+                    onTapped: {
                       sp.selectedName = modelData.name
                       if (sp.armDelete !== "" && sp.armDelete !== modelData.name) sp.armDelete = ""
                     }
                   }
-                }
-                PanelToolTip {
-                  visible: hover.hovered && stratRect.tipText !== ""
-                  text: stratRect.tipText
-                  fontFamily: root.fontFamily
-                }
-                RowLayout {
-                  id: stratRow
-                  anchors.fill: parent
-                  anchors.margins: Style.space(7)
-                  Label {
-                    Layout.fillWidth: true
-                    visible: stratRect.isSpecial
-                    color: root.dim
-                    text: modelData.collapse === true ? "▾ свернуть" : modelData.tiesCollapse === true ? "▾ свернуть" : modelData.tiesExpander !== undefined ? "▸ ещё " + modelData.tiesExpander + " с тем же результатом" : "▸ ещё " + modelData.expander + " не проверялись"
+                  PanelToolTip {
+                    visible: hover.hovered && tipText !== ""
+                    text: tipText
+                    fontFamily: root.fontFamily
                   }
-                  ColumnLayout {
-                    Layout.fillWidth: true
-                    visible: !stratRect.isSpecial
-                    spacing: 0
-                    RowLayout {
+                  RowLayout {
+                    id: stratRow
+                    anchors.fill: parent
+                    anchors.margins: Style.space(7)
+                    ColumnLayout {
                       Layout.fillWidth: true
-                      spacing: Style.space(6)
-                      Label { Layout.fillWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
-                      BorderSurface {
-                        visible: stratRect.isActive || stratRect.isBest
-                        implicitWidth: activeText.implicitWidth + Style.space(10)
-                        implicitHeight: activeText.implicitHeight + Style.space(4)
-                        color: stratRect.isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
-                        borderSpec: stratRect.isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
-                        radius: Style.cornerRadius
-                        Text {
-                          id: activeText
-                          anchors.centerIn: parent
-                          text: stratRect.isActive && stratRect.isBest ? "активна · лучшая" : (stratRect.isActive ? "активна" : "лучшая")
-                          color: stratRect.isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
-                          font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
+                      spacing: 0
+                      RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Style.space(6)
+                        Label { Layout.fillWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
+                        BorderSurface {
+                          visible: isActive || isBest
+                          implicitWidth: activeText.implicitWidth + Style.space(10)
+                          implicitHeight: activeText.implicitHeight + Style.space(4)
+                          color: isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
+                          borderSpec: isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
+                          radius: Style.cornerRadius
+                          Text {
+                            id: activeText
+                            anchors.centerIn: parent
+                            text: isActive && isBest ? "● активна · ★ лучшая" : (isActive ? "● активна" : "★ лучшая")
+                            color: isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                          }
                         }
                       }
+                      Hint {
+                        Layout.fillWidth: true
+                        color: sp.isWorse(modelData.name) ? root.bad : root.dim
+                        text: scoreLine
+                      }
+                      Hint {
+                        Layout.fillWidth: true
+                        visible: expanded
+                        color: sp.isWorse(modelData.name) ? root.bad : root.dim
+                        text: sp.rowSubtitle(modelData)
+                      }
+                      Hint {
+                        Layout.fillWidth: true
+                        visible: expanded && flowSrc !== ""
+                        color: root.dim
+                        text: flowSrc
+                      }
                     }
-                    Hint {
-                      Layout.fillWidth: true
-                      color: sp.isWorse(modelData.name) ? root.bad : root.dim
-                      text: stratRect.scoreLine
+                    Button {
+                      bordered: true
+                      visible: sp.selectedName === modelData.name
+                      enabled: root.svc.preset !== modelData.name
+                      text: "Применить"
+                      tooltipText: "Применить " + Model.presetTitle(modelData.name)
+                      onClicked: root.svc.setOption("preset", modelData.name)
                     }
-                    Hint {
-                      Layout.fillWidth: true
-                      visible: stratRect.expanded
-                      color: sp.isWorse(modelData.name) ? root.bad : root.dim
-                      text: sp.rowSubtitle(modelData)
+                    Button {
+                      visible: sp.selectedName === modelData.name
+                      bordered: true
+                      text: "Показать"
+                      tooltipText: "Показать текст пресета"
+                      onClicked: sp.show(modelData.name)
                     }
-                    Hint {
-                      Layout.fillWidth: true
-                      visible: stratRect.expanded && stratRect.flowSrc !== ""
-                      color: root.dim
-                      text: stratRect.flowSrc
+                    Button {
+                      visible: modelData.name.indexOf("my-") === 0
+                      bordered: true
+                      text: "Изменить"
+                      tooltipText: "Изменить свою стратегию"
+                      onClicked: sp.edit(modelData.name)
                     }
-                  }
-                  Button {
-                    bordered: true
-                    visible: !stratRect.isSpecial && sp.selectedName === modelData.name
-                    enabled: root.svc.preset !== modelData.name
-                    text: "Применить"
-                    tooltipText: "Применить " + Model.presetTitle(modelData.name)
-                    onClicked: root.svc.setOption("preset", modelData.name)
-                  }
-                  Button {
-                    visible: !stratRect.isSpecial && sp.selectedName === modelData.name
-                    bordered: true
-                    text: "Показать"
-                    tooltipText: "Показать текст пресета"
-                    onClicked: sp.show(modelData.name)
-                  }
-                  Button {
-                    visible: !stratRect.isSpecial && modelData.name.indexOf("my-") === 0
-                    bordered: true
-                    text: "Изменить"
-                    tooltipText: "Изменить свою стратегию"
-                    onClicked: sp.edit(modelData.name)
-                  }
-                  Button {
-                    visible: !stratRect.isSpecial && modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
-                    bordered: true
-                    foreground: root.bad
-                    text: sp.armDelete === modelData.name ? "Точно удалить?" : "Удалить"
-                    tooltipText: sp.armDelete === modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
-                    onClicked: {
-                      if (sp.armDelete === modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(modelData.name) }
-                      else { sp.armDelete = modelData.name; disarmTimer.restart() }
+                    Button {
+                      visible: modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
+                      bordered: true
+                      foreground: root.bad
+                      text: sp.armDelete === modelData.name ? "Точно удалить?" : "Удалить"
+                      tooltipText: sp.armDelete === modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
+                      onClicked: {
+                        if (sp.armDelete === modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(modelData.name) }
+                        else { sp.armDelete = modelData.name; disarmTimer.restart() }
+                      }
                     }
-                  }
-                  Button {
-                    visible: !stratRect.isSpecial && sp.armDelete === modelData.name && modelData.name.indexOf("my-") === 0
-                    bordered: true
-                    text: "Отмена"
-                    tooltipText: "Оставить стратегию"
-                    onClicked: { sp.armDelete = ""; disarmTimer.stop() }
+                    Button {
+                      visible: sp.armDelete === modelData.name && modelData.name.indexOf("my-") === 0
+                      bordered: true
+                      text: "Отмена"
+                      tooltipText: "Оставить стратегию"
+                      onClicked: { sp.armDelete = ""; disarmTimer.stop() }
+                    }
                   }
                 }
               }

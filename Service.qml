@@ -102,7 +102,7 @@ Item {
     if (busy) { flash("Подождите: " + busyLabel); return false }
     lastError = ""
     return run(_action, args, function(r) {
-      if (!r.ok) lastError = r.message
+      if (!r.ok) lastError = Model.actionErrorText(r.message)
       else if (okText) flash(okText)
       if (after) after(r)
       refresh()
@@ -115,7 +115,7 @@ Item {
     progressInfo = null
     return run(_long, args, function(r) {
       progressInfo = null
-      if (!r.ok) lastError = r.message
+      if (!r.ok) lastError = Model.actionErrorText(r.message)
       else if (okText) flash(typeof okText === "function" ? okText(r.data) : okText)
       if (after) after(r)
       refresh()

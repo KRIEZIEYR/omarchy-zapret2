@@ -265,11 +265,12 @@ Panel {
             Item {
               implicitWidth: heroIcon.width + Style.space(6)
               implicitHeight: heroIcon.height
-              // The keys live here for mouse users, out of the way.
               MouseArea { id: heroIconHover; anchors.fill: parent; hoverEnabled: true }
               PanelToolTip {
                 visible: heroIconHover.containsMouse
-                text: "Клавиши: t вкл/выкл · c проверить · o открыть · s стратегия · ? все клавиши"
+                text: !root.ready ? "Zapret2 загружается…"
+                    : root.svc.errorText !== "" ? root.svc.errorText
+                    : root.svc.isOn ? "Обход включён · ЛКМ: выключить" : "Обход выключен · ЛКМ: включить"
                 fontFamily: root.fontFamily
               }
               ZapretIcon {
@@ -389,7 +390,7 @@ Panel {
           id: strategy
           width: parent.width
           visible: root.ready && root.svc.installed
-          label: "Стратегия"
+          label: root.ready && root.svc.preset ? "Стратегия: " + Model.presetTitle(root.svc.preset) : "Стратегия"
           rowHeight: root.ctlHeight
           popupRowHeight: root.ctlHeight
           foreground: root.fg
@@ -415,7 +416,7 @@ Panel {
             })
             var total = root.svc.presets ? root.svc.presets.length : 0
             var rest = total - listed.length
-            if (rest > 0) listed.push({ value: "__more", label: "… ещё " + rest + " — в приложении" })
+            if (rest > 0) listed.push({ value: "__more", label: "Все стратегии (" + rest + ") — открыть приложение" })
             return listed
           }
           onChanged: function(v) {
