@@ -482,6 +482,31 @@ class AutopickServiceState(unittest.TestCase):
         self.assertNotEqual(calls[-1], ("stop", zm.UNIT))
 
 
+class AutopickRanking(unittest.TestCase):
+    def test_fails(self):
+        a = {"preset": "a", "score": 8, "total": 14,
+             "categories": {"youtube": [0, 6], "discord": [4, 4], "google": [2, 2], "cloudflare": [2, 2]}}
+        b = {"preset": "b", "score": 12, "total": 14,
+             "categories": {"youtube": [5, 6], "discord": [3, 4], "google": [2, 2], "cloudflare": [2, 2]}}
+        self.assertEqual(zm.autopick_fails(a), 1)
+        self.assertEqual(zm.autopick_fails(b), 2)
+        self.assertTrue(zm.autopick_better(a, b))
+        self.assertFalse(zm.autopick_better(b, a))
+
+    def test_untested_never_beats_tested(self):
+        tested = {"preset": "t", "score": 1, "total": 10, "categories": {"web": [1, 10]}}
+        untested = {"preset": "u", "score": 0, "total": 0, "categories": {}}
+        self.assertTrue(zm.autopick_better(tested, untested))
+        self.assertFalse(zm.autopick_better(untested, tested))
+
+    def test_full_pass_beats_quic_fail(self):
+        full = {"preset": "full", "score": 14, "total": 14,
+                "categories": {"youtube": [6, 6], "discord": [4, 4], "google": [2, 2], "cloudflare": [2, 2]}}
+        quic = {"preset": "quic", "score": 12, "total": 14,
+                "categories": {"youtube": [4, 6], "discord": [4, 4], "google": [2, 2], "cloudflare": [2, 2]}}
+        self.assertTrue(zm.autopick_better(full, quic))
+
+
 class CustomFullPresets(unittest.TestCase):
     FULL_MINIMAL = ("@tcp=80,443\n@udp=443\n--filter-tcp=80,443\n"
                     "--payload=known\n--lua-desync=multisplit:pos=1\n")

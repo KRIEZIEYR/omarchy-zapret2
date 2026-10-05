@@ -68,14 +68,15 @@ Panel {
   }
 
   // Popup strategy label with the autopick score. Prefers the shared
-  // Model.presetLabel(name, row, isBest, worseThanBaseline) helper when the
+  // Model.presetLabel(name, row, isBest, worse, tied) helper when the
   // model lane provides it; falls back to local formatting so the popup
   // keeps working when autopick data is missing.
-  function presetLabelFallback(nm, r, isBest, worse) {
+  function presetLabelFallback(nm, r, isBest, worse, tied) {
     var title = Model.presetTitle(nm)
     if (!r || (r.total | 0) === 0) return title
     var s = title + " · " + r.score + "/" + r.total
-    if (isBest) s += " · лучшая"
+    if (tied) s += " · = без обхода"
+    else if (isBest) s += " · лучшая"
     if (worse) s += " · ⚠"
     return s
   }
@@ -398,15 +399,24 @@ Panel {
               for (var k = 0; k < rows.length; k++) if (rows[k].preset === name) return rows[k]
               return null
             }
-            return Model.popupPresets(root.svc.presets, root.svc.autopickResult, root.svc.preset).map(function(n) {
+            var listed = Model.popupPresets(root.svc.presets, root.svc.autopickResult, root.svc.preset).map(function(n) {
               var nm = typeof n === "string" ? n : (n && n.name)
               var r = rowOf(nm)
               var isBest = !!(r && r.chosen)
               var worse = !!(r && !r.baseline && (r.total | 0) > 0 && base >= 0 && (r.score | 0) < base)
-              return { value: nm, label: Model.presetLabel?.(nm, r, isBest, worse) ?? root.presetLabelFallback(nm, r, isBest, worse) }
+              var tied = !!(r && !r.baseline && (r.total | 0) > 0 && base >= 0 && (r.score | 0) === base)
+              var label = (typeof Model.presetLabel === "function") ? Model.presetLabel(nm, r, isBest, worse, tied) : root.presetLabelFallback(nm, r, isBest, worse, tied)
+              return { value: nm, label: label }
             })
+            var total = root.svc.presets ? root.svc.presets.length : 0
+            var rest = total - listed.length
+            if (rest > 0) listed.push({ value: "__more", label: "… ещё " + rest + " — в приложении" })
+            return listed
           }
-          onChanged: function(v) { if (v !== root.svc.preset) root.svc.setOption("preset", v) }
+          onChanged: function(v) {
+            if (v === "__more") { root.close(); root.svc.openApp(); return }
+            if (v !== root.svc.preset) root.svc.setOption("preset", v)
+          }
           onHovered: function(h) { if (h) root.setCursor("strategy") }
         }
 
@@ -419,18 +429,16 @@ Panel {
             Layout.fillWidth: true
             PanelSectionHeader { text: "Доступность"; Layout.fillWidth: true }
             Text {
-              visible: {
-                if (!root.ready) return false
-                return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
+              text: {
+                if (!root.ready) return ""
+                var stale = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
+                return Model.staleLabel(root.svc.check, stale)
               }
-              text: "⚠ устарело"
-              color: root.errorColor
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-            Text {
-              text: root.ready ? Model.ago(root.svc.check.time) : ""
-              color: root.dim
+              color: {
+                if (!root.ready) return root.dim
+                var stale = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
+                return stale ? root.errorColor : root.dim
+              }
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
             }
@@ -440,10 +448,6 @@ Panel {
             delegate: RowLayout {
               required property var modelData
               Layout.fillWidth: true
-              opacity: {
-                if (!root.ready) return 1.0
-                return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check" ? 0.5 : 1.0
-              }
               Text {
                 Layout.fillWidth: true
                 text: (modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")) + modelData.label

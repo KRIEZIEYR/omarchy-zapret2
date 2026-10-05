@@ -1486,6 +1486,41 @@ def cmd_check():
     out(dict(res, ok=True))
 
 
+def autopick_fails(row):
+    """Failed categories in an autopick row (mirrors model/Zapret.js failCount).
+
+    Fewer failed categories beats a higher raw score: a strategy where every
+    category passes wins over one with the same score but a QUIC-only failure.
+    Untested rows count as 999 so they never beat a tested one."""
+    cats = row.get("categories") or {}
+    fails, any_tested = 0, False
+    for v in cats.values():
+        try:
+            ok, total = int(v[0]), int(v[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if total > 0:
+            any_tested = True
+            if ok < total:
+                fails += 1
+    if not any_tested:
+        total = int(row.get("total") or 0)
+        score = int(row.get("score") or 0)
+        if total > 0:
+            return 0 if score >= total else 1
+        return 999
+    return fails
+
+
+def autopick_better(row, best):
+    if best is None:
+        return True
+    fr, fb = autopick_fails(row), autopick_fails(best)
+    if fr != fb:
+        return fr < fb
+    return int(row.get("score") or 0) > int(best.get("score") or 0)
+
+
 def cmd_autopick(args):
     require_installed()
     if unit_state(BC_UNIT).get("ActiveState") in ("active", "activating"):
@@ -1519,7 +1554,7 @@ def cmd_autopick(args):
             row = {"preset": name, "score": -1, "total": 0, "error": str(e), "categories": {}}
         rows.append(row)
         progress(step=i + 1, of=len(names), preset=name, result=row)
-        if best is None or row["score"] > best["score"]:
+        if autopick_better(row, best):
             best = row
         if row["total"] and row["score"] == row["total"]:
             break                                  # everything answers: no need to go on

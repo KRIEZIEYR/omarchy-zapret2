@@ -119,15 +119,39 @@ function parseLine(line) {
   try { return JSON.parse(l) } catch (e) { return null }
 }
 
+// Failed categories in an autopick row: categories where ok < total.
+// Accepts both [ok, total] arrays and {ok, total} objects (see breaksText).
+// Untested rows (no category with total > 0) count as 999 so they sort last.
+function failCount(row) {
+  var cats = (row && row.categories) || {}
+  var keys = Object.keys(cats)
+  var fails = 0
+  var anyTested = false
+  for (var i = 0; i < keys.length; i++) {
+    var c = cats[keys[i]]
+    var ok = 0, tt = 0
+    if (c && typeof c === "object" && !Array.isArray(c)) { ok = c.ok | 0; tt = c.total | 0 }
+    else if (Array.isArray(c)) { ok = c[0] | 0; tt = c[1] | 0 }
+    if (tt > 0) { anyTested = true; if (ok < tt) fails++ }
+  }
+  if (!anyTested) {
+    if ((row && (row.total | 0)) > 0) return ((row.score | 0) >= (row.total | 0)) ? 0 : 1
+    return 999
+  }
+  return fails
+}
+
 // Autopick table rows sorted best first, with a percent.
+// Order: fewer failed categories first, then score desc, then the chosen
+// one, then the no-bypass baseline, then tested before untested, then name.
 function autopickRows(ap) {
   var a = ap || {}
   var rows = a.rows ? a.rows.slice() : []
   if (a.baseline) rows.push(a.baseline)
   var chosen = a.chosen || ""
-  // score desc, then the chosen one, then the no-bypass baseline,
-  // then tested before untested, then name asc.
   rows.sort(function(x, y) {
+    var fx = failCount(x), fy = failCount(y)
+    if (fx !== fy) return fx - fy
     var d = (y.score | 0) - (x.score | 0)
     if (d) return d
     var cx = x.preset === chosen ? 0 : 1, cy = y.preset === chosen ? 0 : 1
@@ -143,7 +167,8 @@ function autopickRows(ap) {
     return { preset: r.preset, title: presetTitle(r.preset), score: r.score, total: r.total,
              pct: r.total > 0 ? Math.round(100 * Math.max(0, r.score) / r.total) : 0,
              categories: r.categories !== undefined ? r.categories : {},
-             error: r.error || "", chosen: chosen === r.preset, baseline: r.preset === "(off)" }
+             error: r.error || "", chosen: chosen === r.preset, baseline: r.preset === "(off)",
+             fails: failCount(r) }
   })
 }
 
@@ -239,27 +264,36 @@ function popupPresets(presets, autopick, active) {
 }
 
 // Popup dropdown label: "General · 12/14 · лучшая", plus
-// "⚠ хуже, чем без обхода" when worse than the no-bypass baseline.
+// "⚠ хуже, чем без обхода" when worse than the no-bypass baseline,
+// "= без обхода" when tied with the baseline (instead of "лучшая").
 // Score part is omitted when score/total is missing or total <= 0.
-function presetLabel(name, score, total, isBest, worseThanBaseline) {
+function presetLabel(name, score, total, isBest, worseThanBaseline, tied) {
   if (name && typeof name === "object") {
     var row = name
     var presetName = row.preset !== undefined ? row.preset : row.name
     var rowBest = row.chosen === true || row.isBest === true || row.best === true
+    var rowTied = row.tied === true || row.isTied === true
     var explicitBest = (typeof score === "boolean") ? score : rowBest
     var explicitWorse = (typeof score === "boolean") ? total
       : (typeof total === "boolean" ? total : row.worseThanBaseline)
-    return presetLabel(presetName, row.score, row.total, explicitBest, explicitWorse)
+    var explicitTied = (typeof score === "boolean" && typeof total === "boolean") ? worseThanBaseline
+      : (typeof total === "boolean" && typeof isBest === "boolean") ? isBest
+      : (typeof tied === "boolean") ? tied : rowTied
+    if (typeof score !== "boolean" && typeof total !== "boolean" && typeof isBest !== "boolean"
+        && typeof worseThanBaseline !== "boolean" && typeof tied !== "boolean") {
+      explicitTied = rowTied
+    }
+    return presetLabel(presetName, row.score, row.total, explicitBest, explicitWorse, explicitTied)
   }
   if (score && typeof score === "object") {
     var obj = score
-    // Called as presetLabel(name, {score, total}, isBest, worse):
-    // total holds isBest, isBest holds worse.
-    return presetLabel(name, obj.score, obj.total, total, isBest)
+    // Called as presetLabel(name, {score, total}, isBest, worse, tied):
+    // total holds isBest, isBest holds worse, worseThanBaseline holds tied.
+    return presetLabel(name, obj.score, obj.total, total, isBest, worseThanBaseline)
   }
   if (typeof total === "boolean") {
-    // Shorthand presetLabel(name, score, isBest, worse).
-    return presetLabel(name, score, undefined, total, isBest)
+    // Shorthand presetLabel(name, score, isBest, worse, tied).
+    return presetLabel(name, score, undefined, total, isBest, worseThanBaseline)
   }
   var title = presetTitle(name)
   var parts = []
@@ -270,7 +304,8 @@ function presetLabel(name, score, total, isBest, worseThanBaseline) {
       && !isNaN(sc) && !isNaN(tt) && tt > 0) {
     parts.push((sc | 0) + "/" + (tt | 0))
   }
-  if (isBest) parts.push("лучшая")
+  if (tied) parts.push("= без обхода")
+  else if (isBest) parts.push("лучшая")
   if (worseThanBaseline) parts.push("⚠ хуже, чем без обхода")
   return parts.join(" · ")
 }
@@ -431,4 +466,102 @@ function shortLog(line) {
 // Lines of a list editor: trimmed, without blanks.
 function countLines(text) {
   return String(text || "").split("\n").filter(function(l) { return l.trim() !== "" && l.trim().charAt(0) !== "#" }).length
+}
+
+// Unified stale wording for app and popup: "устарело · 2 ч назад"
+// when the check is stale, otherwise just "2 ч назад" / "только что".
+// Returns "" when there is no check time.
+function staleLabel(check, isStale, now) {
+  if (!check || !check.time) return ""
+  var a = ago(check.time, now)
+  if (!a) return ""
+  return (isStale ? "устарело · " : "") + a
+}
+
+var DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
+
+function isValidDomain(d) {
+  return DOMAIN_RE.test(String(d || ""))
+}
+
+function isValidIPv4(s) {
+  var parts = String(s || "").split(".")
+  if (parts.length !== 4) return false
+  for (var i = 0; i < 4; i++) {
+    if (!/^\d{1,3}$/.test(parts[i])) return false
+    var n = Number(parts[i])
+    if (n < 0 || n > 255) return false
+  }
+  return true
+}
+
+function isValidIPv6(s) {
+  var addr = String(s || "")
+  if (addr.indexOf(":") === -1) return false
+  if (!/^[0-9a-fA-F:.]+$/.test(addr)) return false
+  if (addr.indexOf(":::") !== -1) return false
+  var halves = addr.split("::")
+  if (halves.length > 2) return false
+  function checkSide(side) {
+    if (side === "") return 0
+    var groups = side.split(":")
+    for (var i = 0; i < groups.length; i++) {
+      var g = groups[i]
+      if (g.indexOf(".") !== -1) {
+        if (!isValidIPv4(g)) return -1
+      } else {
+        if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return -1
+      }
+    }
+    return groups.length
+  }
+  if (halves.length === 1) {
+    var n = checkSide(addr)
+    return n > 0 && n <= 8
+  }
+  var left = checkSide(halves[0])
+  var right = checkSide(halves[1])
+  if (left < 0 || right < 0) return false
+  return (left + right) <= 7
+}
+
+function isValidIPNetwork(s) {
+  var str = String(s || "")
+  var slash = str.split("/")
+  if (slash.length > 2) return false
+  var addr = slash[0]
+  var isV6 = addr.indexOf(":") !== -1
+  if (slash.length === 2) {
+    if (!/^\d{1,3}$/.test(slash[1])) return false
+    var plen = Number(slash[1])
+    if (isV6) { if (plen < 0 || plen > 128) return false }
+    else { if (plen < 0 || plen > 32) return false }
+  }
+  return isV6 ? isValidIPv6(addr) : isValidIPv4(addr)
+}
+
+// Live valid/dropped counts mirroring the manager clean_list rules:
+// domains with optional ^ prefix (host lists) or IP/CIDR (ipset lists).
+// Blank and comment-only lines are ignored (neither valid nor dropped).
+// Returns {valid, dropped}.
+function validLines(text, kind) {
+  var valid = 0, dropped = 0
+  var lines = String(text || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var cut = String(lines[i]).split("#", 1)[0].trim()
+    if (!cut) continue
+    var low = cut.toLowerCase()
+    if (kind === "ipset") {
+      if (isValidIPNetwork(low)) valid++
+      else dropped++
+    } else {
+      var d = low
+      while (d.charAt(0) === "^") d = d.substring(1)
+      while (d.charAt(0) === "*" || d.charAt(0) === ".") d = d.substring(1)
+      while (d.length > 0 && d.charAt(d.length - 1) === ".") d = d.substring(0, d.length - 1)
+      if (d && isValidDomain(d)) valid++
+      else dropped++
+    }
+  }
+  return { valid: valid, dropped: dropped }
 }
