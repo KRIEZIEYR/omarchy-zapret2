@@ -1557,6 +1557,7 @@ Item {
       }
 
       Card {
+        id: blockcheckCard
         function bindMissing() {
           if (!root.ready) return false
           var items = root.svc.doctorItems || []
@@ -1576,20 +1577,20 @@ Item {
           PanelSectionHeader { Layout.fillWidth: true; text: "Глубокий поиск: blockcheck2"; foreground: root.fg; fontFamily: root.fontFamily }
           Button {
             bordered: true
-            enabled: root.ready && (!vpnOn() || root.svc.blockcheckRunning)
+            enabled: root.ready && (!blockcheckCard.vpnOn() || root.svc.blockcheckRunning)
             text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить"
-            tooltipText: bindMissing() ? "Скопировать: omarchy pkg add bind" : "Запустить глубокий поиск"
+            tooltipText: blockcheckCard.bindMissing() ? "Скопировать: omarchy pkg add bind" : "Запустить глубокий поиск"
             onClicked: {
               if (root.svc.blockcheckRunning) { root.svc.blockcheckStop(); return }
-              if (vpnOn()) return
-              if (bindMissing()) { root.copyText("omarchy pkg add bind"); return }
+              if (blockcheckCard.vpnOn()) return
+              if (blockcheckCard.bindMissing()) { root.copyText("omarchy pkg add bind"); return }
               root.svc.blockcheckStart(domains.text.split(/[\s,]+/).filter(function(d) { return d !== "" }), level.value)
             }
           }
         }
         RowLayout {
           Layout.fillWidth: true
-          visible: !root.svc.blockcheckRunning && bindMissing()
+          visible: !root.svc.blockcheckRunning && blockcheckCard.bindMissing()
           spacing: Style.space(8)
           Hint {
             Layout.fillWidth: true
