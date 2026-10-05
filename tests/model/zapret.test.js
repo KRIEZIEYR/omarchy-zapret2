@@ -193,9 +193,11 @@ test("verdict stale check", () => {
   const cats = { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } }
   const fresh = { time: 1000, preset: "alt5", active: true, categories: cats }
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "general" }), null),
-    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия general, обход был включён" })
+    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия NEXT · General, обход был включён" })
   eq(Model.verdict(on, Object.assign({}, fresh, { active: false }), null),
-    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия alt5, обход был выключен" })
+    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия NEXT · ALT 5, обход был выключен" })
+  eq(Model.verdict(on, Object.assign({}, fresh, { preset: "fs-general-alt" }), null),
+    { text: "", tone: "neutral", action: "check", note: "Проверка устарела: стратегия ALT, обход был включён" })
   eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Обход здесь не нужен: сайты открываются и так (возможно, роутер или VPN уже обходят блокировки)")
   eq(Model.verdict(on, fresh, null, 1010), { text: "Всё открывается", tone: "good", action: "none", note: "по проверке только что, обход был включён" })
   eq(Model.verdict(on, null, null), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })

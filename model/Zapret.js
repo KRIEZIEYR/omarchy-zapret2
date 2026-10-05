@@ -179,8 +179,9 @@ function verdict(st, check, autopick, now) {
     if (presetMismatch || activeMismatch) {
       var checked = (check.preset !== undefined && check.preset !== null && String(check.preset) !== "")
           ? String(check.preset) : curPreset
+      var checkedTitle = presetTitle(checked) || checked
       return { text: "", tone: "neutral", action: "check",
-               note: "Проверка устарела: стратегия " + checked + ", обход был " + (check.active ? "включён" : "выключен") }
+               note: "Проверка устарела: стратегия " + checkedTitle + ", обход был " + (check.active ? "включён" : "выключен") }
     }
   }
   var s = stateOf(st)
