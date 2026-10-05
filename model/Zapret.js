@@ -142,6 +142,7 @@ function autopickRows(ap) {
   return rows.map(function(r) {
     return { preset: r.preset, title: presetTitle(r.preset), score: r.score, total: r.total,
              pct: r.total > 0 ? Math.round(100 * Math.max(0, r.score) / r.total) : 0,
+             categories: r.categories !== undefined ? r.categories : {},
              error: r.error || "", chosen: chosen === r.preset, baseline: r.preset === "(off)" }
   })
 }
@@ -162,7 +163,7 @@ function failReason(check, failing) {
     var r = (cats[failing[i].key] && cats[failing[i].key].results) || []
     for (var j = 0; j < r.length; j++) if (!r[j].ok) failed.push(r[j])
   }
-  if (failed.length > 0 && failed.every(function(h) { return h.http3 })) return "QUIC не проходит"
+  if (failed.length > 0 && failed.every(function(h) { return h.http3 })) return "может грузиться медленно (QUIC) — попробуйте другую стратегию"
   if (failed.length > 0) return curlError(failed[0].error)
   return "не открываются"
 }
@@ -297,6 +298,12 @@ function groupSearchRows(rows) {
 function doctorDetail(name, detail) {
   var s = detail === null || detail === undefined ? "" : String(detail)
   if (!s) return s
+  s = s.split("inactive (dead)").join("остановлена")
+  s = s.split("inactive").join("остановлена")
+  s = s.split("active (running)").join("работает")
+  s = s.split("bundled").join("встроенные")
+  s = s.split("presets").join("пресетов")
+  s = s.split("restarts").join("перезапусков")
   s = s.split("the plugin was updated: run setup --app-only (Update system part)").join("плагин обновлён: установите обновление системной части")
   s = s.split("blockcheck2 needs them: omarchy pkg add bind").join("нужны для blockcheck2: omarchy pkg add bind")
   s = s.replace(/^omarchy-xray TUN is on:.*$/, "включён TUN omarchy-xray: трафик идёт в туннель, обход не применяется")
@@ -306,6 +313,60 @@ function doctorDetail(name, detail) {
   s = s.split("for blockcheck2").join("для blockcheck2")
   s = s.split("run setup").join("запустите установку")
   return s
+}
+
+// Human label for a blockcheck progress line; unknown lines pass through.
+function blockcheckPhase(line) {
+  var s = line === null || line === undefined ? "" : String(line)
+  if (!s) return ""
+  if (s === "checking system") return "Проверка системы"
+  if (s === "checking already running DPI bypass processes") return "Проверка других обходов"
+  if (s === "checking privileges") return "Проверка прав"
+  if (s === "checking prerequisites") return "Проверка зависимостей"
+  if (s.indexOf("curl_test") !== -1) return "Перебор стратегий…"
+  if (s.indexOf("SUMMARY") !== -1) return "Готово"
+  return s
+}
+
+// Short per-row verdict for autopick rows: which categories still fail.
+function breaksText(row) {
+  if (!row) return "не проверялась"
+  var cats = row.categories || {}
+  var keys = Object.keys(cats)
+  var totals = 0
+  var i
+  for (i = 0; i < keys.length; i++) {
+    var v = cats[keys[i]]
+    var t = 0
+    if (v && typeof v === "object" && !Array.isArray(v)) t = v.total | 0
+    else if (Array.isArray(v)) t = v[1] | 0
+    if (t > 0) { totals += t; break }
+  }
+  var total = row.total | 0
+  var score = row.score | 0
+  var hasTested = total > 0 || totals > 0
+  if (!hasTested) {
+    if (row.error) return String(row.error)
+    return "не проверялась"
+  }
+  if (total > 0 && score >= total) return "всё открывается"
+  var labels = { youtube: "YouTube", discord: "Discord", google: "Google", cloudflare: "Cloudflare" }
+  var failing = []
+  for (i = 0; i < keys.length; i++) {
+    var k = keys[i]
+    var c = cats[k]
+    var ok = 0, tt = 0
+    if (c && typeof c === "object" && !Array.isArray(c)) { ok = c.ok | 0; tt = c.total | 0 }
+    else if (Array.isArray(c)) { ok = c[0] | 0; tt = c[1] | 0 }
+    if (tt > 0 && ok < tt) {
+      var label = labels.hasOwnProperty(k) ? labels[k] : k
+      if (k === "youtube" && ok > 0) failing.push(label + " ✗ QUIC")
+      else failing.push(label + " ✗")
+    }
+  }
+  if (failing.length > 0) return failing.join(" · ")
+  if (total > 0 && score < total) return "не проверялась"
+  return "всё открывается"
 }
 
 // "2026-10-05T23:09:53+03:00 host proc[1]: msg" -> "23:09:53 msg".

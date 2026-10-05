@@ -137,7 +137,7 @@ test("verdict QUIC-only failure", () => {
     { url: "https://youtube.com", ok: false, http3: true, error: "(28) timeout" },
   ] } } }
   const v = Model.verdict(off, quicOnly, null)
-  eq(v, { text: "YouTube частично: QUIC не проходит", tone: "warn", action: "autopick", note: "" })
+  eq(v, { text: "YouTube частично: может грузиться медленно (QUIC) — попробуйте другую стратегию", tone: "warn", action: "autopick", note: "" })
 })
 
 test("verdict note carries check context", () => {
@@ -260,4 +260,44 @@ test("shortLog", () => {
   eq(Model.shortLog("23:09:53 thinkbook systemd[1]: hello world"), "23:09:53 hello world")
   eq(Model.shortLog("Oct 05 23:09:53 thinkbook systemd[1]: hi"), "23:09:53 hi")
   eq(Model.shortLog("plain line without time"), "plain line without time")
+})
+
+test("autopick rows keep categories", () => {
+  const rows = Model.autopickRows({ chosen: "alt", rows: [{ preset: "alt", score: 5, total: 10, categories: { youtube: [1, 3] } }] })
+  eq(rows[0].categories, { youtube: [1, 3] })
+  const nocat = Model.autopickRows({ rows: [{ preset: "general", score: 1, total: 2 }] })
+  eq(nocat[0].categories, {})
+})
+
+test("breaksText", () => {
+  eq(Model.breaksText({ score: 10, total: 10, categories: { youtube: [3, 3] } }), "всё открывается")
+  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: [1, 3] } }), "YouTube ✗ QUIC")
+  eq(Model.breaksText({ score: 0, total: 3, categories: { youtube: [0, 3] } }), "YouTube ✗")
+  eq(Model.breaksText({ score: 1, total: 5, categories: { youtube: [0, 3], discord: [1, 2] } }), "YouTube ✗ · Discord ✗")
+  eq(Model.breaksText({ score: 0, total: 0, categories: {} }), "не проверялась")
+  eq(Model.breaksText(null), "не проверялась")
+  eq(Model.breaksText({ score: 0, total: 0, categories: {}, error: "boom" }), "boom")
+  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: { ok: 1, total: 3, label: "YouTube" } } }), "YouTube ✗ QUIC")
+  eq(Model.breaksText({ score: 3, total: 3, categories: { google: { ok: 2, total: 2 } } }), "всё открывается")
+  eq(Model.breaksText({ score: 0, total: 2, categories: { custom: { ok: 0, total: 2 } } }), "custom ✗")
+})
+
+test("blockcheckPhase", () => {
+  eq(Model.blockcheckPhase("checking system"), "Проверка системы")
+  eq(Model.blockcheckPhase("checking already running DPI bypass processes"), "Проверка других обходов")
+  eq(Model.blockcheckPhase("checking privileges"), "Проверка прав")
+  eq(Model.blockcheckPhase("checking prerequisites"), "Проверка зависимостей")
+  eq(Model.blockcheckPhase("curl_test_http youtube.com"), "Перебор стратегий…")
+  eq(Model.blockcheckPhase("SUMMARY done"), "Готово")
+  eq(Model.blockcheckPhase("some other line"), "some other line")
+  eq(Model.blockcheckPhase(null), "")
+  eq(Model.blockcheckPhase(undefined), "")
+})
+
+test("doctorDetail additions", () => {
+  eq(Model.doctorDetail("Service", "inactive (dead)"), "остановлена")
+  eq(Model.doctorDetail("Service", "inactive"), "остановлена")
+  eq(Model.doctorDetail("Service", "active (running)"), "работает")
+  eq(Model.doctorDetail("Flowseal presets", "bundled presets"), "встроенные пресетов")
+  eq(Model.doctorDetail("Service", "3 restarts"), "3 перезапусков")
 })

@@ -219,6 +219,16 @@ Panel {
             Layout.fillWidth: true
             PanelSectionHeader { text: "Доступность"; Layout.fillWidth: true }
             Text {
+              visible: {
+                if (!root.ready) return false
+                return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
+              }
+              text: "⚠ устарело"
+              color: root.bad
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+            Text {
               text: root.ready ? Model.ago(root.svc.check.time) : ""
               color: root.dim
               font.family: root.fontFamily
@@ -230,6 +240,10 @@ Panel {
             delegate: RowLayout {
               required property var modelData
               Layout.fillWidth: true
+              opacity: {
+                if (!root.ready) return 1.0
+                return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check" ? 0.5 : 1.0
+              }
               Text {
                 Layout.fillWidth: true
                 text: (modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")) + modelData.label
@@ -270,7 +284,7 @@ Panel {
           Button {
             Layout.fillWidth: true
             bordered: true
-            text: "Приложение"
+            text: "Открыть"
             tooltipText: "o"
             onClicked: { root.close(); root.svc.openApp() }
           }
