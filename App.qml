@@ -629,6 +629,7 @@ Item {
 
       Card {
         visible: root.ready && root.svc.installed
+        id: availCard
         property bool isStale: {
           if (!root.ready) return false
           return Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult).action === "check"
@@ -636,7 +637,7 @@ Item {
         RowLayout {
           Layout.fillWidth: true
           PanelSectionHeader { Layout.fillWidth: true; text: "Доступность"; foreground: root.fg; fontFamily: root.fontFamily }
-          Hint { text: root.ready ? Model.staleLabel(root.svc.check, isStale) : "" }
+          Hint { text: root.ready ? Model.staleLabel(root.svc.check, availCard.isStale) : "" }
           Button { bordered: true; text: "Проверить"; tooltipText: "Проверить доступность"; onClicked: root.svc.runCheck() }
         }
         Repeater {
