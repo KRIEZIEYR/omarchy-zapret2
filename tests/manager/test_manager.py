@@ -901,5 +901,36 @@ class SecureDns(unittest.TestCase):
                 zm.cmd_dns(["flush"])
 
 
+class Diagnostics(unittest.TestCase):
+    def test_redacted_no_hosts_or_ips(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            var = __import__("os").path.join(tmp, "var")
+            state = __import__("os").path.join(tmp, "state")
+            __import__("os").makedirs(var)
+            __import__("os").makedirs(state)
+            emitted = {}
+            with mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "load_record", lambda: {"version": "v1.2.3"}), \
+                 mock.patch.object(zm, "unit_state", lambda u: {"ActiveState": "active", "SubState": "running", "NRestarts": "0"}), \
+                 mock.patch.object(zm, "journal", lambda n, unit=None: ["Oct 06 10:00:00 h proc[1]: from 192.168.1.1 to 8.8.8.8 youtube.com ok"]), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_diagnostics()
+            self.assertTrue(emitted.get("ok"))
+            text = emitted.get("text", "")
+            self.assertIn("v1.2.3", text)
+            self.assertNotIn("192.168.1.1", text)
+            self.assertNotIn("8.8.8.8", text)
+            self.assertNotIn("youtube.com", text)
+            self.assertIn("[IP]", text)
+            self.assertIn("[host]", text)
+
+    def test_redact_ips(self):
+        self.assertEqual(zm.redact_ips("a 1.2.3.4 b"), "a [IP] b")
+        self.assertNotIn("::1", zm.redact_ips("x 2001:db8::1 y"))
+
+
 if __name__ == "__main__":
     unittest.main()

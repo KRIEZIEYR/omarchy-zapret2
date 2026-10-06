@@ -2295,13 +2295,26 @@ def cmd_logs(args):
 
 
 RE_IPV4 = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b")
-RE_IPV6 = re.compile(r"\b(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]+\b")
+RE_IPV6 = re.compile(r"(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]+")
+RE_URL = re.compile(r"https?://[^\s]+", re.IGNORECASE)
+RE_HOST = re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b", re.IGNORECASE)
+
+
+def _ipv6_sub(m):
+    s = m.group(0)
+    # timestamps like 10:00:00 match the shape but are not addresses
+    return "[IPv6]" if ("::" in s or re.search(r"[a-fA-F]", s)) else s
 
 
 def redact_ips(text):
-    """Strip addresses from diagnostics: no hosts/IPs leave the machine."""
-    s = RE_IPV4.sub("[IP]", str(text or ""))
-    s = RE_IPV6.sub("[IPv6]", s)
+    """Strip addresses and hostnames from diagnostics: no hosts/IPs leave the machine."""
+    s = RE_URL.sub("[URL]", str(text or ""))
+    s = RE_IPV4.sub("[IP]", s)
+    s = RE_IPV6.sub(_ipv6_sub, s)
+    s = RE_HOST.sub("[host]", s)
+    home = os.path.expanduser("~")
+    if home and home != "/" and home in s:
+        s = s.replace(home, "~")
     return s
 
 

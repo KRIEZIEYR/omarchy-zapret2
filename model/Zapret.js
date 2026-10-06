@@ -738,8 +738,10 @@ function isValidBackupFileSize(size) {
 // Strip addresses from diagnostics text (no hosts/IPs). Mirrors manager redact_ips.
 function redactIps(text) {
   var s = String(text || "")
+  s = s.replace(/https?:\/\/[^\s]+/gi, "[URL]")
   s = s.replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "[IP]")
-  s = s.replace(/\b(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]+\b/g, "[IPv6]")
+  s = s.replace(/(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]+/g, "[IPv6]")
+  s = s.replace(/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/gi, "[host]")
   return s
 }
 
