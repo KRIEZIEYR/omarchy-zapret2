@@ -406,6 +406,114 @@ class NewFeatures(unittest.TestCase):
         self.assertEqual(zm.apply_hosts_block(removed, None), original)
 
 
+class ExportImport(unittest.TestCase):
+    def _setup_var(self, tmp):
+        import json
+        var = os.path.join(tmp, "var")
+        os.makedirs(os.path.join(var, "lists"))
+        os.makedirs(os.path.join(var, "custom"))
+        with open(os.path.join(var, "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"preset": "my-own", "game": "all"}, f)
+        with open(os.path.join(var, "lists", "list-general-user.txt"), "w", encoding="utf-8") as f:
+            f.write("example.com\n")
+        with open(os.path.join(var, "custom", "my-own.txt"), "w", encoding="utf-8") as f:
+            f.write(MINIMAL)
+        return var
+
+    def _export_stdout(self, var):
+        emitted = {}
+        with mock.patch.object(zm, "VAR", var), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_export(["--stdout"])
+        return emitted
+
+    def _import_stdin(self, var, text):
+        emitted = {}
+        with mock.patch.object(zm, "require_installed", lambda: None), \
+             mock.patch.object(zm, "VAR", var), \
+             mock.patch.object(zm, "read_stdin", lambda cap: text), \
+             mock.patch.object(zm, "restart_if_active", lambda: True), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_import([])
+        return emitted
+
+    def _zip_b64(self, members):
+        import base64
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, content in members.items():
+                zf.writestr(name, content)
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+
+    def test_roundtrip(self):
+        import base64
+        import io
+        import json as _json
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._setup_var(tmp)
+            res = self._export_stdout(var)
+            self.assertTrue(res.get("ok"))
+            self.assertIn("settings.json", res.get("files", []))
+            names = zipfile.ZipFile(io.BytesIO(base64.b64decode(res["data"]))).namelist()
+            self.assertIn("settings.json", names)
+            self.assertIn("lists/list-general-user.txt", names)
+            self.assertIn("custom/my-own.txt", names)
+            # restore into a fresh VAR
+            var2 = os.path.join(tmp, "var2")
+            os.makedirs(os.path.join(var2, "lists"))
+            os.makedirs(os.path.join(var2, "custom"))
+            res2 = self._import_stdin(var2, res["data"])
+            self.assertTrue(res2.get("ok"))
+            with open(os.path.join(var2, "settings.json"), encoding="utf-8") as f:
+                s = _json.load(f)
+            self.assertEqual(s["preset"], "my-own")
+            with open(os.path.join(var2, "lists", "list-general-user.txt"), encoding="utf-8") as f:
+                self.assertIn("example.com", f.read())
+            with open(os.path.join(var2, "custom", "my-own.txt"), encoding="utf-8") as f:
+                zm.parse_preset(f.read())
+
+    def test_reject_oversize(self):
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "lists"))
+            os.makedirs(os.path.join(var, "custom"))
+            data = self._zip_b64({"settings.json": _json.dumps({"preset": "my-x"}),
+                                  "lists/list-general-user.txt": "a.com\n" * (100 * 1024)})
+            with self.assertRaises(zm.Fail):
+                self._import_stdin(var, data)
+
+    def test_reject_bad_preset(self):
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "lists"))
+            os.makedirs(os.path.join(var, "custom"))
+            evil = MINIMAL.replace("[TCP_TLS]\n", "[TCP_TLS]\n--lua-desync=luaexec:code=1\n", 1)
+            data = self._zip_b64({"settings.json": _json.dumps({"preset": "my-evil"}),
+                                  "custom/my-evil.txt": evil})
+            with self.assertRaises(zm.Fail):
+                self._import_stdin(var, data)
+            self.assertFalse(os.path.exists(os.path.join(var, "custom", "my-evil.txt")))
+
+    def test_reject_zip_slip_and_unknown(self):
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(os.path.join(var, "lists"))
+            os.makedirs(os.path.join(var, "custom"))
+            settings = _json.dumps({"preset": "my-x"})
+            for evil in ("../evil.txt", "/abs.txt", "custom/../../x.txt",
+                         "lists/list-general.txt", "flowseal/fs-general.txt", "other.txt"):
+                with self.subTest(name=evil):
+                    data = self._zip_b64({"settings.json": settings, evil: "example.com\n"})
+                    with self.assertRaises(zm.Fail):
+                        self._import_stdin(var, data)
+
+
 class PresetsShow(unittest.TestCase):
     def _show(self, *args):
         emitted = {}

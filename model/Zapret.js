@@ -685,6 +685,20 @@ function isValidIPNetwork(s) {
   return isV6 ? isValidIPv6(addr) : isValidIPv4(addr)
 }
 
+// Backup size caps mirror the manager (MAX_EXPORT_TOTAL/MAX_EXPORT_EACH).
+var MAX_BACKUP_TOTAL = 2 * 1024 * 1024
+var MAX_BACKUP_FILE = 512 * 1024
+
+function isValidBackupSize(size) {
+  var n = Number(size)
+  return n > 0 && n <= MAX_BACKUP_TOTAL
+}
+
+function isValidBackupFileSize(size) {
+  var n = Number(size)
+  return n >= 0 && n <= MAX_BACKUP_FILE
+}
+
 // Live valid/dropped counts mirroring the manager clean_list rules:
 // domains with optional ^ prefix (host lists) or IP/CIDR (ipset lists).
 // Blank and comment-only lines are ignored (neither valid nor dropped).

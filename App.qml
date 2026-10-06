@@ -2121,7 +2121,9 @@ Item {
     id: stp
     property bool showExtra: false
     property bool hostsConfirm: false
-    readonly property bool uiBlocked: gameTcpField.activeFocus || gameUdpField.activeFocus
+    property string backupImport: ""
+    property string backupExported: ""
+    readonly property bool uiBlocked: gameTcpField.activeFocus || gameUdpField.activeFocus || backupField.activeFocus
         || gameDrop.popupOpen || ipsetDrop.popupOpen || voiceDrop.popupOpen
         || discordFakeDrop.popupOpen || gameFakeDrop.popupOpen
     Timer { id: hostsTimer; interval: 4000; onTriggered: stp.hostsConfirm = false }
@@ -2299,6 +2301,54 @@ Item {
             Hint { Layout.fillWidth: true; text: "Помогает, если Discord не грузится после включения обхода; закройте Discord перед очисткой" }
           }
           Button { bordered: true; text: "Очистить кэш Discord"; tooltipText: "Удалить кэш Discord"; onClicked: root.svc.clearDiscordCache() }
+        }
+      }
+
+      Card {
+        PanelSectionHeader { Layout.fillWidth: true; text: "Резервная копия"; foreground: root.fg; fontFamily: root.fontFamily }
+        Hint { Layout.fillWidth: true; text: "Настройки, пользовательские списки и свои стратегии в одном файле (base64). Экспорт копирует его в буфер обмена." }
+        Hint {
+          Layout.fillWidth: true
+          visible: stp.backupExported !== ""
+          text: stp.backupExported
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+          PrimaryButton {
+            enabled: root.ready && root.svc.installed && !root.svc.busy
+            text: "Экспорт"
+            tooltipText: "Скопировать резервную копию в буфер обмена"
+            onClicked: {
+              stp.backupExported = ""
+              root.svc.exportBackup(function(r) {
+                if (r.ok && r.data && r.data.data) {
+                  root.copyText(r.data.data)
+                  var n = r.data.files ? r.data.files.length : 0
+                  stp.backupExported = "Скопировано файлов: " + n
+                }
+              })
+            }
+          }
+          Button {
+            bordered: true
+            enabled: root.ready && root.svc.installed && !root.svc.busy && stp.backupImport.trim() !== ""
+            text: "Импорт"
+            tooltipText: "Восстановить из вставленного текста"
+            onClicked: {
+              var t = stp.backupImport.trim()
+              stp.backupImport = ""
+              backupField.text = ""
+              root.svc.importBackup(t)
+            }
+          }
+        }
+        TextField {
+          id: backupField
+          Layout.fillWidth: true
+          placeholderText: "Вставьте текст резервной копии для импорта"
+          text: stp.backupImport
+          onTextChanged: stp.backupImport = text
         }
       }
 

@@ -245,6 +245,11 @@ Item {
     act(args, "сохранение списка", "", cb, text)
   }
   function saveCustom(name, text, cb) { act(["custom", "save", name], "сохранение стратегии", "Стратегия сохранена", cb, text) }
+  function exportBackup(cb) {
+    var p = _aux.running ? _aux2 : _aux
+    run(p, ["export", "--stdout"], function(r) { cb(r) }, "экспорт")
+  }
+  function importBackup(data, cb) { act(["import"], "импорт", "Резервная копия восстановлена", cb, data) }
   function removeCustom(name) { act(["custom", "rm", name], "удаление стратегии", "Стратегия удалена") }
   function presetText(name, cb) {
     var p = _aux.running ? _aux2 : _aux
