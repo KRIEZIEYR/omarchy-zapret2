@@ -46,10 +46,6 @@ Item {
     copyProc.running = true
   }
 
-  function fixQuic(s) {
-    return String(s || "").split("может грузиться медленно (QUIC) — попробуйте другую стратегию").join("QUIC не проходит — видео может грузиться медленнее")
-  }
-
   function open(payloadJson) {
     var p = {}
     try { p = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
@@ -662,8 +658,8 @@ Item {
           font.bold: headCard.isNeutral
           text: {
             if (!root.ready || !headCard.info) return ""
-            if (headCard.isNeutral) return "✓ " + root.fixQuic(headCard.info.text)
-            return root.fixQuic(headCard.info.text)
+            if (headCard.isNeutral) return "✓ " + headCard.info.text
+            return headCard.info.text
           }
           color: {
             if (!root.ready || !headCard.info) return Color.popups.text
@@ -748,7 +744,6 @@ Item {
           delegate: ColumnLayout {
             required property var modelData
             property string catKey: modelData.key
-            property bool catQuic: !modelData.good && root.ready && Model.isQuicOnlyCat(root.svc.check, modelData.key)
             Layout.fillWidth: true
             spacing: Style.space(2)
             CursorSurface {
@@ -780,7 +775,7 @@ Item {
                   Layout.minimumWidth: Style.space(120)
                   fixedWidth: true
                   font.bold: !modelData.good
-                  color: modelData.good ? root.fg : (catQuic ? root.fg : root.bad)
+                  color: modelData.good ? root.fg : root.bad
                   text: {
                     var open = !!ov.expanded[catKey]
                     var glyph = modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")
@@ -792,7 +787,7 @@ Item {
                   fixedWidth: true
                   horizontalAlignment: Text.AlignRight
                   font.bold: !modelData.good
-                  color: modelData.good ? root.fg : (catQuic ? root.fg : root.bad)
+                  color: modelData.good ? root.fg : root.bad
                   text: modelData.ok + "/" + modelData.total
                 }
                 // One reason per row, right of an aligned count, instead of a
@@ -800,13 +795,12 @@ Item {
                 Hint {
                   Layout.fillWidth: true
                   fixedWidth: true
-                  color: catQuic ? root.fg : root.dim
+                  color: root.dim
                   text: {
                     var hosts = (root.ready && root.svc.check.categories[modelData.key]) ? root.svc.check.categories[modelData.key].results : []
-                    var failed = hosts.filter(function(h) { return !h.ok })
+                    var failed = hosts.filter(function(h) { return !h.ok && !h.http3 })
                     if (failed.length === 0) return ""
-                    var quicOnly = failed.every(function(h) { return h.http3 })
-                    return quicOnly ? Model.quicWarning() : Model.curlError(failed[0].error)
+                    return Model.curlError(failed[0].error)
                   }
                 }
               }
@@ -847,11 +841,8 @@ Item {
     property bool showing: false
     property string showError: ""
     property var moreOpen: ({})
-    property var tiesOpen: ({})
     property string filter: ""
     property string armDelete: ""
-    property bool showAll: true
-    property bool showAllInit: false
     property bool onlyGood: true
     property int hiddenWorseCount: 0
     property string pendingPreset: ""
@@ -868,16 +859,8 @@ Item {
         if (!root.svc.isOn || root.svc.preset !== n) root.svc.turnOn()
       }
     }
-    onVisibleChanged: if (visible) { sp.ensureShowAll(); Qt.callLater(scrollToActive) }
-    Component.onCompleted: { sp.ensureShowAll(); if (visible) Qt.callLater(scrollToActive) }
-
-    function ensureShowAll() {
-      if (sp.showAllInit || !root.ready) return
-      sp.showAllInit = true
-      var notNeeded = root.svc.autopickResult && root.svc.autopickResult.notNeeded === true
-      if (notNeeded) sp.showAll = false
-      else if (sp.totalPresets() > 40) sp.showAll = false
-    }
+    onVisibleChanged: if (visible) { Qt.callLater(scrollToActive) }
+    Component.onCompleted: { if (visible) Qt.callLater(scrollToActive) }
 
     function focusFilter() { filterField.forceActiveFocus() }
 
@@ -1090,27 +1073,8 @@ Item {
           head.push(g.tested[hi])
         }
       }
-      var rows = head.slice()
-      if (tied.length > 0) {
-        if (sp.tiesOpen[g.group]) rows = rows.concat(tied).concat([{ name: "", tiesCollapse: true, group: g.group, tiesCount: tied.length }])
-        else rows.push({ name: "", tiesExpander: tied.length, group: g.group })
-      }
-      if (g.untested.length === 0) return rows
-      if (sp.moreOpen[g.group]) return rows.concat(g.untested).concat([{ name: "", collapse: true, group: g.group }])
-      rows.push({ name: "", expander: g.untested.length, group: g.group })
-      return rows
-    }
-
-    function toggleTies(group) {
-      var e = Object.assign({}, sp.tiesOpen)
-      e[group] = !e[group]
-      sp.tiesOpen = e
-    }
-
-    function toggleMore(group) {
-      var e = Object.assign({}, sp.moreOpen)
-      e[group] = !e[group]
-      sp.moreOpen = e
+      var rows = head.concat(tied)
+      return rows.concat(g.untested)
     }
 
     function scrollToActive() {
@@ -1160,10 +1124,6 @@ Item {
             return
           }
         }
-        var un = groups[gi].untested
-        for (var ui = 0; ui < un.length; ui++) {
-          if (un[ui].name === name) { sp.toggleMore(groups[gi].group); Qt.callLater(function() { scrollToName(name) }); return }
-        }
       }
     }
 
@@ -1210,48 +1170,17 @@ Item {
         onClicked: root.svc.turnOff()
       }
     }
-    RowLayout {
-      Layout.fillWidth: true
-      visible: !sp.editing && !sp.showing
-      Disclosure {
-        caption: "Все стратегии (" + sp.totalPresets() + ", проверено " + sp.testedCount() + ")"
-        expanded: sp.showAll
-        onToggled: sp.showAll = !sp.showAll
-      }
-    }
-    // Collapsed must not mean empty: the page still says what it knows and
-    // offers the one action that fills it.
-    Card {
-      id: collapsedCard
-      visible: !sp.editing && !sp.showing && !sp.showAll
-      readonly property string bestName: sp.recommendedName()
-      ColumnLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(4)
-        Label { Layout.fillWidth: true; text: "Лучшая: " + Model.presetTitle(collapsedCard.bestName) }
-        Hint { Layout.fillWidth: true; text: sp.recommendedText() }
-        Hint { Layout.fillWidth: true; text: "Список из " + sp.totalPresets() + " стратегий свёрнут: подбор по очереди проверяет их сам." }
-      }
-      RowLayout {
-        Layout.fillWidth: true
-        PrimaryButton {
-          text: "Показать стратегии"
-          tooltipText: "Развернуть список из " + sp.totalPresets() + " стратегий"
-          onClicked: sp.showAll = true
-        }
-      }
-    }
     TextField {
       id: filterField
       Layout.fillWidth: true
-      visible: !sp.editing && !sp.showing && sp.showAll
+      visible: !sp.editing && !sp.showing
       placeholderText: "Найти стратегию"
       text: sp.filter
       onTextChanged: sp.filter = text
     }
     RowLayout {
       Layout.fillWidth: true
-      visible: !sp.editing && !sp.showing && sp.showAll
+      visible: !sp.editing && !sp.showing
       spacing: Style.space(8)
       Toggle {
         Layout.fillWidth: true
@@ -1267,10 +1196,10 @@ Item {
       id: stratScroll
       Layout.fillWidth: true
       Layout.fillHeight: true
-      visible: !sp.editing && !sp.showing && sp.showAll
+      visible: !sp.editing && !sp.showing
       clip: true
       ColumnLayout {
-        width: parent.width
+        width: stratScroll.availableWidth
         spacing: Style.space(10)
         Repeater {
           id: groupRep
@@ -1290,212 +1219,170 @@ Item {
             Repeater {
               id: rowsRep
               model: sp.groupRows(modelData)
-              delegate: Item {
-                id: stratItem
+              delegate: CursorSurface {
                 required property var modelData
-                property bool isSpecial: modelData.expander !== undefined || modelData.collapse === true || modelData.tiesExpander !== undefined || modelData.tiesCollapse === true
-                Layout.fillWidth: true
-                implicitHeight: stratLoader.item ? stratLoader.item.implicitHeight : 0
-
-                // Special rows (expanders, ties) are simple clickable Hint-style rows
-                Loader {
-                  id: stratLoader
-                  anchors.fill: parent
-                  sourceComponent: stratItem.isSpecial ? specialRowComp : normalRowComp
+                property bool isActive: root.ready && root.svc.preset === modelData.name
+                property bool isBest: {
+                  var br = sp.pickRow(modelData.name)
+                  return !!(br && br.chosen)
                 }
-
-                Component {
-                  id: specialRowComp
-                  Item {
-                    // Anchored children give an Item no implicit height, which
-                    // would collapse every expander row to nothing.
-                    implicitHeight: stratRow.implicitHeight + Style.space(14)
-                    TapHandler {
-                      onTapped: {
-                        if (stratItem.modelData.expander !== undefined || stratItem.modelData.collapse === true) sp.toggleMore(stratItem.modelData.group)
-                        else if (stratItem.modelData.tiesExpander !== undefined || stratItem.modelData.tiesCollapse === true) sp.toggleTies(stratItem.modelData.group)
-                      }
-                    }
-                    RowLayout {
-                      id: stratRow
-                      anchors.fill: parent
-                      anchors.margins: Style.space(7)
-                      Label {
-                        Layout.fillWidth: true
-                        color: root.dim
-                        text: stratItem.modelData.collapse === true ? "▾ свернуть" : stratItem.modelData.tiesCollapse === true ? "▾ свернуть" : stratItem.modelData.tiesExpander !== undefined ? "▸ ещё " + stratItem.modelData.tiesExpander + " с тем же результатом" : "▸ ещё " + stratItem.modelData.expander + " не проверялись"
-                      }
+                property string flowSrc: sp.flowsealSource(modelData.name)
+                property string scoreLine: {
+                  var r = sp.pickRow(modelData.name)
+                  if (!r || (r.total | 0) <= 0) return "не проверялась"
+                  var s = r.score + "/" + r.total
+                  if (sp.isTied(modelData.name)) s += " · = без обхода"
+                  else if (sp.isWorse(modelData.name)) s += " · ⚠ хуже, чем без обхода"
+                  else if (r.chosen) s += " · лучшая"
+                  return s
+                }
+                property string tipText: {
+                  var t = Model.presetTitle(modelData.name)
+                  if (flowSrc !== "") t += "\n" + flowSrc
+                  t += "\nEnter применит"
+                  return t
+                }
+                property bool moreActionsOpen: sp.moreOpen[modelData.name] === true
+                foreground: root.fg
+                Layout.fillWidth: true
+                current: isActive
+                hasCursor: sp.selectedName === modelData.name
+                Accessible.role: Accessible.Button
+                Accessible.name: Model.presetTitle(modelData.name) + (isActive ? ", активна" : "") + (sp.isTied(modelData.name) ? ", как без обхода" : (isBest ? ", лучшая" : ""))
+                HoverHandler {
+                  id: hover
+                  onHoveredChanged: {
+                    if (hovered) {
+                      sp.selectedName = modelData.name
+                      if (sp.armDelete !== "" && sp.armDelete !== modelData.name) sp.armDelete = ""
                     }
                   }
                 }
-
-                Component {
-                  id: normalRowComp
-                  CursorSurface {
-                    property bool isActive: root.ready && root.svc.preset === stratItem.modelData.name
-                    property bool isBest: {
-                      var br = sp.pickRow(stratItem.modelData.name)
-                      return !!(br && br.chosen)
-                    }
-                    property string flowSrc: sp.flowsealSource(stratItem.modelData.name)
-                    property string scoreLine: {
-                      var r = sp.pickRow(stratItem.modelData.name)
-                      if (!r || (r.total | 0) <= 0) return "не проверялась"
-                      var s = r.score + "/" + r.total
-                      if (sp.isTied(stratItem.modelData.name)) s += " · = без обхода"
-                      else if (sp.isWorse(stratItem.modelData.name)) s += " · ⚠ хуже, чем без обхода"
-                      else if (r.chosen) s += " · лучшая"
-                      return s
-                    }
-                    property string tipText: {
-                      var t = Model.presetTitle(stratItem.modelData.name)
-                      if (flowSrc !== "") t += "\n" + flowSrc
-                      t += "\nEnter применит"
-                      return t
-                    }
-                    property bool moreActionsOpen: sp.moreOpen[stratItem.modelData.name] === true
-                    foreground: root.fg
+                TapHandler {
+                  onTapped: {
+                    sp.selectedName = modelData.name
+                    if (sp.armDelete !== "" && sp.armDelete !== modelData.name) sp.armDelete = ""
+                  }
+                }
+                PanelToolTip {
+                  visible: hover.hovered && tipText !== ""
+                  text: tipText
+                  fontFamily: root.fontFamily
+                }
+                // The surface is not layout-managed, so it may anchor one
+                // column; the rows inside that column must not anchor, or
+                // Qt warns and their height is never measured.
+                implicitHeight: rowCol.implicitHeight + Style.space(14)
+                ColumnLayout {
+                  id: rowCol
+                  anchors.fill: parent
+                  anchors.margins: Style.space(7)
+                  spacing: Style.space(6)
+                  // Main row
+                  RowLayout {
+                    id: mainRow
                     Layout.fillWidth: true
-                    current: isActive
-                    hasCursor: sp.selectedName === stratItem.modelData.name
-                    Accessible.role: Accessible.Button
-                    Accessible.name: Model.presetTitle(stratItem.modelData.name) + (isActive ? ", активна" : "") + (sp.isTied(stratItem.modelData.name) ? ", как без обхода" : (isBest ? ", лучшая" : ""))
-                    HoverHandler {
-                      id: hover
-                      onHoveredChanged: {
-                        if (hovered) {
-                          sp.selectedName = stratItem.modelData.name
-                          if (sp.armDelete !== "" && sp.armDelete !== stratItem.modelData.name) sp.armDelete = ""
-                        }
-                      }
-                    }
-                    TapHandler {
-                      onTapped: {
-                        sp.selectedName = stratItem.modelData.name
-                        if (sp.armDelete !== "" && sp.armDelete !== stratItem.modelData.name) sp.armDelete = ""
-                      }
-                    }
-                    PanelToolTip {
-                      visible: hover.hovered && tipText !== ""
-                      text: tipText
-                      fontFamily: root.fontFamily
-                    }
-                    // The surface is not layout-managed, so it may anchor one
-                    // column; the rows inside that column must not anchor, or
-                    // Qt warns and their height is never measured.
-                    implicitHeight: rowCol.implicitHeight + Style.space(14)
+                    spacing: Style.space(6)
                     ColumnLayout {
-                      id: rowCol
-                      anchors.fill: parent
-                      anchors.margins: Style.space(7)
-                      spacing: Style.space(6)
-                      // Main row
+                      Layout.fillWidth: true
+                      spacing: 0
                       RowLayout {
-                        id: mainRow
                         Layout.fillWidth: true
                         spacing: Style.space(6)
-                        ColumnLayout {
-                          Layout.fillWidth: true
-                          spacing: 0
-                          RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Style.space(6)
-                            Label { Layout.fillWidth: true; fixedWidth: true; text: Model.presetTitle(stratItem.modelData.name); font.bold: true }
-                            BorderSurface {
-                              visible: isActive || isBest
-                              implicitWidth: activeText.implicitWidth + Style.space(10)
-                              implicitHeight: activeText.implicitHeight + Style.space(4)
-                              color: isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
-                              borderSpec: isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
-                              radius: Style.cornerRadius
-                              Text {
-                                id: activeText
-                                anchors.centerIn: parent
-                                text: isActive && isBest ? "● активна · ★ лучшая" : (isActive ? "● активна" : "★ лучшая")
-                                color: isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
-                                font.family: root.fontFamily
-                                font.pixelSize: Style.font.caption
-                              }
-                            }
-                          }
-                          Hint {
-                            Layout.fillWidth: true
-                            color: sp.isWorse(stratItem.modelData.name) ? root.bad : root.dim
-                            text: scoreLine
-                          }
-                          Hint {
-                            Layout.fillWidth: true
-                            visible: (sp.selectedName === stratItem.modelData.name || isActive) && !moreActionsOpen
-                            color: sp.isWorse(stratItem.modelData.name) ? root.bad : root.dim
-                            text: sp.rowSubtitle(stratItem.modelData)
-                          }
-                          Hint {
-                            Layout.fillWidth: true
-                            visible: (sp.selectedName === stratItem.modelData.name || isActive) && flowSrc !== "" && !moreActionsOpen
-                            color: root.dim
-                            text: flowSrc
-                          }
-                        }
-                        // Apply button (only when not active)
-                        Button {
-                          bordered: true
-                          visible: !isActive && sp.selectedName === stratItem.modelData.name
-                          enabled: root.ready && !root.svc.busy
-                          text: "Применить"
-                          tooltipText: "Применить " + Model.presetTitle(stratItem.modelData.name)
-                          onClicked: root.svc.setOption("preset", stratItem.modelData.name)
-                        }
-                        // Ellipsis button to toggle more actions
-                        Button {
-                          bordered: true
-                          visible: sp.selectedName === stratItem.modelData.name
-                          text: "⋯"
-                          tooltipText: moreActionsOpen ? "Скрыть действия" : "Действия"
-                          onClicked: {
-                            var e = Object.assign({}, sp.moreOpen)
-                            e[stratItem.modelData.name] = !moreActionsOpen
-                            sp.moreOpen = e
+                        Label { Layout.fillWidth: true; fixedWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
+                        BorderSurface {
+                          visible: isActive || isBest
+                          implicitWidth: activeText.implicitWidth + Style.space(10)
+                          implicitHeight: activeText.implicitHeight + Style.space(4)
+                          color: isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
+                          borderSpec: isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
+                          radius: Style.cornerRadius
+                          Text {
+                            id: activeText
+                            anchors.centerIn: parent
+                            text: isActive && isBest ? "● активна · ★ лучшая" : (isActive ? "● активна" : "★ лучшая")
+                            color: isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
                           }
                         }
                       }
-                      // Inline action row (shown when moreActionsOpen is true)
-                      RowLayout {
-                        id: actionRow
+                      Hint {
                         Layout.fillWidth: true
-                        visible: moreActionsOpen
-                        spacing: Style.space(6)
-                        Button {
-                          bordered: true
-                          text: "Показать"
-                          tooltipText: "Показать текст пресета"
-                          onClicked: sp.show(stratItem.modelData.name)
-                        }
-                        Button {
-                          visible: stratItem.modelData.name.indexOf("my-") === 0
-                          bordered: true
-                          text: "Изменить"
-                          tooltipText: "Изменить свою стратегию"
-                          onClicked: sp.edit(stratItem.modelData.name)
-                        }
-                        Button {
-                          visible: stratItem.modelData.name.indexOf("my-") === 0 && root.svc.preset !== stratItem.modelData.name
-                          bordered: true
-                          foreground: root.bad
-                          text: sp.armDelete === stratItem.modelData.name ? "Точно удалить?" : "Удалить"
-                          tooltipText: sp.armDelete === stratItem.modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
-                          onClicked: {
-                            if (sp.armDelete === stratItem.modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(stratItem.modelData.name) }
-                            else { sp.armDelete = stratItem.modelData.name; disarmTimer.restart() }
-                          }
-                        }
-                        Button {
-                          visible: sp.armDelete === stratItem.modelData.name && stratItem.modelData.name.indexOf("my-") === 0
-                          bordered: true
-                          text: "Отмена"
-                          tooltipText: "Оставить стратегию"
-                          onClicked: { sp.armDelete = ""; disarmTimer.stop() }
-                        }
+                        color: sp.isWorse(modelData.name) ? root.bad : root.dim
+                        text: scoreLine
                       }
+                      Hint {
+                        Layout.fillWidth: true
+                        visible: (sp.selectedName === modelData.name || isActive) && !moreActionsOpen
+                        color: sp.isWorse(modelData.name) ? root.bad : root.dim
+                        text: sp.rowSubtitle(modelData)
+                      }
+                      Hint {
+                        Layout.fillWidth: true
+                        visible: (sp.selectedName === modelData.name || isActive) && flowSrc !== "" && !moreActionsOpen
+                        color: root.dim
+                        text: flowSrc
+                      }
+                    }
+                    // Apply button (only when not active)
+                    Button {
+                      bordered: true
+                      visible: !isActive && sp.selectedName === modelData.name
+                      enabled: root.ready && !root.svc.busy
+                      text: "Применить"
+                      tooltipText: "Применить " + Model.presetTitle(modelData.name)
+                      onClicked: root.svc.setOption("preset", modelData.name)
+                    }
+                    // Ellipsis button to toggle more actions
+                    Button {
+                      bordered: true
+                      visible: sp.selectedName === modelData.name
+                      text: "⋯"
+                      tooltipText: moreActionsOpen ? "Скрыть действия" : "Действия"
+                      onClicked: {
+                        var e = Object.assign({}, sp.moreOpen)
+                        e[modelData.name] = !moreActionsOpen
+                        sp.moreOpen = e
+                      }
+                    }
+                  }
+                  // Inline action row (shown when moreActionsOpen is true)
+                  RowLayout {
+                    id: actionRow
+                    Layout.fillWidth: true
+                    visible: moreActionsOpen
+                    spacing: Style.space(6)
+                    Button {
+                      bordered: true
+                      text: "Показать"
+                      tooltipText: "Показать текст пресета"
+                      onClicked: sp.show(modelData.name)
+                    }
+                    Button {
+                      visible: modelData.name.indexOf("my-") === 0
+                      bordered: true
+                      text: "Изменить"
+                      tooltipText: "Изменить свою стратегию"
+                      onClicked: sp.edit(modelData.name)
+                    }
+                    Button {
+                      visible: modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
+                      bordered: true
+                      foreground: root.bad
+                      text: sp.armDelete === modelData.name ? "Точно удалить?" : "Удалить"
+                      tooltipText: sp.armDelete === modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
+                      onClicked: {
+                        if (sp.armDelete === modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(modelData.name) }
+                        else { sp.armDelete = modelData.name; disarmTimer.restart() }
+                      }
+                    }
+                    Button {
+                      visible: sp.armDelete === modelData.name && modelData.name.indexOf("my-") === 0
+                      bordered: true
+                      text: "Отмена"
+                      tooltipText: "Оставить стратегию"
+                      onClicked: { sp.armDelete = ""; disarmTimer.stop() }
                     }
                   }
                 }
@@ -1776,7 +1663,7 @@ Item {
       for (var k in cats) {
         var rs = cats[k].results || []
         for (var i = 0; i < rs.length; i++) {
-          if (rs[i].ok) continue
+          if (rs[i].ok || rs[i].http3) continue
           var h = rs[i].host || ""
           if (!h && rs[i].url) h = String(rs[i].url).replace(/^https?:\/\//, "").split("/")[0]
           if (h && out.indexOf(h) === -1) out.push(h)

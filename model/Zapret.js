@@ -73,6 +73,8 @@ function summary(st) {
 }
 
 // Check results as [{key, label, ok, total, good}] in a stable order.
+// HTTP/3 (QUIC) probes are ignored everywhere: a category passes when all
+// non-http3 probes pass, and counts only cover non-http3 probes.
 function categories(check) {
   var cats = check && check.categories ? check.categories : {}
   var order = ["youtube", "discord", "google", "cloudflare"]
@@ -81,6 +83,18 @@ function categories(check) {
   for (var i = 0; i < order.length; i++) {
     var c = cats[order[i]]
     if (!c) continue
+    if (c && Array.isArray(c.results)) {
+      var probes = c.results.filter(function(r) { return !r.http3 })
+      var okFiltered = probes.filter(function(r) { return r.ok }).length
+      var totalFiltered = probes.length
+      if (totalFiltered === 0) {
+        outList.push({ key: order[i], label: c.label || order[i], ok: 0, total: 0, good: true })
+        continue
+      }
+      outList.push({ key: order[i], label: c.label || order[i], ok: okFiltered, total: totalFiltered,
+                     good: okFiltered === totalFiltered })
+      continue
+    }
     outList.push({ key: order[i], label: c.label || order[i], ok: c.ok | 0, total: c.total | 0,
                    good: c.total > 0 && c.ok === c.total })
   }
@@ -205,23 +219,17 @@ function checkNote(check, now) {
   return "по проверке " + (a ? a + ", " : "") + "обход был " + (check.active ? "включён" : "выключен")
 }
 
-// Short reason for failing categories: "QUIC" when only http3 probes fail,
-// otherwise the first curl error; fallback when no host details exist.
+// Short reason for failing categories: the first non-QUIC curl error;
+// fallback when no host details exist. HTTP/3 probes never produce a reason.
 function failReason(check, failing) {
   var cats = (check && check.categories) || {}
   var failed = []
   for (var i = 0; i < failing.length; i++) {
     var r = (cats[failing[i].key] && cats[failing[i].key].results) || []
-    for (var j = 0; j < r.length; j++) if (!r[j].ok) failed.push(r[j])
+    for (var j = 0; j < r.length; j++) if (!r[j].ok && !r[j].http3) failed.push(r[j])
   }
-  if (failed.length > 0 && failed.every(function(h) { return h.http3 })) return quicWarning()
   if (failed.length > 0) return curlError(failed[0].error)
   return "не открываются"
-}
-
-// Centralized QUIC warning text used by failReason and breaksText.
-function quicWarning() {
-  return "QUIC не проходит — видео может грузиться медленнее"
 }
 
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
@@ -229,20 +237,15 @@ var NOT_NEEDED_TEXT = "Всё открывается без обхода — н�
 // Why a baseline that already passes needs no bypass. Shared by Overview and
 // Strategies so the two tabs cannot drift into contradicting each other.
 var NOT_NEEDED_EXPL = "Сайты открываются и так — возможно, роутер или VPN уже обходят блокировки"
-var CHECK_EXPLAINER = "14 проверок = адреса YouTube, Discord, Google, Cloudflare по TLS и (для YouTube) QUIC. Если не проходит только QUIC — видео работает, но может грузиться медленнее: попробуйте «Подбор»."
+var CHECK_EXPLAINER = "11 проверок = адреса YouTube, Discord, Google, Cloudflare по TLS. QUIC-пробы не учитываются."
 function failedHosts(check) {
   var cats = (check && check.categories) || {}
   var out = []
   for (var k in cats) {
     var rs = (cats[k] && cats[k].results) || []
-    for (var i = 0; i < rs.length; i++) if (!rs[i].ok) out.push(rs[i])
+    for (var i = 0; i < rs.length; i++) if (!rs[i].ok && !rs[i].http3) out.push(rs[i])
   }
   return out
-}
-function isQuicOnlyCheck(check) {
-  var failed = failedHosts(check)
-  if (failed.length === 0) return false
-  return failed.every(function(h) { return !!h.http3 })
 }
 function hasFailing(check) {
   var cats = categories(check)
@@ -250,16 +253,7 @@ function hasFailing(check) {
   return false
 }
 function hasError(check) {
-  if (!hasFailing(check)) return false
-  return !isQuicOnlyCheck(check)
-}
-function isQuicOnlyCat(check, key) {
-  var c = check && check.categories ? check.categories[key] : null
-  if (!c || !c.results) return false
-  var failed = []
-  for (var i = 0; i < c.results.length; i++) if (!c.results[i].ok) failed.push(c.results[i])
-  if (failed.length === 0) return false
-  return failed.every(function(h) { return !!h.http3 })
+  return hasFailing(check)
 }
 function validHosts(text) {
   var parts = String(text || "").split(/[\s,;]+/)
@@ -313,12 +307,10 @@ function verdict(st, check, autopick, now) {
     return { text: "Всё открывается", tone: "good", action: "none", note: note }
   }
   // Any category below full: the bypass may still help, never "не нужен".
-  // QUIC-only failure is a warning (video works, slower); anything else is an error.
   var names = failing.map(function(c) { return c.label }).join("/")
   var partial = failing.some(function(c) { return c.ok > 0 })
-  var quicOnly = isQuicOnlyCheck(check)
   return { text: names + (partial ? " частично" : "") + ": " + failReason(check, failing),
-           tone: quicOnly ? "warn" : "error", action: "autopick", note: note }
+           tone: "error", action: "autopick", note: note }
 }
 
 // Short human label for a curl probe error line.
@@ -511,7 +503,7 @@ function blockcheckPhase(line) {
 
 // Short per-row verdict for autopick rows: which categories still fail.
 // When something fails, passing categories are marked with ✓, e.g.
-// "YouTube ✗ QUIC · Discord ✓". All-open rows say "всё открывается".
+// "YouTube ✗ · Discord ✓". All-open rows say "всё открывается".
 function breaksText(row) {
   if (!row) return "не проверялась"
   var cats = row.categories || {}
@@ -546,8 +538,7 @@ function breaksText(row) {
     var label = labels.hasOwnProperty(k) ? labels[k] : k
     if (ok < tt) {
       hasFail = true
-      if (k === "youtube" && ok > 0) parts.push(label + " ✗ " + quicWarning())
-      else parts.push(label + " ✗")
+      parts.push(label + " ✗")
     } else {
       parts.push(label + " ✓")
     }

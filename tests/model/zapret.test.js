@@ -68,6 +68,21 @@ test("categories keep a stable order", () => {
   eq(Model.checkLine({}), "Проверок ещё не было")
 })
 
+test("categories ignore QUIC probes", () => {
+  const check = { categories: { youtube: { label: "YouTube", ok: 4, total: 6, results: [
+    { url: "https://a", ok: true, http3: false },
+    { url: "https://a", ok: true, http3: false },
+    { url: "https://b", ok: true, http3: false },
+    { url: "https://b", ok: true, http3: false },
+    { url: "https://a", ok: false, http3: true },
+    { url: "https://b", ok: false, http3: true },
+  ] } } }
+  eq(Model.categories(check), [{ key: "youtube", label: "YouTube", ok: 4, total: 4, good: true }])
+  eq(Model.checkLine(check), "YouTube 4/4")
+  eq(Model.hasFailing(check), false)
+  eq(Model.hasError(check), false)
+})
+
 test("json lines", () => {
   eq(Model.lastJson('{"progress":true,"step":1}\n{"ok":true}\n'), { ok: true })
   eq(Model.lastJson("garbage"), null)
@@ -138,14 +153,26 @@ test("verdict partial never says not needed", () => {
   if (v.text.indexOf("частично") === -1) throw new Error("partial text must say частично: " + v.text)
 })
 
-test("verdict QUIC-only failure", () => {
+test("verdict QUIC-only counts as OK", () => {
+  const NOT_NEEDED = "Всё открывается без обхода — ничего делать не нужно"
   const off = { installed: true, active: "inactive" }
+  const on = { installed: true, active: "active" }
   const quicOnly = { categories: { youtube: { label: "YouTube", ok: 1, total: 2, results: [
     { url: "https://youtube.com", ok: true, http3: false, error: "" },
     { url: "https://youtube.com", ok: false, http3: true, error: "(28) timeout" },
   ] } } }
-  const v = Model.verdict(off, quicOnly, null)
-  eq(v, { text: "YouTube частично: " + Model.quicWarning(), tone: "warn", action: "autopick", note: "" })
+  eq(Model.verdict(off, quicOnly, null), { text: NOT_NEEDED, tone: "neutral", action: "none", note: "" })
+  eq(Model.verdict(on, quicOnly, null), { text: "Всё открывается", tone: "good", action: "none", note: "" })
+  eq(Model.categories(quicOnly), [{ key: "youtube", label: "YouTube", ok: 1, total: 1, good: true }])
+  eq(Model.checkLine(quicOnly), "YouTube 1/1")
+  // QUIC failure plus a real one is still an error.
+  const mixed = { categories: { youtube: { label: "YouTube", ok: 1, total: 3, results: [
+    { url: "https://youtube.com", ok: true, http3: false, error: "" },
+    { url: "https://youtube.com", ok: false, http3: false, error: "(28) timeout" },
+    { url: "https://youtube.com", ok: false, http3: true, error: "(28) timeout" },
+  ] } } }
+  eq(Model.categories(mixed), [{ key: "youtube", label: "YouTube", ok: 1, total: 2, good: false }])
+  eq(Model.verdict(off, mixed, null).tone, "error")
 })
 
 test("verdict note carries check context", () => {
@@ -281,13 +308,13 @@ test("autopick rows keep categories", () => {
 
 test("breaksText", () => {
   eq(Model.breaksText({ score: 10, total: 10, categories: { youtube: [3, 3] } }), "всё открывается")
-  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: [1, 3] } }), "YouTube ✗ " + Model.quicWarning())
+  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: [1, 3] } }), "YouTube ✗")
   eq(Model.breaksText({ score: 0, total: 3, categories: { youtube: [0, 3] } }), "YouTube ✗")
   eq(Model.breaksText({ score: 1, total: 5, categories: { youtube: [0, 3], discord: [1, 2] } }), "YouTube ✗ · Discord ✗")
   eq(Model.breaksText({ score: 0, total: 0, categories: {} }), "не проверялась")
   eq(Model.breaksText(null), "не проверялась")
   eq(Model.breaksText({ score: 0, total: 0, categories: {}, error: "boom" }), "boom")
-  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: { ok: 1, total: 3, label: "YouTube" } } }), "YouTube ✗ " + Model.quicWarning())
+  eq(Model.breaksText({ score: 1, total: 3, categories: { youtube: { ok: 1, total: 3, label: "YouTube" } } }), "YouTube ✗")
   eq(Model.breaksText({ score: 3, total: 3, categories: { google: { ok: 2, total: 2 } } }), "всё открывается")
   eq(Model.breaksText({ score: 0, total: 2, categories: { custom: { ok: 0, total: 2 } } }), "custom ✗")
 })
@@ -329,7 +356,7 @@ test("verdict neutral not-needed text", () => {
 })
 
 test("breaksText mixed pass and fail", () => {
-  eq(Model.breaksText({ score: 3, total: 5, categories: { youtube: [1, 3], discord: [2, 2] } }), "YouTube ✗ " + Model.quicWarning() + " · Discord ✓")
+  eq(Model.breaksText({ score: 3, total: 5, categories: { youtube: [1, 3], discord: [2, 2] } }), "YouTube ✗ · Discord ✓")
   eq(Model.breaksText({ score: 2, total: 5, categories: { youtube: { ok: 0, total: 3 }, discord: { ok: 2, total: 2 } } }), "YouTube ✗ · Discord ✓")
   eq(Model.breaksText({ score: 5, total: 5, categories: { youtube: [3, 3], discord: [2, 2] } }), "всё открывается")
 })

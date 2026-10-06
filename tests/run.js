@@ -5,7 +5,7 @@ const vm = require("vm")
 
 const src = fs.readFileSync(path.join(__dirname, "..", "model", "Zapret.js"), "utf8").replace(/^\.pragma library\s*/, "")
 const Model = {}
-vm.runInNewContext(src + "\nObject.assign(Model, { presetTitle, groupTitle, doctorName, stateOf, stateText, summary, categories, checkLine, ago, lastJson, parseLine, autopickRows, failCount, verdict, failReason, checkNote, curlError, popupPresets, presetLabel, findingTitle, countLines, validLines, staleLabel, staleStatus, luminance, contrastRatio, pickBad, mixColor, groupSearchRows, doctorDetail, shortLog, breaksText, blockcheckPhase, doctorSeverity, importantLog, failedHosts, isQuicOnlyCheck, hasFailing, hasError, isQuicOnlyCat, validHosts, CHECK_EXPLAINER, NOT_NEEDED_EXPL, actionErrorText, quicWarning })", { Model })
+vm.runInNewContext(src + "\nObject.assign(Model, { presetTitle, groupTitle, doctorName, stateOf, stateText, summary, categories, checkLine, ago, lastJson, parseLine, autopickRows, failCount, verdict, failReason, checkNote, curlError, popupPresets, presetLabel, findingTitle, countLines, validLines, staleLabel, staleStatus, luminance, contrastRatio, pickBad, mixColor, groupSearchRows, doctorDetail, shortLog, breaksText, blockcheckPhase, doctorSeverity, importantLog, failedHosts, hasFailing, hasError, validHosts, CHECK_EXPLAINER, NOT_NEEDED_EXPL, actionErrorText })", { Model })
 
 let failed = 0, passed = 0
 global.test = (name, fn) => {
