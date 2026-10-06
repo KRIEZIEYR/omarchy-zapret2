@@ -269,8 +269,11 @@ Item {
   function loadServices() {
     run(_aux, ["services"], function(r) { if (r.data && r.data.ok) services = r.data.services || [] }, "сервисы")
   }
-  function serviceSet(add, name) {
-    act(["service", add ? "add" : "remove", String(name)], "сервис", "", function() { loadServices() })
+  function serviceOn(name) {
+    act(["service", "on", String(name)], "сервис", "", function() { loadServices() })
+  }
+  function serviceOff(name) {
+    act(["service", "off", String(name)], "сервис", "", function() { loadServices() })
   }
   function loadDns() {
     run(_aux, ["dns", "status"], function(r) { if (r.data && r.data.ok) dnsInfo = r.data }, "DNS")

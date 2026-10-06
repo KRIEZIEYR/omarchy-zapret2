@@ -1,0 +1,10 @@
+test("service titles and state", () => {
+  eq(Model.serviceTitle("chatgpt"), "ChatGPT")
+  eq(Model.serviceTitle("gemini"), "Gemini")
+  eq(Model.serviceTitle("claude"), "Claude")
+  eq(Model.serviceTitle("notion"), "Notion")
+  eq(Model.serviceTitle("unknown-x"), "unknown-x")
+  eq(Model.serviceStateLabel(true), "включён")
+  eq(Model.serviceStateLabel(false), "выключен")
+  eq(Model.serviceStateLabel(undefined), "выключен")
+})
