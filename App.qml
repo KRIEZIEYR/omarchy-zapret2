@@ -566,6 +566,44 @@ Item {
       width: parent.width
       spacing: Style.space(12)
 
+      Card {
+        id: frCard
+        visible: root.ready && frCard.frStep < 3
+        property int frStep: (typeof Model.firstRunStep === "function" && root.ready) ? Model.firstRunStep(root.svc.st, root.svc.autopickResult) : 3
+        PanelSectionHeader { Layout.fillWidth: true; text: "Первый запуск: установка → подбор → готово"; foreground: root.fg; fontFamily: root.fontFamily }
+        Label {
+          Layout.fillWidth: true
+          text: frCard.frStep === 1 ? "Шаг 1 из 3: установите движок zapret2 (один пароль)."
+               : "Шаг 2 из 3: запустите автоподбор стратегии (1–3 минуты)."
+        }
+        Hint { Layout.fillWidth: true; text: "Шаг 3 — готово: обход включён или не нужен." }
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+          PrimaryButton {
+            visible: frCard.frStep === 1
+            enabled: root.ready && !root.svc.busy
+            text: root.ready && root.svc.busyLabel === "установка" ? "Установка…" : "Установить"
+            tooltipText: "Установить движок zapret2 (спросит пароль один раз)"
+            onClicked: root.svc.setup()
+          }
+          PrimaryButton {
+            visible: frCard.frStep === 2
+            enabled: root.ready && root.svc.installed && !root.svc.busy
+            text: "Запустить автоподбор"
+            tooltipText: "Подобрать стратегию для вашей сети"
+            onClicked: { root.svc.autopick([]); root.tab = 3 }
+          }
+          Button {
+            bordered: true
+            visible: frCard.frStep === 2
+            text: "Открыть Подбор"
+            tooltipText: "Открыть вкладку Подбор"
+            onClicked: root.tab = 3
+          }
+        }
+      }
+
       // The plugin update has one action and one name: this notice on Обзор
       // and a labelled button on the Движок diagnostics row.
       Card {
@@ -1605,42 +1643,18 @@ Item {
                         : "Встроенные (только чтение). Свои записи добавляйте в «Мои …»."
     }
     Card {
-      property string picked: "chatgpt"
       PanelSectionHeader { Layout.fillWidth: true; text: "Сервисы"; foreground: root.fg; fontFamily: root.fontFamily }
       Hint { Layout.fillWidth: true; text: "Готовые наборы доменов: добавляются в «Мои: сайты». Поддомены включаются сами." }
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
-        Dropdown {
-          id: serviceDrop
-          Layout.preferredWidth: Style.space(220)
-          label: "Сервис"
-          value: "chatgpt"
-          options: (root.ready && root.svc.services.length > 0 ? root.svc.services : [
-            { value: "chatgpt", label: "ChatGPT" }, { value: "gemini", label: "Gemini" },
-            { value: "claude", label: "Claude" }, { value: "notion", label: "Notion" },
-            { value: "figma", label: "Figma" }, { value: "miro", label: "Miro" },
-            { value: "zoom", label: "Zoom" }, { value: "slack", label: "Slack" }
-          ]).map(function(s) {
-            var nm = s.name !== undefined ? s.name : s.value
-            var active = s.active === true ? " ✓" : ""
-            return { value: nm, label: (typeof Model.serviceTitle === "function" ? Model.serviceTitle(nm) : nm) + active }
-          })
-          onChanged: function(v) { serviceDrop.value = v }
-        }
-        Button {
-          bordered: true
-          enabled: root.ready && root.svc.installed && !root.svc.busy
-          text: "Добавить"
-          tooltipText: "Добавить домены сервиса в мои сайты"
-          onClicked: root.svc.serviceSet(true, serviceDrop.value)
-        }
-        Button {
-          bordered: true
-          enabled: root.ready && root.svc.installed && !root.svc.busy
-          text: "Убрать"
-          tooltipText: "Убрать домены сервиса из моих сайтов"
-          onClicked: root.svc.serviceSet(false, serviceDrop.value)
+      Repeater {
+        model: root.ready ? root.svc.services : []
+        delegate: Toggle {
+          required property var modelData
+          Layout.fillWidth: true
+          label: Model.serviceTitle(modelData.name)
+          description: modelData.domains.join(", ") + " · " + Model.serviceStateLabel(modelData.active)
+          checked: modelData.active === true
+          foreground: root.fg
+          onClicked: modelData.active === true ? root.svc.serviceOff(modelData.name) : root.svc.serviceOn(modelData.name)
         }
       }
       Component.onCompleted: if (root.ready) root.svc.loadServices()

@@ -27,3 +27,10 @@ test("serviceTitle", () => {
   eq(Model.serviceTitle("notion"), "Notion")
   eq(Model.serviceTitle("unknown-xyz"), "unknown-xyz")
 })
+
+test("firstRunStep", () => {
+  eq(Model.firstRunStep(null, null), 1)
+  eq(Model.firstRunStep({ installed: false }, {}), 1)
+  eq(Model.firstRunStep({ installed: true }, {}), 2)
+  eq(Model.firstRunStep({ installed: true }, { time: 5 }), 3)
+})

@@ -741,12 +741,26 @@ function isValidBackupFileSize(size) {
 // manager (it knows ~).
 // Default own-strategy name for an import source (file path or https link).
 // Russian labels for the per-service hosts picker.
+// First-run flow step: 1 install, 2 autopick, 3 done.
+function firstRunStep(st, autopick) {
+  var inst = !!(st && st.installed)
+  if (!inst) return 1
+  var ap = autopick || {}
+  if (!ap.time) return 2
+  return 3
+}
+
 function serviceTitle(name) {
   var titles = { chatgpt: "ChatGPT", gemini: "Gemini", claude: "Claude",
                  notion: "Notion", figma: "Figma", miro: "Miro",
                  zoom: "Zoom", slack: "Slack" }
   var n = String(name || "")
   return titles.hasOwnProperty(n) ? titles[n] : n
+}
+
+// Picker row state: "включён" when all its domains are in the user list.
+function serviceStateLabel(active) {
+  return active === true ? "включён" : "выключен"
 }
 
 function suggestImportName(source) {

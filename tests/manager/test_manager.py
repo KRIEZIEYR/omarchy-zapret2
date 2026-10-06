@@ -1091,7 +1091,7 @@ class Diagnostics(unittest.TestCase):
             self.assertIn("~", text)
 
 
-class PerServiceHosts(unittest.TestCase):
+class Services(unittest.TestCase):
     def _var(self, tmp):
         import os
         var = os.path.join(tmp, "var")
@@ -1105,7 +1105,7 @@ class PerServiceHosts(unittest.TestCase):
                 for d in domains:
                     self.assertTrue(zm.RE_DOMAIN.match(d), d)
 
-    def test_add_remove(self):
+    def test_on_off(self):
         import os, tempfile
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp:
@@ -1115,7 +1115,7 @@ class PerServiceHosts(unittest.TestCase):
                  mock.patch.object(zm, "require_installed", lambda: None), \
                  mock.patch.object(zm, "restart_if_active", lambda: False), \
                  mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_service(["add", "chatgpt"])
+                zm.cmd_service(["on", "chatgpt"])
             self.assertTrue(emitted.get("ok"))
             with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
                 content = f.read()
@@ -1126,9 +1126,34 @@ class PerServiceHosts(unittest.TestCase):
                  mock.patch.object(zm, "require_installed", lambda: None), \
                  mock.patch.object(zm, "restart_if_active", lambda: False), \
                  mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_service(["remove", "chatgpt"])
+                zm.cmd_service(["off", "chatgpt"])
             with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
                 self.assertNotIn("chatgpt.com", f.read())
+
+    def test_on_idempotent_keeps_others(self):
+        import os, tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            with open(os.path.join(var, "lists", "list-general-user.txt"), "w", encoding="utf-8") as f:
+                f.write("example.com\n")
+            def run(*a):
+                with mock.patch.object(zm, "VAR", var), \
+                     mock.patch.object(zm, "require_installed", lambda: None), \
+                     mock.patch.object(zm, "restart_if_active", lambda: False), \
+                     mock.patch.object(zm, "out", lambda obj: None):
+                    zm.cmd_service(list(a))
+            run("on", "chatgpt")
+            run("on", "chatgpt")
+            with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
+                lines = [l for l in f.read().splitlines() if l.strip()]
+            self.assertIn("example.com", lines)
+            self.assertEqual(len(lines), len(set(lines)))
+            self.assertEqual(sorted(lines),
+                             sorted(set(["example.com"] + zm.SERVICES["chatgpt"])))
+            run("off", "chatgpt")
+            with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
+                self.assertEqual(f.read().splitlines(), ["example.com"])
 
     def test_unknown_rejected(self):
         import tempfile
@@ -1138,7 +1163,7 @@ class PerServiceHosts(unittest.TestCase):
             with mock.patch.object(zm, "VAR", var), \
                  mock.patch.object(zm, "require_installed", lambda: None):
                 with self.assertRaises(zm.Fail):
-                    zm.cmd_service(["add", "no-such"])
+                    zm.cmd_service(["on", "no-such"])
 
     def test_services_list(self):
         import tempfile
@@ -1153,6 +1178,29 @@ class PerServiceHosts(unittest.TestCase):
             names = [s["name"] for s in emitted["services"]]
             self.assertIn("chatgpt", names)
             self.assertIn("notion", names)
+
+
+class FirstRun(unittest.TestCase):
+    def test_steps(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            state = __import__("os").path.join(tmp, "state")
+            __import__("os").makedirs(state)
+            emitted = {}
+            with mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "installed", lambda: False), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_first_run()
+            self.assertEqual((emitted["installed"], emitted["autopicked"], emitted["done"]), (False, False, False))
+            with open(os.path.join(state, "autopick.json"), "w", encoding="utf-8") as f:
+                f.write('{"time": 123, "chosen": "general"}')
+            emitted = {}
+            with mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "installed", lambda: True), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_first_run()
+            self.assertEqual((emitted["installed"], emitted["autopicked"], emitted["done"]), (True, True, True))
 
 
 if __name__ == "__main__":

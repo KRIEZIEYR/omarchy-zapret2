@@ -27,7 +27,7 @@ allowlist of nfqws2 options and Lua desync functions.
   presets                      built-in and custom strategies
   presets update               fetch fresh Flowseal strategies
   hosts on|off|status          Flowseal hosts block in /etc/hosts
-  services | service add|remove <name>  per-service host picker (ChatGPT, Gemini, ...)
+  services | service on|off <name>  per-service host picker (ChatGPT, Gemini, ...)
   discord-cache clear          delete Discord cache folders
   dns status|flush               show DNS servers, flush DNS cache
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
@@ -42,7 +42,7 @@ allowlist of nfqws2 options and Lua desync functions.
   check [domain...]            reachability of YouTube, Discord, Google, Cloudflare (or the domains)
   autopick [p1,p2,...]         try strategies one by one, keep the best
   blockcheck start [domain...] [--level quick|standard|force] | stop | status | save <index>
-  doctor | diagnostics | logs [n] | desktop on|off | remove [--purge]
+  doctor | diagnostics | first-run | logs [n] | desktop on|off | remove [--purge]
 """
 
 import base64
@@ -1822,8 +1822,8 @@ def cmd_services():
 
 def cmd_service(args):
     require_installed()
-    if len(args) < 2 or args[0] not in ("add", "remove"):
-        raise Fail("usage: service add|remove <name> [--no-restart]")
+    if len(args) < 2 or args[0] not in ("on", "off"):
+        raise Fail("usage: service on|off <name> [--no-restart]")
     name = args[1]
     domains = service_domains(name)
     no_restart = "--no-restart" in args
@@ -1832,7 +1832,7 @@ def cmd_service(args):
     except Fail:
         current = ""
     have = clean_list(current, "host")
-    if args[0] == "add":
+    if args[0] == "on":
         merged = have + [d for d in domains if d not in have]
     else:
         merged = [d for d in have if d not in domains]
@@ -2457,6 +2457,13 @@ def redact_ips(text):
     return s
 
 
+def cmd_first_run():
+    ap = load_state("autopick.json", {})
+    autopicked = bool(ap.get("time"))
+    inst = installed()
+    out({"ok": True, "installed": bool(inst), "autopicked": autopicked, "done": bool(inst and autopicked)})
+
+
 def cmd_diagnostics():
     """One redacted report, ready to paste: versions, settings, doctor,
     check/autopick scores, own strategy names (never contents), user list
@@ -3047,6 +3054,8 @@ def main(argv):
         cmd_updates_check()
     elif cmd == "remove":
         cmd_remove(args)
+    elif cmd == "first-run":
+        cmd_first_run()
     elif cmd == "diagnostics":
         cmd_diagnostics()
     elif cmd == "doctor":
