@@ -582,7 +582,8 @@ Item {
             PanelSectionHeader { Layout.fillWidth: true; text: "Доступно обновление Zapret2"; foreground: root.fg; fontFamily: root.fontFamily }
             Hint { Layout.fillWidth: true; text: "Обновит системную часть плагина и спросит пароль. Настройки, списки и стратегии останутся." }
           }
-          PrimaryButton {
+          Button {
+            bordered: true
             text: "Открыть Движок"
             tooltipText: "Открыть вкладку Движок: обновление плагина"
             onClicked: root.tab = 4
@@ -2160,7 +2161,8 @@ Item {
               }
               Hint {
                 Layout.fillWidth: true
-                fixedWidth: true
+                wrapMode: Text.Wrap
+                maximumLineCount: 3
                 visible: text !== ""
                 text: {
                   var d = Model.doctorDetail(modelData.name, modelData.detail)
@@ -2213,7 +2215,7 @@ Item {
           Layout.preferredHeight: Math.min(Style.space(240), Math.max(Style.space(60), logEditor.area.contentHeight + Style.space(16)))
           Layout.fillHeight: false
           readOnly: true
-          area.wrapMode: TextEdit.NoWrap
+          area.wrapMode: Text.WrapAnywhere
           text: {
             if (!root.ready) return ""
             var lines = root.svc.logLines.slice()

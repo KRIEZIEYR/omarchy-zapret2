@@ -25,9 +25,9 @@ function presetTitle(name) {
   if (n === "fs-general") return "General"
   if (n.indexOf("fs-general-") === 0) return niceTitle(n.substring("fs-general-".length))
   if (n.indexOf("fs-") === 0) return niceTitle(n.substring(3))
-  if (n.indexOf("next-") === 0) return niceTitle(n.substring(5))
+  if (n.indexOf("next-") === 0) return niceTitle(n.substring(5)) + " · Z2"
   if (n.indexOf("my-") === 0) return n.substring(3)
-  return niceTitle(n)
+  return niceTitle(n) + " · Z2"
 }
 
 function groupTitle(g) {
