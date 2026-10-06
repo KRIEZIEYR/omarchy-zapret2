@@ -738,5 +738,59 @@ class CustomFullPresets(unittest.TestCase):
                 self.assertTrue(secs[s])
 
 
+class CheckDomains(unittest.TestCase):
+    def _check(self, args, probe_ok=True):
+        emitted = {}
+        saved = {}
+
+        def fake_probe(url, http3=False, timeout=6):
+            return {"url": url, "ok": probe_ok, "code": "200" if probe_ok else "000",
+                    "time": 0.1 if probe_ok else None, "error": "" if probe_ok else "timed out"}
+
+        with mock.patch.object(zm, "curl_probe", fake_probe), \
+             mock.patch.object(zm, "installed", lambda: False), \
+             mock.patch.object(zm, "save_state", lambda name, obj: saved.update({name: obj})), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_check(list(args))
+        return emitted, saved.get("check.json", {})
+
+    def test_single_domain_ok(self):
+        emitted, saved = self._check(["Example.COM "])
+        self.assertTrue(emitted.get("ok"))
+        self.assertEqual(emitted.get("domains"), ["example.com"])
+        self.assertEqual(saved.get("domains"), ["example.com"])
+        cat = emitted["categories"]["domain"]
+        self.assertEqual((cat["ok"], cat["total"]), (1, 1))
+        self.assertEqual(cat["results"][0]["url"], "https://example.com")
+        self.assertNotIn("youtube", emitted["categories"])
+
+    def test_dedupes(self):
+        emitted, _ = self._check(["a.com", "A.COM", "a.com"])
+        self.assertEqual(emitted.get("domains"), ["a.com"])
+        self.assertEqual(emitted["categories"]["domain"]["total"], 1)
+
+    def test_invalid_rejected(self):
+        for bad in ("bad_host!", "https://x.com", "a/b", "x:8080", "", "  "):
+            with self.subTest(domain=bad):
+                with self.assertRaises(zm.Fail):
+                    self._check([bad])
+
+    def test_too_many_rejected(self):
+        with self.assertRaises(zm.Fail):
+            self._check(["d%d.example.com" % i for i in range(11)])
+
+    def test_no_args_as_before(self):
+        emitted = {}
+        canned = {"time": 0, "score": 3, "total": 3, "categories": {"web": {"label": "w", "ok": 3, "total": 3}}}
+        with mock.patch.object(zm, "run_checks", lambda: dict(canned)), \
+             mock.patch.object(zm, "installed", lambda: False), \
+             mock.patch.object(zm, "save_state", lambda name, obj: None), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_check([])
+        self.assertTrue(emitted.get("ok"))
+        self.assertNotIn("domains", emitted)
+        self.assertEqual(emitted["categories"], canned["categories"])
+
+
 if __name__ == "__main__":
     unittest.main()

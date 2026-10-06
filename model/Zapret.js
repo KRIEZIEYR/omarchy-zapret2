@@ -629,6 +629,25 @@ function isValidDomain(d) {
   return DOMAIN_RE.test(String(d || ""))
 }
 
+// Split free text (spaces, commas, semicolons) into plain hostnames for
+// `check <domain…>`: lowercase, stripped, deduped. Anything that is not a
+// plain hostname lands in `invalid` (shown back to the user as typed).
+function parseDomains(text) {
+  var parts = String(text || "").split(/[\s,;]+/)
+  var domains = [], invalid = [], seen = {}
+  for (var i = 0; i < parts.length; i++) {
+    var raw = String(parts[i]).trim()
+    if (!raw) continue
+    var cut = raw.toLowerCase().replace(/\.+$/, "")
+    if (!cut || cut.length > 253 || cut.indexOf("/") !== -1 || cut.indexOf(":") !== -1 || !isValidDomain(cut)) {
+      invalid.push(raw)
+      continue
+    }
+    if (!seen[cut]) { seen[cut] = true; domains.push(cut) }
+  }
+  return { domains: domains, invalid: invalid }
+}
+
 function isValidIPv4(s) {
   var parts = String(s || "").split(".")
   if (parts.length !== 4) return false
@@ -685,7 +704,7 @@ function isValidIPNetwork(s) {
   return isV6 ? isValidIPv6(addr) : isValidIPv4(addr)
 }
 
-// Backup size caps mirror the manager (MAX_EXPORT_TOTAL/MAX_EXPORT_EACH).
+// Backup size caps mirror the manager (MAX_BACKUP_TOTAL/MAX_BACKUP_FILE).
 var MAX_BACKUP_TOTAL = 2 * 1024 * 1024
 var MAX_BACKUP_FILE = 512 * 1024
 

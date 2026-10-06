@@ -1,0 +1,10 @@
+test("parse domains", () => {
+  eq(Model.parseDomains(""), { domains: [], invalid: [] })
+  eq(Model.parseDomains("Example.COM"), { domains: ["example.com"], invalid: [] })
+  eq(Model.parseDomains("a.com, b.org;c.net d.io"), { domains: ["a.com", "b.org", "c.net", "d.io"], invalid: [] })
+  eq(Model.parseDomains("a.com a.com A.COM"), { domains: ["a.com"], invalid: [] })
+  eq(Model.parseDomains("good.com bad_host!"), { domains: ["good.com"], invalid: ["bad_host!"] })
+  eq(Model.parseDomains("https://x.com"), { domains: [], invalid: ["https://x.com"] })
+  eq(Model.parseDomains("a/b"), { domains: [], invalid: ["a/b"] })
+  eq(Model.parseDomains("trailing.com."), { domains: ["trailing.com"], invalid: [] })
+})

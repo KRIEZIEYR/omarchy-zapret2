@@ -34,7 +34,7 @@ allowlist of nfqws2 options and Lua desync functions.
   export [--stdout] [--file PATH]  backup settings, own strategies and user lists (zip)
   import [--file PATH]             restore a backup (same validators, stdin is base64)
   lists update                 fetch fresh upstream lists (Flowseal)
-  check                        reachability of YouTube, Discord, Google, Cloudflare
+  check [domain...]            reachability of YouTube, Discord, Google, Cloudflare (or the domains)
   autopick [p1,p2,...]         try strategies one by one, keep the best
   blockcheck start [domain...] [--level quick|standard|force] | stop | status | save <index>
   doctor | logs [n] | desktop on|off | remove [--purge]
@@ -1793,8 +1793,45 @@ def run_checks():
     return {"time": int(time.time()), "score": score, "total": total, "categories": cats}
 
 
-def cmd_check():
-    res = run_checks()
+def run_domain_checks(domains):
+    """Probe https://<domain> for each domain (plain HTTP/1.1, like the rest).
+
+    Shape mirrors run_checks categories: {"domain": {label, ok, total, results}},
+    so verdict()/availCard render it unchanged; the "domains" field marks
+    a single-domain check."""
+    jobs = [("domain", "https://" + d, False) for d in domains]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(lambda j: (j[0], j[2], curl_probe(j[1], j[2])), jobs))
+    rs = [dict(r, http3=h) for c, h, r in results]
+    ok = sum(1 for r in rs if r["ok"])
+    return {"time": int(time.time()), "score": ok, "total": len(rs),
+            "categories": {"domain": {"label": "Домены", "ok": ok, "total": len(rs), "results": rs}}}
+
+
+MAX_CHECK_DOMAINS = 10
+
+
+def clean_check_domain(raw):
+    """One plain hostname for `check <domain>`: lowercase, no scheme or paths."""
+    d = str(raw or "").strip().lower().rstrip(".")
+    if not d or len(d) > 253 or "/" in d or ":" in d or not RE_DOMAIN.match(d):
+        raise Fail("bad domain: %s" % str(raw or "").strip()[:64])
+    return d
+
+
+def cmd_check(args):
+    domains = []
+    for a in args or []:
+        d = clean_check_domain(a)
+        if d not in domains:
+            domains.append(d)
+    if len(domains) > MAX_CHECK_DOMAINS:
+        raise Fail("up to %d domains" % MAX_CHECK_DOMAINS)
+    if domains:
+        res = run_domain_checks(domains)
+        res["domains"] = domains
+    else:
+        res = run_checks()
     if installed():
         res["preset"] = load_settings()["preset"]
         res["active"] = unit_state(UNIT).get("ActiveState") == "active"
@@ -2612,7 +2649,7 @@ def main(argv):
     elif cmd == "discord-cache":
         cmd_discord_cache(args)
     elif cmd == "check":
-        cmd_check()
+        cmd_check(args)
     elif cmd == "autopick":
         cmd_autopick(args)
     elif cmd == "blockcheck":

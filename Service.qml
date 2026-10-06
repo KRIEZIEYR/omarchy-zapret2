@@ -182,8 +182,17 @@ Item {
   function toggleAutostart() { setOption("autostart", settings.autostart === true ? "off" : "on") }
   function toggleIpv6() { setOption("ipv6", settings.ipv6 !== false ? "off" : "on") }
 
-  function runCheck() {
-    longJob(["check"], "проверка", function(d) { return d ? Model.checkLine(d) : "Готово" })
+  function runCheck(domainText) {
+    var args = ["check"]
+    var t = domainText === undefined || domainText === null ? "" : String(domainText)
+    if (t.trim() !== "") {
+      var dd = Model.parseDomains(t)
+      if (dd.invalid.length > 0) { flash("Некорректный домен: " + dd.invalid[0]); return }
+      if (dd.domains.length === 0) { flash("Введите домен"); return }
+      if (dd.domains.length > 10) { flash("Не больше 10 доменов"); return }
+      args = args.concat(dd.domains)
+    }
+    longJob(args, "проверка", function(d) { return d ? Model.checkLine(d) : "Готово" })
   }
 
   function autopick(names) {

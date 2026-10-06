@@ -708,6 +708,24 @@ Item {
             }
           }
         }
+        RowLayout {
+          Layout.fillWidth: true
+          visible: root.ready && root.svc.installed
+          spacing: Style.space(8)
+          TextField {
+            id: domainField
+            Layout.fillWidth: true
+            placeholderText: "Проверить домен…"
+            onAccepted: root.svc.runCheck(text)
+          }
+          Button {
+            bordered: true
+            enabled: root.ready && root.svc.installed && !root.svc.busy && domainField.text.trim() !== ""
+            text: "Проверить домен"
+            tooltipText: "Проверить свои домены через пробел или запятую (до 10)"
+            onClicked: root.svc.runCheck(domainField.text)
+          }
+        }
       }
 
       Card {
