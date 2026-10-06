@@ -51,7 +51,7 @@ test("staleStatus reports age only; the mismatch lives in verdict()", () => {
 })
 
 test("mixColor moves toward the background in both themes", () => {
-  const white = { r: 255, g: 255, b: 255 }
+  const white = { r: 1, g: 1, b: 1 }
   const black = { r: 0, g: 0, b: 0 }
   eq(Model.mixColor(white, black, 0), "#ffffff")
   eq(Model.mixColor(white, black, 1), "#000000")

@@ -26,7 +26,7 @@ function presetTitle(name) {
   if (n.indexOf("fs-general-") === 0) return niceTitle(n.substring("fs-general-".length))
   if (n.indexOf("fs-") === 0) return niceTitle(n.substring(3))
   if (n.indexOf("my-") === 0) return n.substring(3)
-  return "NEXT · " + niceTitle(n)
+  return niceTitle(n)
 }
 
 function groupTitle(g) {
@@ -433,14 +433,14 @@ function pickBad(urgent, bg, fallback) {
 // Mix two colors, t = 0 keeps `a`, t = 1 gives `b`. Secondary text is built by
 // mixing toward the background instead of darkening the foreground: Qt.darker
 // only ever darkens, so it collapses on a light theme. Returns "#rrggbb", which
-// QML accepts anywhere a color is expected.
+// QML accepts anywhere a color is expected. QML color channels are 0..1.
 function mixColor(a, b, t) {
   var k = Math.max(0, Math.min(1, Number(t) || 0))
   var ch = function(p) {
     var x = Number(a && a[p])
     var y = Number(b && b[p])
     if (isNaN(x) || isNaN(y)) return 0
-    return Math.round(x * (1 - k) + y * k)
+    return Math.round((x * (1 - k) + y * k) * 255)
   }
   var hex = function(v) {
     var s = Math.max(0, Math.min(255, v)).toString(16)

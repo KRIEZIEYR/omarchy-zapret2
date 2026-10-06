@@ -1,15 +1,15 @@
 test("preset titles", () => {
-  eq(Model.presetTitle("general"), "NEXT · General")
-  eq(Model.presetTitle("alt"), "NEXT · ALT")
-  eq(Model.presetTitle("alt5"), "NEXT · ALT 5")
-  eq(Model.presetTitle("alt11"), "NEXT · ALT 11")
-  eq(Model.presetTitle("fake-tls-auto"), "NEXT · Fake TLS Auto")
-  eq(Model.presetTitle("fake-tls-auto-alt2"), "NEXT · Fake TLS Auto ALT 2")
-  eq(Model.presetTitle("simple-fake"), "NEXT · Simple Fake")
-  eq(Model.presetTitle("voice"), "NEXT · Voice")
-  eq(Model.presetTitle("custom-safe"), "NEXT · Custom Safe")
-  eq(Model.presetTitle("custom-balanced"), "NEXT · Custom Balanced")
-  eq(Model.presetTitle("custom-aggressive"), "NEXT · Custom Aggressive")
+  eq(Model.presetTitle("general"), "General")
+  eq(Model.presetTitle("alt"), "ALT")
+  eq(Model.presetTitle("alt5"), "ALT 5")
+  eq(Model.presetTitle("alt11"), "ALT 11")
+  eq(Model.presetTitle("fake-tls-auto"), "Fake TLS Auto")
+  eq(Model.presetTitle("fake-tls-auto-alt2"), "Fake TLS Auto ALT 2")
+  eq(Model.presetTitle("simple-fake"), "Simple Fake")
+  eq(Model.presetTitle("voice"), "Voice")
+  eq(Model.presetTitle("custom-safe"), "Custom Safe")
+  eq(Model.presetTitle("custom-balanced"), "Custom Balanced")
+  eq(Model.presetTitle("custom-aggressive"), "Custom Aggressive")
   eq(Model.presetTitle("my-home"), "home")
   eq(Model.presetTitle(undefined), "")
   eq(Model.presetTitle(""), "")
@@ -53,7 +53,7 @@ test("state", () => {
   eq(Model.stateOf({ installed: true, active: "failed" }), "error")
   eq(Model.stateOf({ installed: true, active: "activating", restarts: 2 }), "error")
   eq(Model.stateOf({ installed: true, active: "activating", restarts: 0 }), "starting")
-  eq(Model.summary({ installed: true, active: "active", settings: { preset: "alt5" } }), "Zapret2 · Включён · NEXT · ALT 5")
+  eq(Model.summary({ installed: true, active: "active", settings: { preset: "alt5" } }), "Zapret2 · Включён · ALT 5")
   eq(Model.summary({ installed: true, active: "active", settings: { preset: "fs-general-alt2" } }), "Zapret2 · Включён · Flowseal ALT 2")
   eq(Model.summary({ installed: true, active: "active", settings: { preset: "fs-general" } }), "Zapret2 · Включён · Flowseal General")
 })
@@ -181,7 +181,7 @@ test("popupPresets", () => {
 })
 test("autopick baseline row", () => {
   const rows = Model.autopickRows({ chosen: "alt5", baseline: { preset: "(off)", score: 12, total: 14 }, rows: [{ preset: "alt5", score: 12, total: 14 }, { preset: "general", score: 1, total: 14 }] })
-  eq(rows.map(r => r.title), ["NEXT · ALT 5", "Без обхода", "NEXT · General"])
+  eq(rows.map(r => r.title), ["ALT 5", "Без обхода", "General"])
   const tie = Model.autopickRows({ chosen: "alt", baseline: { preset: "(off)", score: 11, total: 14 }, rows: [{ preset: "voice", score: 11, total: 14 }, { preset: "alt", score: 11, total: 14 }] })
   eq(tie.map(r => r.preset), ["alt", "(off)", "voice"])
   eq(rows[1].baseline, true)
@@ -194,11 +194,11 @@ test("verdict stale check", () => {
   const cats = { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } }
   const fresh = { time: 1000, preset: "alt5", active: true, categories: cats }
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "general" }), null),
-    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для NEXT · General (обход вкл) — сейчас NEXT · ALT 5 (обход вкл)" })
+    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для General (обход вкл) — сейчас ALT 5 (обход вкл)" })
   eq(Model.verdict(on, Object.assign({}, fresh, { active: false }), null),
-    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для NEXT · ALT 5 (обход выкл) — сейчас NEXT · ALT 5 (обход вкл)" })
+    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для ALT 5 (обход выкл) — сейчас ALT 5 (обход вкл)" })
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "fs-general-alt" }), null),
-    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для ALT (обход вкл) — сейчас NEXT · ALT 5 (обход вкл)" })
+    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для ALT (обход вкл) — сейчас ALT 5 (обход вкл)" })
   eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Всё открывается без обхода — ничего делать не нужно")
   eq(Model.verdict(on, fresh, null, 1010), { text: "Всё открывается", tone: "good", action: "none", note: "по проверке только что, обход был включён" })
   eq(Model.verdict(on, null, null), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })
@@ -363,3 +363,4 @@ test("actionErrorText maps known errors", () => {
   eq(Model.actionErrorText("unknown error"), "unknown error")
   eq(Model.actionErrorText(""), "Неизвестная ошибка")
 })
+
