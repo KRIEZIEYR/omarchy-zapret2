@@ -740,6 +740,15 @@ function isValidBackupFileSize(size) {
 // 10:00:00 are kept), bare domains. Home-dir shortening lives in the
 // manager (it knows ~).
 // Default own-strategy name for an import source (file path or https link).
+// Russian labels for the per-service hosts picker.
+function serviceTitle(name) {
+  var titles = { chatgpt: "ChatGPT", gemini: "Gemini", claude: "Claude",
+                 notion: "Notion", figma: "Figma", miro: "Miro",
+                 zoom: "Zoom", slack: "Slack" }
+  var n = String(name || "")
+  return titles.hasOwnProperty(n) ? titles[n] : n
+}
+
 function suggestImportName(source) {
   var s = String(source || "").split("?", 1)[0]
   s = s.split("\\").join("/")
@@ -766,6 +775,24 @@ function dnsStatusText(info) {
   var servers = r.dns || []
   if (servers.length === 0) return "DNS-серверы не определены"
   return "DNS: " + servers.slice(0, 3).join(", ")
+}
+
+// Strategy import helpers: what a single import field holds, and whether a
+// name is a valid own strategy (my-*, mirroring manager custom_name/RE_NAME).
+function isImportableUrl(s) {
+  return /^https?:\/\/\S+$/i.test(String(s || "").trim())
+}
+
+function importSourceKind(t) {
+  var s = String(t || "").trim()
+  if (!s) return "empty"
+  if (isImportableUrl(s)) return "url"
+  if (s.indexOf("\n") === -1 && (s.charAt(0) === "/" || s.charAt(0) === "~" || /\.txt$/i.test(s))) return "file"
+  return "text"
+}
+
+function strategyNameOk(n) {
+  return /^my-[a-z0-9][a-z0-9-]{0,28}$/.test(String(n || ""))
 }
 
 // Live valid/dropped counts mirroring the manager clean_list rules:

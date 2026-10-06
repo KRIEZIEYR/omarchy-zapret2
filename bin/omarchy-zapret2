@@ -27,13 +27,12 @@ allowlist of nfqws2 options and Lua desync functions.
   presets                      built-in and custom strategies
   presets update               fetch fresh Flowseal strategies
   hosts on|off|status          Flowseal hosts block in /etc/hosts
+  services | service add|remove <name>  per-service host picker (ChatGPT, Gemini, ...)
   discord-cache clear          delete Discord cache folders
   dns status|flush               show DNS servers, flush DNS cache
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
   strategy import [--name <name>] [file|url]   import a strategy (stdin, file or http(s) link)
   strategy copy <src> [new-name]               duplicate an own (my-*) strategy
-  custom import --file PATH|--url URL [--name N]  import a strategy (validated)
-  custom copy <src> [dst]                 copy any strategy as own (validated)
   list show <name> | list save <name> [--no-restart]   user lists (save reads stdin)
   export                           backup settings + user lists + own strategies (base64 zip)
   import [file]                    restore a backup (base64 zip from stdin or file)
@@ -1315,24 +1314,6 @@ def is_full_preset_text(text):
     return has_filter
 
 
-def preset_text_by_name(name):
-    if name in PRESETS:
-        with open(os.path.join(DATA, "presets", name + ".txt"), encoding="utf-8") as f:
-            return f.read()
-    if name.startswith("fs-"):
-        if not RE_NAME.match(name):
-            raise Fail("no such strategy: %s" % name)
-        text = read_nofollow(var_path("flowseal", name + ".txt"), MAX_SMALL * 4)
-        if text is None:
-            try:
-                with open(os.path.join(DATA, "presets", "flowseal", name + ".txt"), encoding="utf-8") as f:
-                    text = f.read()
-            except OSError:
-                raise Fail("no such strategy: %s" % name)
-        return text
-    return None
-
-
 def cmd_custom(args):
     require_installed()
     if not args:
@@ -1809,6 +1790,55 @@ def cmd_lists_update():
     restarted = restart_if_active()
     out({"ok": True, "updated": {k: len(v) for k, v in updated.items()}, "skipped": skipped, "restarted": restarted})
     note_updated("lists")
+
+
+SERVICES = {
+    "chatgpt": ["chatgpt.com", "chat.openai.com", "auth.openai.com", "api.openai.com", "cdn.openai.com"],
+    "gemini": ["gemini.google.com", "generativelanguage.googleapis.com", "ai.google.dev"],
+    "claude": ["claude.ai", "api.anthropic.com", "console.anthropic.com"],
+    "notion": ["notion.so", "notion.com", "notion.site", "api.notion.com"],
+    "figma": ["figma.com", "api.figma.com", "www.figma.com"],
+    "miro": ["miro.com", "api.miro.com", "realtime.miro.com"],
+    "zoom": ["zoom.us", "api.zoom.us", "zoom.com"],
+    "slack": ["slack.com", "api.slack.com", "app.slack.com"],
+}
+
+
+def service_domains(name):
+    if name not in SERVICES:
+        raise Fail("unknown service: %s (see `services`)" % name)
+    return list(SERVICES[name])
+
+
+def cmd_services():
+    try:
+        current = read_nofollow(var_path("lists", "list-general-user.txt"), MAX_LIST) or ""
+    except Fail:
+        current = ""
+    have = set(clean_list(current, "host"))
+    out({"ok": True, "services": [{"name": n, "domains": ds, "active": all(d in have for d in ds)}
+                                   for n, ds in sorted(SERVICES.items())]})
+
+
+def cmd_service(args):
+    require_installed()
+    if len(args) < 2 or args[0] not in ("add", "remove"):
+        raise Fail("usage: service add|remove <name> [--no-restart]")
+    name = args[1]
+    domains = service_domains(name)
+    no_restart = "--no-restart" in args
+    try:
+        current = read_nofollow(var_path("lists", "list-general-user.txt"), MAX_LIST) or ""
+    except Fail:
+        current = ""
+    have = clean_list(current, "host")
+    if args[0] == "add":
+        merged = have + [d for d in domains if d not in have]
+    else:
+        merged = [d for d in have if d not in domains]
+    atomic_write(var_path("lists", "list-general-user.txt"), "\n".join(merged) + ("\n" if merged else ""))
+    restarted = False if no_restart else restart_if_active()
+    out({"ok": True, "name": name, "domains": domains, "count": len(merged), "restarted": restarted})
 
 
 def cmd_hosts(args):
@@ -2991,6 +3021,10 @@ def main(argv):
         cmd_export(args)
     elif cmd == "import":
         cmd_import(args)
+    elif cmd == "services":
+        cmd_services()
+    elif cmd == "service":
+        cmd_service(args)
     elif cmd == "hosts":
         cmd_hosts(args)
     elif cmd == "dns":

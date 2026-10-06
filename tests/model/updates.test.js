@@ -21,3 +21,9 @@ test("suggestImportName", () => {
   eq(Model.suggestImportName("https://example.com/General ALT.txt?x=1"), "general-alt")
   eq(Model.suggestImportName(""), "imported")
 })
+
+test("serviceTitle", () => {
+  eq(Model.serviceTitle("chatgpt"), "ChatGPT")
+  eq(Model.serviceTitle("notion"), "Notion")
+  eq(Model.serviceTitle("unknown-xyz"), "unknown-xyz")
+})

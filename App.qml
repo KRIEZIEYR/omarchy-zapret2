@@ -89,6 +89,7 @@ Item {
     if (tab === 4) { svc.runDoctor(); svc.loadLogs() }
     if (tab === 3) { svc.refreshBlockcheck(); if (svc.doctorItems.length === 0) svc.runDoctor() }
     if (tab === 5) svc.loadDns()
+    if (tab === 2) svc.loadServices()
   }
 
   Process {
@@ -1145,8 +1146,7 @@ Item {
 
     readonly property bool uiBlocked: (filterField.activeFocus || nameField.activeFocus
         || editor.area.activeFocus || viewerEditor.area.activeFocus
-        || impFile.activeFocus || impUrl.activeFocus || impName.activeFocus
-        || cpSrc.activeFocus || cpDst.activeFocus)
+        || impText.activeFocus || impName.activeFocus)
 
     Card {
       id: recCard
@@ -1191,61 +1191,28 @@ Item {
     Card {
       visible: !sp.editing && !sp.showing
       PanelSectionHeader { Layout.fillWidth: true; text: "Импорт стратегии"; foreground: root.fg; fontFamily: root.fontFamily }
-      Hint { Layout.fillWidth: true; text: "Файл или ссылка https (до 64 КБ). Проверяется теми же правилами, сохраняется как своя." }
+      Hint { Layout.fillWidth: true; text: "Текст стратегии, путь к файлу или ссылка http(s). Проверяется теми же правилами, сохраняется как своя (my-*)." }
       TextField {
-        id: impFile
+        id: impText
         Layout.fillWidth: true
-        placeholderText: "Путь к файлу, например ~/my-strategy.txt"
-      }
-      TextField {
-        id: impUrl
-        Layout.fillWidth: true
-        placeholderText: "Ссылка https на стратегию"
-        inputMethodHints: Qt.ImhUrlCharactersOnly
-      }
-      TextField {
-        id: impName
-        Layout.fillWidth: true
-        placeholderText: "Имя (необязательно, например home)"
+        placeholderText: "Текст стратегии, путь к файлу или ссылка http(s)"
       }
       RowLayout {
         Layout.fillWidth: true
         spacing: Style.space(8)
-        Button {
-          bordered: true
-          enabled: root.ready && !root.svc.busy && impFile.text.trim() !== ""
-          text: "Импорт из файла"
-          tooltipText: "Импортировать стратегию из файла"
-          onClicked: root.svc.importCustomFile(impFile.text.trim(), impName.text.trim())
-        }
-        Button {
-          bordered: true
-          enabled: root.ready && !root.svc.busy && impUrl.text.trim() !== ""
-          text: "Импорт по ссылке"
-          tooltipText: "Импортировать стратегию по ссылке https"
-          onClicked: root.svc.importCustomUrl(impUrl.text.trim(), impName.text.trim())
-        }
-      }
-      Hint { Layout.fillWidth: true; text: "Копия любой стратегии как своя (проверяется как данные)." }
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
         TextField {
-          id: cpSrc
-          Layout.fillWidth: true
-          placeholderText: "Откуда, например fs-general"
-        }
-        TextField {
-          id: cpDst
-          Layout.fillWidth: true
-          placeholderText: "Куда (необязательно)"
+          id: impName
+          Layout.preferredWidth: Style.space(220)
+          placeholderText: "Имя (необязательно, например home)"
         }
         Button {
           bordered: true
-          enabled: root.ready && !root.svc.busy && cpSrc.text.trim() !== ""
-          text: "Копировать"
-          tooltipText: "Скопировать стратегию как свою"
-          onClicked: root.svc.copyCustom(cpSrc.text.trim(), cpDst.text.trim())
+          enabled: root.ready && !root.svc.busy && impText.text.trim() !== ""
+          text: "Импортировать"
+          tooltipText: "Проверить и сохранить как свою стратегию"
+          onClicked: root.svc.importStrategy(impText.text, impName.text.trim(), function(r) {
+            if (r.ok) { impText.text = ""; impName.text = "" }
+          })
         }
       }
     }
@@ -1446,6 +1413,14 @@ Item {
                       onClicked: sp.edit(modelData.name)
                     }
                     Button {
+                      visible: modelData.name.indexOf("my-") === 0
+                      bordered: true
+                      enabled: root.ready && !root.svc.busy
+                      text: "Дублировать"
+                      tooltipText: "Сохранить копию своей стратегии под новым именем"
+                      onClicked: root.svc.copyStrategy(modelData.name, "")
+                    }
+                    Button {
                       visible: modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
                       bordered: true
                       foreground: root.bad
@@ -1629,6 +1604,48 @@ Item {
       text: lp.editable ? "Мои — можно править. По одному домену (поддомены включаются сами) или IP/CIDR на строку. Неверные строки отбрасываются."
                         : "Встроенные (только чтение). Свои записи добавляйте в «Мои …»."
     }
+    Card {
+      property string picked: "chatgpt"
+      PanelSectionHeader { Layout.fillWidth: true; text: "Сервисы"; foreground: root.fg; fontFamily: root.fontFamily }
+      Hint { Layout.fillWidth: true; text: "Готовые наборы доменов: добавляются в «Мои: сайты». Поддомены включаются сами." }
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(8)
+        Dropdown {
+          id: serviceDrop
+          Layout.preferredWidth: Style.space(220)
+          label: "Сервис"
+          value: "chatgpt"
+          options: (root.ready && root.svc.services.length > 0 ? root.svc.services : [
+            { value: "chatgpt", label: "ChatGPT" }, { value: "gemini", label: "Gemini" },
+            { value: "claude", label: "Claude" }, { value: "notion", label: "Notion" },
+            { value: "figma", label: "Figma" }, { value: "miro", label: "Miro" },
+            { value: "zoom", label: "Zoom" }, { value: "slack", label: "Slack" }
+          ]).map(function(s) {
+            var nm = s.name !== undefined ? s.name : s.value
+            var active = s.active === true ? " ✓" : ""
+            return { value: nm, label: (typeof Model.serviceTitle === "function" ? Model.serviceTitle(nm) : nm) + active }
+          })
+          onChanged: function(v) { serviceDrop.value = v }
+        }
+        Button {
+          bordered: true
+          enabled: root.ready && root.svc.installed && !root.svc.busy
+          text: "Добавить"
+          tooltipText: "Добавить домены сервиса в мои сайты"
+          onClicked: root.svc.serviceSet(true, serviceDrop.value)
+        }
+        Button {
+          bordered: true
+          enabled: root.ready && root.svc.installed && !root.svc.busy
+          text: "Убрать"
+          tooltipText: "Убрать домены сервиса из моих сайтов"
+          onClicked: root.svc.serviceSet(false, serviceDrop.value)
+        }
+      }
+      Component.onCompleted: if (root.ready) root.svc.loadServices()
+    }
+
     // The empty state is a real state, not a three-line placeholder that reads
     // like content.
     Card {

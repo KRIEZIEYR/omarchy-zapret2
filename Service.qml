@@ -45,6 +45,7 @@ Item {
       ? (blockcheck.active === "active" || blockcheck.active === "activating")
       : (st !== null && (st.blockcheck === "active" || st.blockcheck === "activating"))
   property var dnsInfo: ({})
+  property var services: []
   property var doctorItems: []
   property var logLines: []
   property string logNote: ""
@@ -265,6 +266,12 @@ Item {
       return on ? "Hosts включён" : "Hosts выключен"
     })
   }
+  function loadServices() {
+    run(_aux, ["services"], function(r) { if (r.data && r.data.ok) services = r.data.services || [] }, "сервисы")
+  }
+  function serviceSet(add, name) {
+    act(["service", add ? "add" : "remove", String(name)], "сервис", "", function() { loadServices() })
+  }
   function loadDns() {
     run(_aux, ["dns", "status"], function(r) { if (r.data && r.data.ok) dnsInfo = r.data }, "DNS")
   }
@@ -298,20 +305,29 @@ Item {
     run(p, ["export", "--stdout"], function(r) { cb(r) }, "экспорт")
   }
   function importBackup(data, cb) { act(["import"], "импорт", "Резервная копия восстановлена", cb, data) }
-  function importCustomFile(path, name, cb) {
-    var args = ["custom", "import", "--file", String(path)]
-    if (name && String(name).trim() !== "") args = args.concat(["--name", String(name).trim()])
-    act(args, "импорт стратегии", "Стратегия импортирована", cb)
+  function importStrategy(input, name, cb) {
+    // Pasted text goes through stdin, a file path or http(s) link as the
+    // source argument — the manager validates either as data.
+    var args = ["strategy", "import"]
+    var nm = name === undefined || name === null ? "" : String(name).trim()
+    if (nm !== "") {
+      if (!Model.strategyNameOk("my-" + nm.replace(/^my-/, ""))) { flash("Имя: латиница, цифры и дефисы"); return false }
+      args.push("--name", nm)
+    }
+    var t = input === undefined || input === null ? "" : String(input).trim()
+    if (t === "") { flash("Вставьте текст, путь или ссылку"); return false }
+    var kind = Model.importSourceKind(t)
+    if (kind === "url" && !Model.isImportableUrl(t)) { flash("Ссылка должна начинаться с http(s)://"); return false }
+    if (kind === "text") return act(args, "импорт стратегии", "Стратегия импортирована", cb, input)
+    return longJob(args.concat([t]), "импорт стратегии", "Стратегия импортирована", cb)
   }
-  function importCustomUrl(url, name, cb) {
-    var args = ["custom", "import", "--url", String(url)]
-    if (name && String(name).trim() !== "") args = args.concat(["--name", String(name).trim()])
-    act(args, "импорт стратегии", "Стратегия импортирована", cb)
-  }
-  function copyCustom(src, dst, cb) {
-    var args = ["custom", "copy", String(src)]
-    if (dst && String(dst).trim() !== "") args.push(String(dst).trim())
-    act(args, "копирование стратегии", "Стратегия скопирована", cb)
+  function copyStrategy(src, name, cb) {
+    var args = ["strategy", "copy", String(src)]
+    if (name !== undefined && name !== null && String(name).trim() !== "") args.push(String(name).trim())
+    act(args, "дублирование стратегии", "", function(r) {
+      if (r.ok && r.data && r.data.name) flash("Дублирована как " + Model.presetTitle(r.data.name))
+      if (cb) cb(r)
+    })
   }
   function removeCustom(name) { act(["custom", "rm", name], "удаление стратегии", "Стратегия удалена") }
   function presetText(name, cb) {

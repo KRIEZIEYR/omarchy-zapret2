@@ -901,6 +901,130 @@ class SecureDns(unittest.TestCase):
                 zm.cmd_dns(["flush"])
 
 
+class StrategyImport(unittest.TestCase):
+    def _var(self, tmp):
+        var = os.path.join(tmp, "var")
+        os.makedirs(os.path.join(var, "custom"))
+        return var
+
+    def _strategy(self, var, args, stdin=None):
+        emitted = {}
+        patches = [mock.patch.object(zm, "require_installed", lambda: None),
+                   mock.patch.object(zm, "VAR", var),
+                   mock.patch.object(zm, "out", lambda obj: emitted.update(obj))]
+        if stdin is not None:
+            patches.append(mock.patch.object(zm, "read_stdin", lambda cap: stdin))
+        for p in patches:
+            p.start()
+        try:
+            zm.cmd_strategy(list(args))
+        finally:
+            for p in patches:
+                p.stop()
+        return emitted
+
+    def test_import_stdin_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            res = self._strategy(var, ["import"], stdin=MINIMAL)
+            self.assertTrue(res.get("ok"))
+            self.assertEqual(res.get("name"), "my-import")
+            with open(os.path.join(var, "custom", "my-import.txt"), encoding="utf-8") as f:
+                zm.parse_preset(f.read())
+            res = self._strategy(var, ["import", "--name", "second"], stdin=MINIMAL)
+            self.assertEqual(res.get("name"), "my-second")
+
+    def test_import_bad_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            with self.assertRaises(zm.Fail):
+                self._strategy(var, ["import"], stdin="[TCP_TLS]\n--lua-desync=luaexec:code=1\n" + MINIMAL)
+            self.assertEqual(os.listdir(os.path.join(var, "custom")), [])
+
+    def test_import_oversize_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            big = os.path.join(tmp, "big.txt")
+            with open(big, "w", encoding="utf-8") as f:
+                f.write(MINIMAL + "# pad\n" * 20000)
+            with self.assertRaises(zm.Fail):
+                self._strategy(var, ["import", big])
+            self.assertEqual(os.listdir(os.path.join(var, "custom")), [])
+
+    def test_import_file_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            src = os.path.join(tmp, "s.txt")
+            with open(src, "w", encoding="utf-8") as f:
+                f.write(MINIMAL)
+            res = self._strategy(var, ["import", src])
+            self.assertEqual(res.get("name"), "my-import")
+
+    def test_import_evil_file_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            src = os.path.join(tmp, "evil.txt")
+            with open(src, "w", encoding="utf-8") as f:
+                f.write(MINIMAL.replace("[TCP_TLS]\n", "[TCP_TLS]\n--user=root\n", 1))
+            with self.assertRaises(zm.Fail):
+                self._strategy(var, ["import", "--name", "evil", src])
+            self.assertFalse(os.path.exists(os.path.join(var, "custom", "my-evil.txt")))
+
+    def test_import_url_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            emitted = {}
+            with mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "fetch_strategy_url", lambda url: MINIMAL), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_strategy(["import", "https://example.com/s.txt", "--name", "fromurl"])
+            self.assertEqual(emitted.get("name"), "my-fromurl")
+            with open(os.path.join(var, "custom", "my-fromurl.txt"), encoding="utf-8") as f:
+                zm.parse_preset(f.read())
+
+    def test_fetch_bad_scheme_rejected(self):
+        with self.assertRaises(zm.Fail):
+            zm.fetch_strategy_url("ftp://example.com/s.txt")
+
+    def test_import_bad_scheme_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            with self.assertRaises(zm.Fail):
+                self._strategy(var, ["import", "ftp://example.com/s.txt"])
+
+    def test_copy_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            with open(os.path.join(var, "custom", "my-own.txt"), "w", encoding="utf-8") as f:
+                f.write(MINIMAL)
+            res = self._strategy(var, ["copy", "my-own"])
+            self.assertTrue(res.get("ok"))
+            self.assertEqual(res.get("name"), "my-own-copy")
+            with open(os.path.join(var, "custom", "my-own-copy.txt"), encoding="utf-8") as f:
+                self.assertEqual(f.read().strip(), MINIMAL.strip())
+            res = self._strategy(var, ["copy", "my-own", "twin"])
+            self.assertEqual(res.get("name"), "my-twin")
+
+    def test_copy_foreign_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            for src in ("fs-general", "general", "custom-safe"):
+                with self.subTest(src=src):
+                    with self.assertRaises(zm.Fail):
+                        self._strategy(var, ["copy", src])
+
+    def test_copy_bad_name_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            with open(os.path.join(var, "custom", "my-own.txt"), "w", encoding="utf-8") as f:
+                f.write(MINIMAL)
+            with self.assertRaises(zm.Fail):
+                self._strategy(var, ["copy", "my-own", "Bad Name!!"])
+            with self.assertRaises(zm.Fail):
+                self._strategy(var, ["copy", "my-missing"])
+
+
 class Diagnostics(unittest.TestCase):
     def test_redacted_no_hosts_or_ips(self):
         import tempfile
@@ -967,52 +1091,46 @@ class Diagnostics(unittest.TestCase):
             self.assertIn("~", text)
 
 
-class CustomTransfer(unittest.TestCase):
+class PerServiceHosts(unittest.TestCase):
     def _var(self, tmp):
         import os
         var = os.path.join(tmp, "var")
-        os.makedirs(os.path.join(var, "custom"), exist_ok=True)
         os.makedirs(os.path.join(var, "lists"), exist_ok=True)
         return var
 
-    def test_import_file(self):
+    def test_all_domains_valid(self):
+        for name, domains in zm.SERVICES.items():
+            with self.subTest(service=name):
+                self.assertTrue(domains)
+                for d in domains:
+                    self.assertTrue(zm.RE_DOMAIN.match(d), d)
+
+    def test_add_remove(self):
         import os, tempfile
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp:
             var = self._var(tmp)
-            src = os.path.join(tmp, "home", "s.txt")
-            os.makedirs(os.path.dirname(src))
-            with open(src, "w", encoding="utf-8") as f:
-                f.write(MINIMAL)
-            home = os.path.join(tmp, "home")
             emitted = {}
             with mock.patch.object(zm, "VAR", var), \
                  mock.patch.object(zm, "require_installed", lambda: None), \
-                 mock.patch.object(os.path, "expanduser", lambda p: p.replace("~", home)), \
+                 mock.patch.object(zm, "restart_if_active", lambda: False), \
                  mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_custom(["import", "--file", src, "--name", "fromfile"])
-            self.assertEqual(emitted.get("name"), "my-fromfile")
-            with open(os.path.join(var, "custom", "my-fromfile.txt"), encoding="utf-8") as f:
-                zm.parse_preset(f.read())
-
-    def test_import_rejects_evil(self):
-        import os, tempfile
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            var = self._var(tmp)
-            src = os.path.join(tmp, "home", "evil.txt")
-            os.makedirs(os.path.dirname(src))
-            with open(src, "w", encoding="utf-8") as f:
-                f.write(MINIMAL.replace("[TCP_TLS]\n", "[TCP_TLS]\n--user=root\n", 1))
-            home = os.path.join(tmp, "home")
+                zm.cmd_service(["add", "chatgpt"])
+            self.assertTrue(emitted.get("ok"))
+            with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
+                content = f.read()
+            for d in zm.SERVICES["chatgpt"]:
+                self.assertIn(d, content)
+            emitted = {}
             with mock.patch.object(zm, "VAR", var), \
                  mock.patch.object(zm, "require_installed", lambda: None), \
-                 mock.patch.object(os.path, "expanduser", lambda p: p.replace("~", home)):
-                with self.assertRaises(zm.Fail):
-                    zm.cmd_custom(["import", "--file", src, "--name", "evil"])
-            self.assertFalse(os.path.exists(os.path.join(var, "custom", "my-evil.txt")))
+                 mock.patch.object(zm, "restart_if_active", lambda: False), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_service(["remove", "chatgpt"])
+            with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
+                self.assertNotIn("chatgpt.com", f.read())
 
-    def test_import_outside_home_rejected(self):
+    def test_unknown_rejected(self):
         import tempfile
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp:
@@ -1020,35 +1138,21 @@ class CustomTransfer(unittest.TestCase):
             with mock.patch.object(zm, "VAR", var), \
                  mock.patch.object(zm, "require_installed", lambda: None):
                 with self.assertRaises(zm.Fail):
-                    zm.cmd_custom(["import", "--file", "/etc/passwd"])
+                    zm.cmd_service(["add", "no-such"])
 
-    def test_import_url(self):
+    def test_services_list(self):
         import tempfile
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp:
             var = self._var(tmp)
             emitted = {}
             with mock.patch.object(zm, "VAR", var), \
-                 mock.patch.object(zm, "require_installed", lambda: None), \
-                 mock.patch.object(zm, "http_get", lambda url, cap: MINIMAL.encode("utf-8")), \
                  mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_custom(["import", "--url", "https://example.com/s.txt", "--name", "fromurl"])
-            self.assertEqual(emitted.get("name"), "my-fromurl")
-
-    def test_copy(self):
-        import tempfile
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            var = self._var(tmp)
-            emitted = {}
-            with mock.patch.object(zm, "VAR", var), \
-                 mock.patch.object(zm, "require_installed", lambda: None), \
-                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_custom(["copy", "general", "mycopy"])
-            self.assertEqual(emitted.get("name"), "my-mycopy")
-            self.assertEqual(emitted.get("from"), "general")
-            with self.assertRaises(zm.Fail):
-                zm.cmd_custom(["copy", "no-such-xyz"])
+                zm.cmd_services()
+            self.assertTrue(emitted.get("ok"))
+            names = [s["name"] for s in emitted["services"]]
+            self.assertIn("chatgpt", names)
+            self.assertIn("notion", names)
 
 
 if __name__ == "__main__":
