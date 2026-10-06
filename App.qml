@@ -1581,9 +1581,8 @@ Item {
     }
   }
 
-  component ListsPage: ColumnLayout {
+  component ListsPage: ScrollView {
     id: lp
-    spacing: Style.space(10)
     property string current: "list-general-user"
     readonly property bool editable: current.indexOf("-user") !== -1
     readonly property bool uiBlocked: listDrop.popupOpen || listEditor.area.activeFocus
@@ -1640,10 +1639,15 @@ Item {
     }
     onCurrentChanged: { lp.saveResult = ""; load() }
     Component.onCompleted: load()
+    clip: true
 
-    RowLayout {
-      Layout.fillWidth: true
-      Dropdown {
+    ColumnLayout {
+      width: lp.availableWidth
+      spacing: Style.space(10)
+
+      RowLayout {
+        Layout.fillWidth: true
+        Dropdown {
         id: listDrop
         Layout.preferredWidth: Style.space(320)
         label: "Список"
@@ -1755,6 +1759,7 @@ Item {
       Layout.fillWidth: true
       visible: lp.editable && lp.saveResult !== ""
       text: lp.saveResult
+    }
     }
   }
 
