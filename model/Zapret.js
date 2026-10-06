@@ -735,6 +735,14 @@ function isValidBackupFileSize(size) {
   return n >= 0 && n <= MAX_BACKUP_FILE
 }
 
+// Strip addresses from diagnostics text (no hosts/IPs). Mirrors manager redact_ips.
+function redactIps(text) {
+  var s = String(text || "")
+  s = s.replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "[IP]")
+  s = s.replace(/\b(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]+\b/g, "[IPv6]")
+  return s
+}
+
 // DNS status line for the Secure DNS card. Pure, null-safe.
 function dnsStatusText(info) {
   var r = info || {}

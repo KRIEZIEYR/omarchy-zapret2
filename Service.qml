@@ -269,7 +269,7 @@ Item {
     run(_aux, ["dns", "status"], function(r) { if (r.data && r.data.ok) dnsInfo = r.data }, "DNS")
   }
   function flushDns() {
-    act(["dns", "flush"], "очистка кэша DNS", "Кэш DNS очищен")
+    act(["dns", "flush"], "очистка кэша DNS", "Кэш DNS очищен", function() { loadDns() })
   }
   function clearDiscordCache() {
     act(["discord-cache", "clear"], "очистка кэша Discord", "", function(r) {
@@ -306,6 +306,9 @@ Item {
 
   function runDoctor() {
     run(_aux, ["doctor"], function(r) { if (r.data) doctorItems = r.data.items || [] }, "диагностика")
+  }
+  function loadDiagnostics(cb) {
+    run(_aux, ["diagnostics"], function(r) { cb(r) }, "диагностика")
   }
   function loadLogs() {
     run(_aux2, ["logs", "150"], function(r) {

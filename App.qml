@@ -88,6 +88,7 @@ Item {
     if (!ready) return
     if (tab === 4) { svc.runDoctor(); svc.loadLogs() }
     if (tab === 3) { svc.refreshBlockcheck(); if (svc.doctorItems.length === 0) svc.runDoctor() }
+    if (tab === 5) svc.loadDns()
   }
 
   Process {
@@ -2013,6 +2014,17 @@ Item {
           Layout.fillWidth: true
           PanelSectionHeader { Layout.fillWidth: true; text: "Диагностика"; foreground: root.fg; fontFamily: root.fontFamily }
           Button { bordered: true; text: "Повторить"; tooltipText: "Повторить диагностику"; onClicked: root.svc.runDoctor() }
+          Button {
+            bordered: true
+            enabled: root.ready && !root.svc.busy
+            text: "Скопировать диагностику"
+            tooltipText: "Скопировать краткую диагностику без адресов и доменов"
+            onClicked: {
+              root.svc.loadDiagnostics(function(r) {
+                if (r.ok && r.data && r.data.text) root.copyText(r.data.text)
+              })
+            }
+          }
         }
         Repeater {
           model: root.ready ? root.svc.doctorItems : []
@@ -2404,8 +2416,9 @@ Item {
             tooltipText: "Показать текущие DNS-серверы"
             onClicked: root.svc.loadDns()
           }
-          Button {
-            bordered: true
+          // The filled action of this card: flushing is why it exists,
+          // refreshing the server list stays secondary.
+          PrimaryButton {
             enabled: root.ready && !root.svc.busy
             text: "Очистить кэш DNS"
             tooltipText: "Сбросить кэш DNS (resolvectl flush-caches)"
