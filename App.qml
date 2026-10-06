@@ -418,16 +418,38 @@ Item {
                   Layout.preferredWidth: Style.space(12)
                   fixedWidth: true
                   horizontalAlignment: Text.AlignRight
-                  color: root.dim
+                  font.bold: root.tab === index
+                  color: root.tab === index ? Color.accent : root.dim
                   text: String(index + 1)
                 }
-                Button {
+                // Inactive rows keep only a hairline border; hover lifts the
+                // fill and border, active switches to the selected fill, so
+                // the three states read as transparent → tinted → filled.
+                // Same BorderSurface + borderless Button pair as PrimaryButton.
+                BorderSurface {
+                  id: tabSurface
                   Layout.fillWidth: true
-                  leftAlign: true
-                  text: modelData
-                  selected: root.tab === index
-                  tooltipText: "Ctrl+" + (index + 1) + (index === 4 && root.sysUpdate ? " · есть обновление" : "")
-                  onClicked: root.tab = index
+                  property bool isActive: root.tab === index
+                  property bool hovered: tabHover.hovered
+                  implicitHeight: tabBtn.implicitHeight
+                  color: tabSurface.isActive ? Style.selectedFillFor(root.fg, Color.accent)
+                      : tabSurface.hovered ? Style.normalFillFor(root.fg, Color.accent) : "transparent"
+                  borderSpec: (tabSurface.isActive || tabSurface.hovered) ? Border.controlSpec("selected", root.fg, Color.accent)
+                      : Border.controlSpec("normal", root.fg, Color.accent)
+                  radius: Style.cornerRadius
+                  HoverHandler { id: tabHover }
+                  Button {
+                    id: tabBtn
+                    anchors.fill: parent
+                    leftAlign: true
+                    bordered: false
+                    foreground: tabSurface.isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.fg
+                    text: modelData
+                    tooltipText: "Ctrl+" + (index + 1) + (index === 4 && root.sysUpdate ? " · есть обновление" : "")
+                    onClicked: root.tab = index
+                    Accessible.role: Accessible.Button
+                    Accessible.name: modelData + (tabSurface.isActive ? ", выбрана" : "")
+                  }
                 }
                 // A quiet badge, not a chip: the update is a status, and it
                 // stays visible on every tab, including Обзор.
