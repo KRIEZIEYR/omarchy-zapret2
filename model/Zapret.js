@@ -233,10 +233,10 @@ function failReason(check, failing) {
 }
 
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
-var NOT_NEEDED_TEXT = "Всё открывается без обхода — ничего делать не нужно"
+var NOT_NEEDED_TEXT = "Всё открывается"
 // Why a baseline that already passes needs no bypass. Shared by Overview and
 // Strategies so the two tabs cannot drift into contradicting each other.
-var NOT_NEEDED_EXPL = "Сайты открываются и так — возможно, роутер или VPN уже обходят блокировки"
+var NOT_NEEDED_EXPL = "Сайты открываются и так."
 var CHECK_EXPLAINER = "11 проверок = адреса YouTube, Discord, Google, Cloudflare по TLS. QUIC-пробы не учитываются."
 function failedHosts(check) {
   var cats = (check && check.categories) || {}
@@ -344,8 +344,8 @@ function popupPresets(presets, autopick, active) {
 }
 
 // Popup dropdown label: "General · 12/14 · лучшая", plus
-// "⚠ хуже, чем без обхода" when worse than the no-bypass baseline,
-// "= без обхода" when tied with the baseline (instead of "лучшая").
+// "⚠ хуже, чем без обхода" when worse than the no-bypass baseline.
+// A tied row shows nothing extra (never "лучшая").
 // Score part is omitted when score/total is missing or total <= 0.
 function presetLabel(name, score, total, isBest, worseThanBaseline, tied) {
   if (name && typeof name === "object") {
@@ -384,8 +384,7 @@ function presetLabel(name, score, total, isBest, worseThanBaseline, tied) {
       && !isNaN(sc) && !isNaN(tt) && tt > 0) {
     parts.push((sc | 0) + "/" + (tt | 0))
   }
-  if (tied) parts.push("= без обхода")
-  else if (isBest) parts.push("лучшая")
+  if (isBest && !tied) parts.push("лучшая")
   if (worseThanBaseline) parts.push("⚠ хуже, чем без обхода")
   return parts.join(" · ")
 }

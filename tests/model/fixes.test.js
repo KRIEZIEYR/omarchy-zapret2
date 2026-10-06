@@ -14,11 +14,11 @@ test("failCount same score tie-break", () => {
   eq(rows.map(r => r.preset), ["a", "b"])
 })
 
-test("presetLabel tied shows = без обхода", () => {
-  eq(Model.presetLabel("fs-general", 12, 14, true, false, true), "General · 12/14 · = без обхода")
-  eq(Model.presetLabel("fs-general", 12, 14, false, false, true), "General · 12/14 · = без обхода")
+test("presetLabel tied shows nothing extra", () => {
+  eq(Model.presetLabel("fs-general", 12, 14, true, false, true), "General · 12/14")
+  eq(Model.presetLabel("fs-general", 12, 14, false, false, true), "General · 12/14")
   eq(Model.presetLabel("fs-general", 12, 14, true, false, false), "General · 12/14 · лучшая")
-  eq(Model.presetLabel({ preset: "fs-general", score: 12, total: 14, chosen: true, tied: true }), "General · 12/14 · = без обхода")
+  eq(Model.presetLabel({ preset: "fs-general", score: 12, total: 14, chosen: true, tied: true }), "General · 12/14")
 })
 
 test("staleLabel unified wording", () => {

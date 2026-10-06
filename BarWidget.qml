@@ -78,8 +78,7 @@ Panel {
     var title = Model.presetTitle(nm)
     if (!r || (r.total | 0) === 0) return title
     var s = title + " · " + r.score + "/" + r.total
-    if (tied) s += " · = без обхода"
-    else if (isBest) s += " · лучшая"
+    if (isBest && !tied) s += " · лучшая"
     if (worse) s += " · ⚠"
     return s
   }

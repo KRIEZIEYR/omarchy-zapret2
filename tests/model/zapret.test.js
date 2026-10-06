@@ -116,7 +116,7 @@ test("autopick tie-break: name asc, untested last", () => {
 })
 
 test("verdict", () => {
-  const NOT_NEEDED = "Всё открывается без обхода — ничего делать не нужно"
+  const NOT_NEEDED = "Всё открывается"
   const on = { installed: true, active: "active" }
   const off = { installed: true, active: "inactive" }
   const allOk = { categories: { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } } }
@@ -154,7 +154,7 @@ test("verdict partial never says not needed", () => {
 })
 
 test("verdict QUIC-only counts as OK", () => {
-  const NOT_NEEDED = "Всё открывается без обхода — ничего делать не нужно"
+  const NOT_NEEDED = "Всё открывается"
   const off = { installed: true, active: "inactive" }
   const on = { installed: true, active: "active" }
   const quicOnly = { categories: { youtube: { label: "YouTube", ok: 1, total: 2, results: [
@@ -228,7 +228,7 @@ test("verdict stale check", () => {
     { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для ALT 5 · Z2 (обход выкл) — сейчас ALT 5 · Z2 (обход вкл)" })
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "fs-general-alt" }), null),
     { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для ALT (обход вкл) — сейчас ALT 5 · Z2 (обход вкл)" })
-  eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Всё открывается без обхода — ничего делать не нужно")
+  eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Всё открывается")
   eq(Model.verdict(on, fresh, null, 1010), { text: "Всё открывается", tone: "good", action: "none", note: "по проверке только что, обход был включён" })
   eq(Model.verdict(on, null, null), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })
 })
@@ -340,7 +340,7 @@ test("doctorDetail additions", () => {
 })
 
 test("verdict neutral not-needed text", () => {
-  const NOT_NEEDED = "Всё открывается без обхода — ничего делать не нужно"
+  const NOT_NEEDED = "Всё открывается"
   const off = { installed: true, active: "inactive" }
   const on = { installed: true, active: "active" }
   const allOk = { categories: { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } } }

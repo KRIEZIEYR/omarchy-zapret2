@@ -202,9 +202,8 @@ Item {
       if (row && row.error) return String(row.error)
       var s = ((row && row.score) || 0) + "/" + ((row && row.total) || 0)
       if (row && !row.baseline && baseScore >= 0 && (row.total | 0) > 0) {
-        if ((row.score | 0) === baseScore) s += " · = без обхода"
-        else if ((row.score | 0) < baseScore) s += " · хуже базы"
-        else s += " · лучше базы"
+        if ((row.score | 0) < baseScore) s += " · хуже базы"
+        else if ((row.score | 0) > baseScore) s += " · лучше базы"
       }
       return s
     }
@@ -923,7 +922,6 @@ Item {
       var bt = (typeof Model.breaksText === "function") ? Model.breaksText(r) : "не проверялась"
       if ((r.total | 0) <= 0) return r.error !== "" ? r.error : bt
       var s = r.score + "/" + r.total
-      if (sp.isTied(sp.recommendedName())) return bt + " · " + s + " — как без обхода"
       return bt + " · " + s
     }
 
@@ -994,8 +992,7 @@ Item {
         var s = r.score + "/" + r.total
         if (t.indexOf(s) === -1) t += " · " + s
       }
-      if (sp.isTied(p.name)) t += " — как без обхода"
-      else if (sp.isWorse(p.name)) t += " · ⚠ хуже, чем без обхода"
+      if (sp.isWorse(p.name)) t += " · ⚠ хуже, чем без обхода"
       return t
     }
 
@@ -1231,9 +1228,8 @@ Item {
                   var r = sp.pickRow(modelData.name)
                   if (!r || (r.total | 0) <= 0) return "не проверялась"
                   var s = r.score + "/" + r.total
-                  if (sp.isTied(modelData.name)) s += " · = без обхода"
-                  else if (sp.isWorse(modelData.name)) s += " · ⚠ хуже, чем без обхода"
-                  else if (r.chosen) s += " · лучшая"
+                  if (sp.isWorse(modelData.name)) s += " · ⚠ хуже, чем без обхода"
+                  else if (r.chosen && !sp.isTied(modelData.name)) s += " · лучшая"
                   return s
                 }
                 property string tipText: {
@@ -1248,7 +1244,7 @@ Item {
                 current: isActive
                 hasCursor: sp.selectedName === modelData.name
                 Accessible.role: Accessible.Button
-                Accessible.name: Model.presetTitle(modelData.name) + (isActive ? ", активна" : "") + (sp.isTied(modelData.name) ? ", как без обхода" : (isBest ? ", лучшая" : ""))
+                Accessible.name: Model.presetTitle(modelData.name) + (isActive ? ", активна" : "") + ((isBest && !sp.isTied(modelData.name)) ? ", лучшая" : "")
                 HoverHandler {
                   id: hover
                   onHoveredChanged: {
@@ -1700,13 +1696,6 @@ Item {
         Hint {
           Layout.fillWidth: true
           text: "Включает стратегии по очереди и проверяет YouTube, Discord, Google и Cloudflare. Останавливается на первой, где открывается всё, иначе оставляет лучшую. Пароль не нужен, занимает 1–3 минуты."
-        }
-        Label {
-          Layout.fillWidth: true
-          visible: root.ready && root.svc.autopickResult.notNeeded === true && root.svc.busyLabel !== "автоподбор"
-          color: Color.accent
-          font.bold: true
-          text: "✓ Без обхода открывается не хуже: обход сейчас не нужен, или он уже работает на роутере или в VPN"
         }
         Label {
           visible: root.ready && root.svc.progressInfo !== null && root.svc.busyLabel === "автоподбор"
