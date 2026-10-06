@@ -325,11 +325,11 @@ Item {
     visible: false
     color: root.bg
     implicitWidth: Style.space(900)
-    implicitHeight: Style.space(620)
+    implicitHeight: Style.space(580)
     minimumSize: Qt.size(Style.space(640), Style.space(440))
     // The shell may offer more room than the content can use; capping the
     // window keeps pages from turning into a column of cards over 60% void.
-    maximumSize: Qt.size(Style.space(1280), Style.space(820))
+    maximumSize: Qt.size(Style.space(1280), Style.space(720))
     // closed by the window manager (Super+W, close button): tell the shell
     onVisibleChanged: if (!visible && !root.closingFromHost) root.dismiss()
 
@@ -565,7 +565,6 @@ Item {
       }
     }
     clip: true
-    contentWidth: availableWidth
     ColumnLayout {
       width: parent.width
       spacing: Style.space(12)
@@ -583,12 +582,10 @@ Item {
             PanelSectionHeader { Layout.fillWidth: true; text: "Доступно обновление Zapret2"; foreground: root.fg; fontFamily: root.fontFamily }
             Hint { Layout.fillWidth: true; text: "Обновит системную часть плагина и спросит пароль. Настройки, списки и стратегии останутся." }
           }
-          Button {
-            bordered: true
-            enabled: root.ready && !root.svc.busy
-            text: "Обновить плагин"
-            tooltipText: "Установить обновление системной части плагина (спросит пароль)"
-            onClicked: root.svc.updateApp()
+          PrimaryButton {
+            text: "Открыть Движок"
+            tooltipText: "Открыть вкладку Движок: обновление плагина"
+            onClicked: root.tab = 4
           }
         }
       }
@@ -1271,7 +1268,6 @@ Item {
       Layout.fillHeight: true
       visible: !sp.editing && !sp.showing && sp.showAll
       clip: true
-      contentWidth: availableWidth
       ColumnLayout {
         width: parent.width
         spacing: Style.space(10)
@@ -1687,6 +1683,8 @@ Item {
     }
     Editor {
       id: listEditor
+      Layout.fillHeight: false
+      Layout.preferredHeight: Style.space(160)
       readOnly: !lp.editable
       placeholderText: lp.editable ? "Пусто" : "Список только для чтения"
     }
@@ -1786,7 +1784,6 @@ Item {
       return out.length > 0 ? out.join(" ") : "youtube.com discord.com"
     }
     clip: true
-    contentWidth: availableWidth
     ColumnLayout {
       width: parent.width
       spacing: Style.space(12)
@@ -1800,7 +1797,7 @@ Item {
           PrimaryButton {
             visible: !(root.ready && root.svc.busyLabel === "автоподбор")
             enabled: root.ready && !root.svc.busy
-            text: "Запустить"
+            text: "Запустить подбор"
             tooltipText: "Запустить быстрый подбор (1–3 минуты)"
             onClicked: root.svc.autopick([])
           }
@@ -1905,7 +1902,7 @@ Item {
             // Always visible, so the reason is on screen instead of the button
             // quietly disappearing; it never copies anything behind your back.
             enabled: root.ready && (root.svc.blockcheckRunning || (!blockcheckCard.vpnOn() && !blockcheckCard.bindMissing()))
-            text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить"
+            text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить поиск"
             tooltipText: root.svc.blockcheckRunning ? "Остановить глубокий поиск"
                 : blockcheckCard.vpnOn() ? "Выключите VPN-туннель (omarchy-xray TUN) — поиск через туннель бессмыслен"
                 : blockcheckCard.bindMissing() ? "Нужен пакет bind: omarchy pkg add bind"
@@ -2083,7 +2080,6 @@ Item {
   component EnginePage: ScrollView {
     id: ep
     clip: true
-    contentWidth: availableWidth
     property bool armRemove: false
     property int hoverDoc: -1
     property bool onlyImportant: true
@@ -2252,7 +2248,6 @@ Item {
         || discordFakeDrop.popupOpen || gameFakeDrop.popupOpen
     Timer { id: hostsTimer; interval: 4000; onTriggered: stp.hostsConfirm = false }
     clip: true
-    contentWidth: availableWidth
     ColumnLayout {
       width: parent.width
       spacing: Style.space(12)
