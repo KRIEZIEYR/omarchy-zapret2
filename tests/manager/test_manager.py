@@ -624,7 +624,22 @@ class AutopickServiceState(unittest.TestCase):
         self.assertNotEqual(calls[-1], ("stop", zm.UNIT))
 
 
-class AutopickRanking(unittest.TestCase):
+class CircularPlanner(unittest.TestCase):
+    def test_ranks_and_fills_from_other_domains(self):
+        names = {"a", "b", "c"}
+        scores = {"one": {"a": {"ok": 2, "total": 2}, "b": {"ok": 0, "total": 2}},
+                  "two": {"b": {"ok": 2, "total": 2}, "c": {"ok": 1, "total": 2}}}
+        result = zm.circular_rank(scores, 2, names)
+        self.assertEqual(result["one"], ["a", "b"])
+        self.assertEqual(result["two"], ["b", "c"])
+
+    def test_config_only_contains_valid_names(self):
+        result = zm.circular_config({"one": {"good": {"ok": 1, "total": 1}, "bad": {"ok": 0, "total": 1}}}, [], "quick", {"good"})
+        self.assertEqual(result["domains"]["one"], ["good"])
+        self.assertEqual(result["next"], "ready")
+
+
+
     def test_fails(self):
         a = {"preset": "a", "score": 8, "total": 14,
              "categories": {"youtube": [0, 6], "discord": [4, 4], "google": [2, 2], "cloudflare": [2, 2]}}

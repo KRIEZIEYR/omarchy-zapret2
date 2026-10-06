@@ -41,6 +41,7 @@ allowlist of nfqws2 options and Lua desync functions.
   lists update                 fetch fresh upstream lists (Flowseal)
   check [domain...]            reachability of YouTube, Discord, Google, Cloudflare (or the domains)
   autopick [p1,p2,...]         try strategies one by one, keep the best
+  circular [plan|status|stop]  build a per-domain strategy rotation from preset checks
   blockcheck start [domain...] [--level quick|standard|force] | stop | status | save <index>
   doctor | diagnostics | first-run | logs [n] | desktop on|off | remove [--purge]
 """
@@ -61,6 +62,7 @@ import tarfile
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -2138,6 +2140,195 @@ def cmd_autopick(args):
     out(dict(result, ok=True))
 
 
+def circular_domains():
+    """Stable host list used by the circular planner, derived from targets.json."""
+    with open(os.path.join(DATA, "targets.json"), encoding="utf-8") as f:
+        targets = json.load(f)
+    domains = []
+    for target in targets.values():
+        for url in target.get("urls", []):
+            host = urllib.parse.urlsplit(url).hostname
+            if host and host not in domains:
+                domains.append(host.lower().rstrip("."))
+    return domains
+
+
+def circular_rank(scores, limit=5, valid_names=None):
+    """Rank per-domain winners, then fill gaps from winners elsewhere."""
+    valid_names = valid_names or set(p["name"] for p in all_presets())
+    ranked_by_domain = {}
+    for domain, candidates in scores.items():
+        ranked = []
+        for name, value in candidates.items():
+            if name not in valid_names:
+                continue
+            ok = int(value.get("ok", 0)) if isinstance(value, dict) else 0
+            total = int(value.get("total", 0)) if isinstance(value, dict) else 0
+            if total > 0:
+                ranked.append((ok == total, ok, total, name))
+        ranked.sort(key=lambda row: (not row[0], -row[1], -row[2], row[3]))
+        ranked_by_domain[domain] = ranked
+    global_rank = []
+    for domain in ranked_by_domain:
+        for row in ranked_by_domain[domain]:
+            if row[1] > 0 and row[3] not in [x[3] for x in global_rank]:
+                global_rank.append(row)
+    global_rank.sort(key=lambda row: (not row[0], -row[1], -row[2], row[3]))
+    result = {}
+    count = max(1, min(5, int(limit)))
+    for domain, ranked in ranked_by_domain.items():
+        names = [row[3] for row in ranked if row[1] > 0]
+        for row in global_rank:
+            if len(names) >= count:
+                break
+            if row[3] not in names:
+                names.append(row[3])
+        result[domain] = names[:count]
+    return result
+
+
+def circular_config(scores, unresolved=None, level="quick", valid_names=None):
+    """Build the on-disk circular plan; only preset names cross the boundary."""
+    unresolved = sorted(set(unresolved or []))
+    rotation = circular_rank(scores, 5, valid_names)
+    return {"version": 1, "created": int(time.time()), "mode": "circular",
+            "level": level, "domains": rotation, "unresolved": unresolved,
+            "next": "blockcheck-" + level if unresolved else "ready"}
+
+
+def circular_blockcheck(domains, level, timeout):
+    """Run the official blockcheck2 unit and return validated findings."""
+    resume = unit_state(UNIT).get("ActiveState") == "active"
+    req = {"domains": domains[:8], "level": level, "ipv6": load_settings()["ipv6"], "resume": resume}
+    atomic_write(var_path("blockcheck.json"), json.dumps(req) + "\n")
+    sh("systemctl", "--no-ask-password", "reset-failed", BC_UNIT, timeout=10)
+    systemctl("start", BC_UNIT)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        st = unit_state(BC_UNIT)
+        if st.get("ActiveState") not in ("active", "activating"):
+            break
+        time.sleep(1.0)
+    if unit_state(BC_UNIT).get("ActiveState") in ("active", "activating"):
+        systemctl("stop", BC_UNIT)
+        raise Fail("blockcheck2 %s превысил лимит времени" % level)
+    text = read_nofollow(os.path.join(RUN_BC, "blockcheck.log"), 16 * 1024 * 1024) or ""
+    return parse_blockcheck(text)
+
+
+def save_circular_findings(findings):
+    """Validate and save findings, grouped by the domain they solved."""
+    by_domain = {}
+    for index, item in enumerate(findings):
+        try:
+            text = strategy_from_found(item)
+            domain = re.sub(r"[^a-z0-9]+", "-", item["domain"].lower()).strip("-") or "site"
+            name = custom_name("circular-%s-%d" % (domain, index + 1))
+            atomic_write(var_path("custom", name + ".txt"), text)
+            by_domain.setdefault(item["domain"].lower().rstrip("."), []).append("my-" + name)
+        except Fail:
+            continue
+    return by_domain
+
+
+def cmd_circular(args):
+    require_installed()
+    verb = args[0] if args else "status"
+    path = var_path("circular.json")
+    if verb == "status":
+        out({"ok": True, "config": load_state("circular.json", {})})
+        return
+    if verb == "stop":
+        atomic_write(path, json.dumps({"version": 1, "mode": "off"}) + "\n", mode=0o600)
+        out({"ok": True, "stopped": True})
+        return
+    if verb != "plan":
+        raise Fail("usage: circular plan|status|stop")
+    level = "quick"
+    if "--level" in args:
+        i = args.index("--level")
+        if i + 1 >= len(args):
+            raise Fail("circular level: quick or standard")
+        level = args[i + 1]
+    if level not in ("quick", "standard"):
+        raise Fail("circular level: quick or standard")
+    presets = all_presets()
+    names = [p["name"] for p in presets if p["group"] != "custom"]
+    valid_names = set(p["name"] for p in presets)
+    domains = circular_domains()
+    if not names or not domains:
+        raise Fail("no strategies or targets to test")
+    original = load_settings()
+    original_preset = original["preset"]
+    was_active = unit_state(UNIT).get("ActiveState") == "active"
+    scores = {d: {} for d in domains}
+    try:
+        systemctl("stop", UNIT)
+        for index, name in enumerate(names):
+            progress(step=index + 1, of=len(names), preset=name)
+            settings = load_settings()
+            settings["preset"] = name
+            save_settings(settings)
+            result = None
+            try:
+                systemctl("start", UNIT)
+                wait_active()
+                result = run_checks()
+            except Fail:
+                result = None
+            finally:
+                systemctl("stop", UNIT)
+                settings = load_settings()
+                settings["preset"] = original_preset
+                save_settings(settings)
+            if not result:
+                continue
+            for category in result.get("categories", {}).values():
+                for probe in category.get("results", []):
+                    host = urllib.parse.urlsplit(probe.get("url", "")).hostname
+                    if not host or host.lower().rstrip(".") not in scores:
+                        continue
+                    host = host.lower().rstrip(".")
+                    entry = scores[host].setdefault(name, {"ok": 0, "total": 0})
+                    entry["total"] += 1
+                    entry["ok"] += 1 if probe.get("ok") else 0
+    finally:
+        settings = load_settings()
+        settings["preset"] = original_preset
+        save_settings(settings)
+        if was_active:
+            systemctl("start", UNIT)
+            wait_active()
+        else:
+            systemctl("stop", UNIT)
+    rotation = circular_rank(scores, 5, valid_names)
+    unresolved = [d for d in domains if not rotation.get(d)]
+    blockcheck = {"quick": [], "standard": []}
+    if unresolved:
+        blockcheck["quick"] = save_circular_findings(circular_blockcheck(unresolved, "quick", 600))
+        if not blockcheck["quick"]:
+            blockcheck["standard"] = save_circular_findings(circular_blockcheck(unresolved, "standard", 3600))
+        for domain in unresolved:
+            fallback = blockcheck["quick"].get(domain, []) or blockcheck["standard"].get(domain, [])
+            if not fallback:
+                fallback = [name for names_for_domain in blockcheck["quick"].values() for name in names_for_domain]
+            if not fallback:
+                fallback = [name for names_for_domain in blockcheck["standard"].values() for name in names_for_domain]
+            if fallback:
+                rotation[domain] = fallback[:5]
+        unresolved = [d for d in domains if not rotation.get(d)]
+    check_names = [name for values in blockcheck["quick"].values() for name in values]
+    check_names += [name for values in blockcheck["standard"].values() for name in values]
+    valid_names.update(check_names)
+    config = circular_config(scores, unresolved, level, valid_names)
+    config["domains"].update(rotation)
+    config["blockcheck"] = blockcheck
+    config["standardWarning"] = bool(blockcheck["standard"])
+    atomic_write(path, json.dumps(config, ensure_ascii=False, indent=1) + "\n", mode=0o600)
+    out({"ok": True, "config": config, "needsBlockcheck": bool(unresolved),
+         "message": ("Нужен blockcheck2: " + ", ".join(unresolved)) if unresolved else "Готово"})
+
+
 # --------------------------------------------------------------- blockcheck (user side)
 
 RE_FOUND = re.compile(r"^!!!!! (curl_test_[a-z0-9_]+): working strategy found for (ipv[46]) (\S+) : nfqws2 (.*?) !!!!!$")
@@ -3044,6 +3235,8 @@ def main(argv):
         cmd_check(args)
     elif cmd == "autopick":
         cmd_autopick(args)
+    elif cmd == "circular":
+        cmd_circular(args)
     elif cmd == "blockcheck":
         cmd_blockcheck(args)
     elif cmd == "setup":

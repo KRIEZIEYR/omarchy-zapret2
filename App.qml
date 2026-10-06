@@ -21,7 +21,9 @@ Item {
   property var manifest: null
   property var service: null
   readonly property var svc: service
-  readonly property bool ready: service !== null
+    readonly property bool ready: service !== null
+    readonly property int pageGutter: Style.space(14)
+    readonly property int pageGap: Style.space(10)
 
   readonly property string pluginId: "krieziey.omarchy-zapret2"
   property bool opened: false
@@ -128,10 +130,14 @@ Item {
     id: cardSurface
     default property alias content: inner.data
     property alias spacing: inner.spacing
+    property string level: "secondary"
+    property color primaryTextColor: root.fg
     Layout.fillWidth: true
     implicitHeight: inner.implicitHeight + Style.space(24)
-    color: Style.normalFillFor(root.fg, Color.accent)
-    borderSpec: Border.controlSpec("normal", root.fg, Color.accent)
+    color: cardSurface.level === "primary" ? Style.selectedFillFor(root.fg, Color.accent)
+        : cardSurface.level === "info" ? "transparent" : Style.normalFillFor(root.fg, Color.accent)
+    borderSpec: cardSurface.level === "primary" ? Border.controlSpec("selected", root.fg, Color.accent)
+        : cardSurface.level === "info" ? Border.none() : Border.controlSpec("normal", root.fg, Color.accent)
     radius: Style.cornerRadius
     ColumnLayout {
       id: inner
@@ -385,7 +391,8 @@ Item {
 
           // sidebar
           ColumnLayout {
-            Layout.preferredWidth: Style.space(170)
+            Layout.preferredWidth: Math.min(Style.space(205), Math.max(Style.space(178), window.width * 0.19))
+            Layout.minimumWidth: Style.space(178)
             Layout.fillHeight: true
             spacing: Style.space(6)
 
@@ -414,41 +421,43 @@ Item {
                 required property int index
                 Layout.fillWidth: true
                 spacing: Style.space(6)
-                Label {
-                  Layout.preferredWidth: Style.space(12)
-                  fixedWidth: true
-                  horizontalAlignment: Text.AlignRight
-                  font.bold: root.tab === index
-                  color: root.tab === index ? Color.accent : root.dim
-                  text: String(index + 1)
-                }
-                // Inactive rows keep only a hairline border; hover lifts the
-                // fill and border, active switches to the selected fill, so
-                // the three states read as transparent → tinted → filled.
-                // Same BorderSurface + borderless Button pair as PrimaryButton.
+                // Tabs read as a quiet list, not six bordered boxes: idle
+                // rows are bare text, hover lifts a tinted fill, the active
+                // tab takes the selected fill plus an accent rail on the
+                // left edge. The Button's own selected state provides the
+                // tint and the bold label.
                 BorderSurface {
                   id: tabSurface
                   Layout.fillWidth: true
                   property bool isActive: root.tab === index
-                  property bool hovered: tabHover.hovered
                   implicitHeight: tabBtn.implicitHeight
-                  color: tabSurface.isActive ? Style.selectedFillFor(root.fg, Color.accent)
-                      : tabSurface.hovered ? Style.normalFillFor(root.fg, Color.accent) : "transparent"
-                  borderSpec: (tabSurface.isActive || tabSurface.hovered) ? Border.controlSpec("selected", root.fg, Color.accent)
-                      : Border.controlSpec("normal", root.fg, Color.accent)
+                  color: "transparent"
+                  borderSpec: tabSurface.isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.none()
                   radius: Style.cornerRadius
-                  HoverHandler { id: tabHover }
                   Button {
                     id: tabBtn
                     anchors.fill: parent
                     leftAlign: true
                     bordered: false
-                    foreground: tabSurface.isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.fg
+                    selected: tabSurface.isActive
+                    horizontalPadding: Style.space(12)
+                    verticalPadding: Style.space(7)
+                    foreground: root.fg
                     text: modelData
                     tooltipText: "Ctrl+" + (index + 1) + (index === 4 && root.sysUpdate ? " · есть обновление" : "")
                     onClicked: root.tab = index
                     Accessible.role: Accessible.Button
                     Accessible.name: modelData + (tabSurface.isActive ? ", выбрана" : "")
+                  }
+                  // Accent rail marking the active tab, drawn over the fill.
+                  Rectangle {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Style.space(3)
+                    height: parent.height - Style.space(10)
+                    radius: width / 2
+                    visible: tabSurface.isActive
+                    color: Color.accent
                   }
                 }
                 // A quiet badge, not a chip: the update is a status, and it
@@ -487,26 +496,22 @@ Item {
             Card {
               id: sbStatus
               property string stateText: !root.ready ? "Загрузка…"
-                  : root.svc.bypassState === "error" ? Model.stateText(root.svc.st)
+                  : root.svc.bypassState === "error" ? "Ошибка"
+                  : root.svc.busy ? "Выполняется"
                   : (root.svc.isOn ? "Включён" : "Выключен")
               property color dotColor: !root.ready ? root.dim
                   : root.svc.bypassState === "error" ? root.bad
+                  : root.svc.busy ? Color.accent
                   : root.svc.isOn ? Color.accent : root.dim
               RowLayout {
                 Layout.fillWidth: true
                 spacing: Style.space(6)
-                Rectangle {
-                  Layout.alignment: Qt.AlignVCenter
-                  width: Style.space(8)
-                  height: Style.space(8)
-                  radius: width / 2
-                  color: sbStatus.dotColor
-                }
                 Label {
                   Layout.fillWidth: true
                   fixedWidth: true
+                  text: "● " + sbStatus.stateText
+                  color: sbStatus.dotColor
                   font.bold: true
-                  text: sbStatus.stateText
                 }
               }
               Hint {
@@ -640,6 +645,7 @@ Item {
 
       Card {
         id: frCard
+        level: "primary"
         visible: root.ready && frCard.frStep < 3
         property int frStep: (typeof Model.firstRunStep === "function" && root.ready) ? Model.firstRunStep(root.svc.st, root.svc.autopickResult) : 3
         PanelSectionHeader { Layout.fillWidth: true; text: "Первый запуск: установка → подбор → готово"; foreground: root.fg; fontFamily: root.fontFamily }
@@ -679,6 +685,7 @@ Item {
       // The plugin update has one action and one name: this notice on Обзор
       // and a labelled button on the Движок diagnostics row.
       Card {
+        level: "info"
         visible: root.sysUpdate
         RowLayout {
           Layout.fillWidth: true
@@ -700,6 +707,7 @@ Item {
 
       Card {
         id: headCard
+        level: "primary"
         // One verdict object drives the whole card: `action === "check"` is the
         // explicit "this check belongs to another configuration" case, so the
         // card never has to guess from Russian substrings.
@@ -1260,6 +1268,7 @@ Item {
 
     Card {
       id: recCard
+      level: "primary"
       visible: !sp.editing && !sp.showing
       property bool notNeeded: root.ready && root.svc.autopickResult.notNeeded === true
       PanelSectionHeader { Layout.fillWidth: true; text: recCard.notNeeded ? "Рекомендация" : "Рекомендуемая"; foreground: root.fg; fontFamily: root.fontFamily }
@@ -1697,28 +1706,30 @@ Item {
 
       RowLayout {
         Layout.fillWidth: true
+        spacing: Style.space(8)
         Dropdown {
-        id: listDrop
-        Layout.preferredWidth: Style.space(320)
-        label: "Список"
-        value: lp.current
-        options: lp.names
-        onChanged: function(v) { lp.current = v }
+          id: listDrop
+          Layout.preferredWidth: Style.space(320)
+          label: "Список"
+          value: lp.current
+          options: lp.names
+          onChanged: function(v) { lp.current = v }
+        }
+        Hint {
+          visible: lp.editable && listEditor.text !== lp.loadedText
+          color: root.bad
+          text: "не сохранено"
+        }
+        Hint { Layout.fillWidth: true; text: lp.info }
+        Button { bordered: true; text: "Обновить списки из Flowseal"; tooltipText: "Загрузить списки Flowseal заново"; onClicked: root.svc.updateLists() }
       }
       Hint {
-        visible: lp.editable && listEditor.text !== lp.loadedText
-        color: root.bad
-        text: "не сохранено"
+        Layout.fillWidth: true
+        text: lp.editable ? "Мои — можно править. По одному домену (поддомены включаются сами) или IP/CIDR на строку. Неверные строки отбрасываются."
+                          : "Встроенные (только чтение). Свои записи добавляйте в «Мои …»."
       }
-      Hint { Layout.fillWidth: true; text: lp.info }
-      Button { bordered: true; text: "Обновить списки из Flowseal"; tooltipText: "Загрузить списки Flowseal заново"; onClicked: root.svc.updateLists() }
-    }
-    Hint {
-      Layout.fillWidth: true
-      text: lp.editable ? "Мои — можно править. По одному домену (поддомены включаются сами) или IP/CIDR на строку. Неверные строки отбрасываются."
-                        : "Встроенные (только чтение). Свои записи добавляйте в «Мои …»."
-    }
     Card {
+      level: "primary"
       PanelSectionHeader { Layout.fillWidth: true; text: "Сервисы"; foreground: root.fg; fontFamily: root.fontFamily }
       Hint { Layout.fillWidth: true; text: "Готовые наборы доменов: добавляются в «Мои: сайты». Поддомены включаются сами." }
       Repeater {
@@ -1947,7 +1958,31 @@ Item {
       }
 
       Card {
+        level: "primary"
+        PanelSectionHeader { Layout.fillWidth: true; text: "Интеллектуальный circular-конфиг"; foreground: root.fg; fontFamily: root.fontFamily }
+        Hint { Layout.fillWidth: true; text: "Проверит готовые стратегии для целевых сайтов, составит ротацию лучших вариантов; для доменов без результата предложит blockcheck2 quick, затем при необходимости standard (долго)." }
+        RowLayout {
+          Layout.fillWidth: true
+          PrimaryButton {
+            enabled: root.ready && root.svc.installed && !root.svc.busy
+            text: root.svc.busyLabel === "создание circular-конфига" ? "Проверка пресетов…" : "Построить конфиг"
+            tooltipText: "Проверить пресеты для сайтов и построить круговую конфигурацию"
+            onClicked: root.svc.circularPlan(level.value)
+          }
+          Button {
+            bordered: true
+            enabled: root.ready && !root.svc.busy
+            text: "Показать план"
+            onClicked: root.svc.circularStatus(function(r) {
+              if (r.data && r.data.config) root.svc.flash("Circular: " + Object.keys(r.data.config.domains || {}).length + " доменов")
+            })
+          }
+        }
+      }
+
+      Card {
         id: blockcheckCard
+        level: "primary"
         function bindMissing() {
           if (!root.ready) return false
           var items = root.svc.doctorItems || []
@@ -2038,9 +2073,15 @@ Item {
             Layout.preferredWidth: Style.space(180)
             label: "Режим"
             value: "quick"
-            options: [{ value: "quick", label: "быстрый" }, { value: "standard", label: "обычный" }, { value: "force", label: "полный" }]
+            options: [{ value: "quick", label: "быстрый" }, { value: "standard", label: "обычный" }]
             onChanged: function(v) { value = v }
           }
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: level.value === "standard"
+          color: Color.accent
+          text: "Обычный поиск может занять до часа и дольше."
         }
         Hint {
           Layout.fillWidth: true
@@ -2162,6 +2203,7 @@ Item {
 
       Card {
         id: engineCard
+        level: "primary"
         PanelSectionHeader {
           Layout.fillWidth: true
           text: "Движок: " + (root.ready && root.svc.st && root.svc.st.engine ? root.svc.st.engine : "не установлен")
@@ -2274,6 +2316,7 @@ Item {
       }
 
       Card {
+        level: "info"
         RowLayout {
           Layout.fillWidth: true
           PanelSectionHeader { Layout.fillWidth: true; text: "Журнал службы"; foreground: root.fg; fontFamily: root.fontFamily }
@@ -2336,6 +2379,7 @@ Item {
       enabled: root.ready && root.svc.installed
 
       Card {
+        level: "primary"
         Toggle {
           Layout.fillWidth: true
           label: "Включать при входе"
@@ -2368,6 +2412,9 @@ Item {
       }
 
       Card {
+        level: "info"
+        PanelSectionHeader { Layout.fillWidth: true; text: "Сеть и DNS"; foreground: root.fg; fontFamily: root.fontFamily }
+        Hint { Layout.fillWidth: true; text: "DNS и игровые параметры влияют на весь обход; редкие настройки находятся в «Дополнительно»." }
         Dropdown {
           id: gameDrop
           Layout.fillWidth: true
@@ -2520,6 +2567,11 @@ Item {
       }
 
       Card {
+        level: "primary"
+        RowLayout {
+          Layout.fillWidth: true
+          PanelSectionHeader { Layout.fillWidth: true; text: "Резервная копия"; foreground: root.fg; fontFamily: root.fontFamily }
+        }
         PanelSectionHeader { Layout.fillWidth: true; text: "Резервная копия"; foreground: root.fg; fontFamily: root.fontFamily }
         Hint { Layout.fillWidth: true; text: "Настройки, пользовательские списки и свои стратегии в одном файле (base64). Экспорт копирует его в буфер обмена." }
         Hint {

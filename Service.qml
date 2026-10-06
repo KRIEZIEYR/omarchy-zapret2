@@ -235,6 +235,21 @@ Item {
     longJob(args, "автоподбор", function(d) { return d ? "Выбрана стратегия " + Model.presetTitle(d.chosen) : "Готово" })
   }
 
+  function circularPlan(level) {
+    var args = ["circular", "plan"]
+    if (level) args.push("--level", String(level))
+    longJob(args, "создание circular-конфига", function(d) {
+      if (d && d.needsBlockcheck) return "Нужно дополнительно проверить домены через blockcheck2"
+      return "Circular-конфиг создан"
+    }, function(r) {
+      if (r.ok && r.data && r.data.needsBlockcheck) {
+        flash(r.data.message || "Для части доменов нужен blockcheck2")
+      }
+    })
+  }
+
+  function circularStatus(cb) { run(_aux, ["circular", "status"], cb, "circular") }
+
   function stopLong() {
     if (_long.running) _long.signal(15)
   }
