@@ -475,14 +475,64 @@ Item {
 
             Item { Layout.fillHeight: true }
 
-            Hint {
+            Rectangle {
               Layout.fillWidth: true
-              text: "Ctrl+1…6 — вкладки\nCtrl+T — вкл/выкл\n/ — поиск"
+              Layout.bottomMargin: Style.space(2)
+              height: 1
+              color: Border.color(Border.controlSpec("normal", root.fg, Color.accent))
             }
+
+            // Bottom status card (Linear/Discord-style): the header hero says
+            // on/off, this says with what — strategy, engine build, live job.
+            Card {
+              id: sbStatus
+              property string stateText: !root.ready ? "Загрузка…"
+                  : root.svc.bypassState === "error" ? Model.stateText(root.svc.st)
+                  : (root.svc.isOn ? "Включён" : "Выключен")
+              property color dotColor: !root.ready ? root.dim
+                  : root.svc.bypassState === "error" ? root.bad
+                  : root.svc.isOn ? Color.accent : root.dim
+              RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(6)
+                Rectangle {
+                  Layout.alignment: Qt.AlignVCenter
+                  width: Style.space(8)
+                  height: Style.space(8)
+                  radius: width / 2
+                  color: sbStatus.dotColor
+                }
+                Label {
+                  Layout.fillWidth: true
+                  fixedWidth: true
+                  font.bold: true
+                  text: sbStatus.stateText
+                }
+              }
+              Hint {
+                Layout.fillWidth: true
+                fixedWidth: true
+                visible: text !== ""
+                text: !root.ready ? "" : !root.svc.installed ? "Движок не установлен"
+                    : "Стратегия: " + (Model.presetTitle(root.svc.preset) || "—")
+              }
+              Hint {
+                Layout.fillWidth: true
+                visible: text !== ""
+                text: !root.ready || !root.svc.installed ? "" : "Движок " + (root.svc.st.engine || "?")
+              }
+              Hint {
+                Layout.fillWidth: true
+                visible: root.ready && root.svc.busy
+                color: Color.accent
+                text: root.ready ? "Выполняется: " + root.svc.busyLabel + "…" : ""
+              }
+            }
+
             Hint {
               Layout.fillWidth: true
-              visible: root.ready && root.svc.busy
-              text: root.ready ? "Выполняется: " + root.svc.busyLabel + "…" : ""
+              Layout.topMargin: Style.space(2)
+              text: "Ctrl+1…6 — вкладки\nCtrl+T — вкл/выкл\n/ — поиск"
             }
           }
 
