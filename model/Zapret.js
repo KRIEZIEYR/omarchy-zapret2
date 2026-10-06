@@ -735,12 +735,17 @@ function isValidBackupFileSize(size) {
   return n >= 0 && n <= MAX_BACKUP_FILE
 }
 
-// Strip addresses from diagnostics text (no hosts/IPs). Mirrors manager redact_ips.
+// Strip addresses and hostnames from diagnostics text (no hosts/IPs).
+// Mirrors manager redact_ips: URLs, IPv4, real IPv6 (timestamps like
+// 10:00:00 are kept), bare domains. Home-dir shortening lives in the
+// manager (it knows ~).
 function redactIps(text) {
   var s = String(text || "")
   s = s.replace(/https?:\/\/[^\s]+/gi, "[URL]")
   s = s.replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "[IP]")
-  s = s.replace(/(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]+/g, "[IPv6]")
+  s = s.replace(/(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]+/g, function(m) {
+    return (m.indexOf("::") !== -1 || /[a-fA-F]/.test(m)) ? "[IPv6]" : m
+  })
   s = s.replace(/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/gi, "[host]")
   return s
 }

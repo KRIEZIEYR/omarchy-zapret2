@@ -2319,11 +2319,20 @@ def redact_ips(text):
 
 
 def cmd_diagnostics():
+    """One redacted report, ready to paste: versions, settings, doctor,
+    check/autopick scores, own strategy names (never contents), user list
+    line counts (never domains), redacted log tail. Local reads only."""
     rec = load_record()
     s = load_settings()
     lines = []
     lines.append("Zapret2 diagnostics (redacted, no hosts/IPs)")
     lines.append("installed: %s" % (rec.get("version") if rec else "no"))
+    try:
+        files = (rec or {}).get("files", {})
+        own = files.get(SYS_APP + "/bin/omarchy-zapret2")
+        lines.append("app: %s" % ("current" if own and own == sha256_file(SELF) else "outdated" if own else "unknown"))
+    except Exception:
+        lines.append("app: unknown")
     try:
         u = unit_state(UNIT)
         lines.append("service: %s/%s restarts=%s" % (u.get("ActiveState"), u.get("SubState"), u.get("NRestarts", "0")))
@@ -2331,6 +2340,29 @@ def cmd_diagnostics():
         lines.append("service: unknown")
     lines.append("preset: %s game=%s ipset=%s voice=%s ipv6=%s autostart=%s" % (
         s.get("preset"), s.get("game"), s.get("ipset"), s.get("voice"), s.get("ipv6"), s.get("autostart")))
+    try:
+        names = custom_names()
+        if names:
+            lines.append("custom: " + ", ".join(names))
+    except Exception:
+        pass
+    try:
+        counts = {}
+        for n in USER_LISTS:
+            try:
+                with open(os.path.join(VAR, "lists", n + ".txt"), encoding="utf-8") as f:
+                    counts[n] = sum(1 for l in f if l.strip())
+            except OSError:
+                pass
+        if counts:
+            lines.append("lists: " + ", ".join("%s=%d" % kv for kv in sorted(counts.items())))
+    except Exception:
+        pass
+    try:
+        for i in doctor_items():
+            lines.append("doctor: %s=%s %s" % (i["name"], "ok" if i["ok"] else "FAIL", i.get("detail", "")))
+    except Exception:
+        pass
     try:
         chk = load_state("check.json", {})
         cats = chk.get("categories") or {}
@@ -2358,7 +2390,7 @@ def cmd_diagnostics():
     out({"ok": True, "text": text})
 
 
-def cmd_doctor():
+def doctor_items():
     items = []
 
     def add(name, ok, detail=""):
@@ -2401,6 +2433,11 @@ def cmd_doctor():
     except OSError:
         updated = False
     add("Flowseal presets", bool(names), "%d presets%s" % (len(names), ", updated set" if updated else ", bundled" if names else ""))
+    return items
+
+
+def cmd_doctor():
+    items = doctor_items()
     out({"ok": True, "items": items, "healthy": all(i["ok"] for i in items)})
 
 

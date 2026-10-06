@@ -930,6 +930,41 @@ class Diagnostics(unittest.TestCase):
     def test_redact_ips(self):
         self.assertEqual(zm.redact_ips("a 1.2.3.4 b"), "a [IP] b")
         self.assertNotIn("::1", zm.redact_ips("x 2001:db8::1 y"))
+        self.assertIn("10:00:00", zm.redact_ips("Oct 06 10:00:00 h ok"))
+        self.assertNotIn("youtube.com", zm.redact_ips("open youtube.com now"))
+
+    def test_report_shape_redacted(self):
+        import os as _os
+        import tempfile
+        from unittest import mock
+        home = _os.path.expanduser("~")
+        with tempfile.TemporaryDirectory() as tmp:
+            var = _os.path.join(tmp, "var")
+            state = _os.path.join(tmp, "state")
+            _os.makedirs(_os.path.join(var, "custom"))
+            _os.makedirs(_os.path.join(var, "lists"))
+            with open(_os.path.join(var, "custom", "my-x.txt"), "w", encoding="utf-8") as f:
+                f.write(MINIMAL)
+            with open(_os.path.join(var, "lists", "list-general-user.txt"), "w", encoding="utf-8") as f:
+                f.write("secret.example.com\n10.9.9.9\n")
+            emitted = {}
+            with mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "load_record", lambda: {"version": "v1.2.3"}), \
+                 mock.patch.object(zm, "unit_state", lambda u: {"ActiveState": "active", "SubState": "running", "NRestarts": "0"}), \
+                 mock.patch.object(zm, "journal", lambda n, unit=None: ["log from %s/.config/x" % home]), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_diagnostics()
+            text = emitted.get("text", "")
+            self.assertTrue(emitted.get("ok"))
+            self.assertIn("v1.2.3", text)                    # engine version
+            self.assertIn("doctor: Setup=", text)            # doctor statuses
+            self.assertIn("my-x", text)                      # own strategy names…
+            self.assertIn("list-general-user=2", text)       # …and list counts…
+            self.assertNotIn("secret.example.com", text)     # …but no contents
+            self.assertNotIn("10.9.9.9", text)
+            self.assertNotIn(home, text)                     # home shortened to ~
+            self.assertIn("~", text)
 
 
 if __name__ == "__main__":

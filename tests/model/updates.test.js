@@ -10,7 +10,8 @@ test("update badge", () => {
 
 test("redactIps", () => {
   eq(Model.redactIps("a 1.2.3.4 b"), "a [IP] b")
-  eq(Model.redactIps("x 2001:db8::1 y").indexOf("2001"), -1)
+  eq(Model.redactIps("x 2001:db8::1 y").indexOf("::1"), -1)
   eq(Model.redactIps("go https://youtube.com/x y"), "go [URL] y")
   eq(Model.redactIps("open youtube.com now"), "open [host] now")
+  eq(Model.redactIps("Oct 06 10:00:00 h ok"), "Oct 06 10:00:00 h ok")
 })
