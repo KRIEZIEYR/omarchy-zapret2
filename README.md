@@ -37,9 +37,8 @@ Requirements: Omarchy with shell plugins, `/usr/bin/python3`, `curl`,
 
 - **Overview**: on/off, the active strategy, reachability of YouTube, Discord,
   Google and Cloudflare (TLS and, when curl has HTTP/3, QUIC) per URL.
-- **Strategies**: 13 presets (general, ALT, ALT3, ALT5, ALT11, ALT12, FAKE TLS
-  AUTO, FAKE TLS AUTO ALT2, SIMPLE FAKE, VOICE, CUSTOM SAFE/BALANCED/AGGRESSIVE)
-  and your own, edited in the window.
+- **Strategies**: Zapret 2 NEXT presets (shown with " · Z2", e.g. "General · Z2")
+  and Flowseal presets (without suffix), plus your own, edited in the window.
 - **Lists**: your sites, exclusions and IP networks; the bundled lists
   (read-only) and **Update from Flowseal** for fresh upstream lists. One
   domain per line covers its subdomains; `^domain` means that host only.

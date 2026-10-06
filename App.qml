@@ -1687,7 +1687,7 @@ Item {
       Layout.fillHeight: false
       Layout.preferredHeight: Style.space(160)
       readOnly: !lp.editable
-      placeholderText: lp.editable ? "Пусто" : "Список только для чтения"
+      placeholderText: lp.editable ? "example.com\n203.0.113.0/24" : "Список только для чтения"
     }
     RowLayout {
       id: listActions
@@ -1695,20 +1695,20 @@ Item {
       spacing: Style.space(8)
       property var liveCounts: (typeof Model.validLines === "function") ? Model.validLines(listEditor.text, lp.kind) : { valid: Model.countLines(listEditor.text), dropped: 0 }
       property bool changed: listEditor.text !== lp.loadedText
-      readonly property bool canSave: root.ready && !root.svc.busy && (listActions.liveCounts.valid > 0 || (listActions.liveCounts.valid === 0 && listActions.changed))
+      readonly property bool canSave: root.ready && !root.svc.busy && listActions.changed
       // Saving is the page's filled action; clearing is destructive and never
       // takes the emphasis.
       PrimaryButton {
-        visible: listActions.liveCounts.valid > 0
+        visible: listActions.liveCounts.valid > 0 || lp.loadedText === ""
         enabled: listActions.canSave
-        text: "Сохранить список"
+        text: "Сохранить"
         tooltipText: "Сохранить список (" + listActions.liveCounts.valid + " строк, отброшено " + listActions.liveCounts.dropped + ")" + (lp.restartAfterSave ? " и перезапустить обход" : " без перезапуска обхода")
         onClicked: lp.save()
       }
       Button {
         bordered: true
         foreground: root.bad
-        visible: listActions.liveCounts.valid === 0
+        visible: listActions.liveCounts.valid === 0 && lp.loadedText !== "" && listActions.changed
         enabled: listActions.canSave
         text: "Очистить и сохранить"
         tooltipText: "Удалить все записи и сохранить пустой список" + (lp.restartAfterSave ? " с перезапуском обхода" : " без перезапуска обхода")
@@ -2266,8 +2266,8 @@ Item {
         }
         Toggle {
           Layout.fillWidth: true
-          label: "IPv6 (по умолчанию вкл)"
-          description: "Обрабатывать и IPv6-соединения · не трогайте, если не уверены"
+          label: "IPv6"
+          description: "Обход и для IPv6-соединений. Включено по умолчанию."
           checked: root.ready && root.svc.settings.ipv6 !== false
           foreground: root.fg
           onClicked: root.svc.toggleIpv6()
