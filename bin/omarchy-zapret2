@@ -19,15 +19,16 @@ allowlist of nfqws2 options and Lua desync functions.
   status                       JSON state (what the widget reads)
   setup                        download the latest zapret2 release, verify it, install (one prompt)
   engine check                 installed vs latest release
-  update-check on|off|status|run  opt-in daily check: engine, lists, presets
+  updates check                background check: engine, lists, presets (cached in status)
   on | off | restart           the bypass service
   set <key> <value>            preset, game (off|tcp|udp|all), ipset (loaded|none|any),
                                voice (compatible|standard|off), ipv6 (on|off), autostart (on|off),
-                               updatecheck (on|off), gametcp|gameudp <ports>, discordfake|gamefake <default|blob>
+                               update_check (on|off), gametcp|gameudp <ports>, discordfake|gamefake <default|blob>
   presets                      built-in and custom strategies
   presets update               fetch fresh Flowseal strategies
   hosts on|off|status          Flowseal hosts block in /etc/hosts
   discord-cache clear          delete Discord cache folders
+  dns status|flush               show DNS servers, flush DNS cache
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
   list show <name> | list save <name> [--no-restart]   user lists (save reads stdin)
   export                           backup settings + user lists + own strategies (base64 zip)
@@ -92,7 +93,6 @@ MAX_TARBALL = 64 * 1024 * 1024
 MAX_LIST = 8 * 1024 * 1024
 MAX_SMALL = 64 * 1024
 # Backup/restore caps (mirrored by model/Zapret.js isValidBackupSize/FileSize).
-UPDATE_STALE_DAYS = 7
 MAX_BACKUP_FILE = 512 * 1024
 MAX_BACKUP_TOTAL = 2 * 1024 * 1024
 MAX_BACKUP_ZIP = 4 * 1024 * 1024
@@ -1249,8 +1249,8 @@ def cmd_set(key, value):
         if value not in ENUMS[key]:
             raise Fail("%s takes one of: %s" % (key, ", ".join(ENUMS[key])))
         s[key] = value
-    elif key.lower() in ("ipv6", "autostart", "updatecheck"):
-        setting = {"ipv6": "ipv6", "autostart": "autostart", "updatecheck": "updateCheck"}[key.lower()]
+    elif key.lower().replace("_", "") in ("ipv6", "autostart", "updatecheck"):
+        setting = {"ipv6": "ipv6", "autostart": "autostart", "updatecheck": "updateCheck"}[key.lower().replace("_", "")]
         if value not in ("on", "off"):
             raise Fail("%s takes on or off" % key.lower())
         s[setting] = value == "on"
@@ -1267,7 +1267,7 @@ def cmd_set(key, value):
     else:
         raise Fail("unknown setting: %s" % key)
     save_settings(s)
-    restarted = key.lower() not in ("autostart", "updatecheck") and restart_if_active()
+    restarted = key.lower().replace("_", "") not in ("autostart", "updatecheck") and restart_if_active()
     out({"ok": True, "settings": load_settings(), "restarted": restarted})
 
 
@@ -1767,6 +1767,44 @@ DISCORD_DIRS = ("discord", "discordcanary", "discordptb")
 DISCORD_CACHE_SUBS = ("Cache", "Code Cache", "GPUCache")
 
 
+def cmd_dns(args):
+    verb = args[0] if args else "status"
+    if verb == "status":
+        text = None
+        try:
+            text = read_nofollow("/etc/resolv.conf", MAX_SMALL)
+        except Fail:
+            text = None
+        servers = []
+        if text:
+            for line in text.splitlines():
+                s = line.split("#", 1)[0].strip()
+                if s.startswith("nameserver"):
+                    parts = s.split()
+                    if len(parts) >= 2:
+                        servers.append(parts[1][:64])
+        has_tool = tool("resolvectl") is not None or tool("systemd-resolve") is not None
+        resolved = unit_state("systemd-resolved.service").get("ActiveState") == "active"
+        out({"ok": True, "dns": servers[:8], "hasTool": bool(has_tool), "resolvedActive": bool(resolved)})
+    elif verb == "flush":
+        flushed = False
+        if tool("resolvectl"):
+            r = sh("resolvectl", "flush-caches", timeout=15)
+            if r.returncode != 0:
+                raise Fail("resolvectl: %s" % (r.stderr.strip().splitlines() or ["exit %d" % r.returncode])[-1][:200])
+            flushed = True
+        elif tool("systemd-resolve"):
+            r = sh("systemd-resolve", "--flush-caches", timeout=15)
+            if r.returncode != 0:
+                raise Fail("systemd-resolve: %s" % (r.stderr.strip().splitlines() or ["exit %d" % r.returncode])[-1][:200])
+            flushed = True
+        else:
+            raise Fail("no resolvectl: DNS cache flush is not available")
+        out({"ok": True, "flushed": flushed})
+    else:
+        raise Fail("usage: dns status|flush")
+
+
 def cmd_discord_cache(args):
     if not args or args[0] != "clear":
         raise Fail("usage: discord-cache clear")
@@ -2069,98 +2107,6 @@ def latest_release():
                 raise Fail("unexpected download location")
             return {"version": tag, "url": url, "sha256": sha, "size": a.get("size", 0)}
     raise Fail("release %s has no %s" % (tag, want))
-
-
-UPDATE_STATE = "update-check.json"
-
-
-def update_state_path():
-    return os.path.join(state_dir(), UPDATE_STATE)
-
-
-def load_update_state():
-    try:
-        text = read_nofollow(update_state_path(), MAX_SMALL)
-        v = json.loads(text) if text else {}
-        if not isinstance(v, dict):
-            return {}
-        return v
-    except (Fail, ValueError):
-        return {}
-
-
-def save_update_state(obj):
-    atomic_write(update_state_path(), json.dumps(obj, ensure_ascii=False), mode=0o600)
-
-
-def upstream_mtime(path):
-    try:
-        return os.path.getmtime(path)
-    except OSError:
-        return 0
-
-
-def lists_stale():
-    now = time.time()
-    limit = UPDATE_STALE_DAYS * 86400
-    for name in UPSTREAM_LISTS:
-        p = var_path("lists", "upstream", name + ".txt")
-        if upstream_mtime(p) == 0:
-            return True
-        if now - upstream_mtime(p) > limit:
-            return True
-    return False
-
-
-def presets_stale():
-    now = time.time()
-    limit = UPDATE_STALE_DAYS * 86400
-    d = var_path("flowseal")
-    try:
-        files = [f for f in os.listdir(d) if f.startswith("fs-") and f.endswith(".txt")]
-    except OSError:
-        return True
-    if not files:
-        return False
-    newest = max([upstream_mtime(os.path.join(d, f)) for f in files])
-    if newest == 0:
-        return True
-    return (now - newest) > limit
-
-
-def cmd_update_check(args):
-    verb = args[0] if args else "status"
-    st = load_update_state()
-    if verb == "on":
-        st["enabled"] = True
-        save_update_state(st)
-        out({"ok": True, "enabled": True})
-    elif verb == "off":
-        st["enabled"] = False
-        save_update_state(st)
-        out({"ok": True, "enabled": False})
-    elif verb == "status":
-        out({"ok": True, "enabled": st.get("enabled") is True, "last": st.get("last", 0), "result": st.get("result", {})})
-    elif verb == "run":
-        force = "--force" in args
-        if st.get("enabled") is not True and not force:
-            raise Fail("daily update check is off: turn it on first")
-        rec = load_record()
-        engine = {"installed": rec.get("version") if rec else None, "latest": None, "update": False, "error": ""}
-        try:
-            latest = latest_release()
-            engine["latest"] = latest["version"]
-            engine["update"] = (not rec) or (rec.get("version") != latest["version"])
-        except Fail as e:
-            engine["error"] = str(e)
-        result = {"time": int(time.time()), "engine": engine,
-                  "listsStale": lists_stale(), "presetsStale": presets_stale()}
-        st["result"] = result
-        st["last"] = result["time"]
-        save_update_state(st)
-        out(dict(result, ok=True, enabled=st.get("enabled") is True))
-    else:
-        raise Fail("usage: update-check on|off|status|run [--force]")
 
 
 def cmd_engine_check():
@@ -2835,6 +2781,8 @@ def main(argv):
         cmd_import(args)
     elif cmd == "hosts":
         cmd_hosts(args)
+    elif cmd == "dns":
+        cmd_dns(args)
     elif cmd == "discord-cache":
         cmd_discord_cache(args)
     elif cmd == "check":
@@ -2849,8 +2797,8 @@ def main(argv):
         cmd_engine_check()
     elif cmd == "engine" and args[:1] == ["update"]:
         cmd_setup(args[1:])
-    elif cmd == "update-check":
-        cmd_update_check(args)
+    elif cmd == "updates" and args[:1] == ["check"]:
+        cmd_updates_check()
     elif cmd == "remove":
         cmd_remove(args)
     elif cmd == "doctor":

@@ -793,62 +793,112 @@ class CheckDomains(unittest.TestCase):
 
 
 class UpdateCheck(unittest.TestCase):
-    def test_on_off_status(self):
-        import tempfile
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            state = __import__("os").path.join(tmp, "state")
-            __import__("os").makedirs(state)
-            emitted = {}
-            with mock.patch.object(zm, "state_dir", lambda: state), \
-                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_update_check(["on"])
-            self.assertTrue(emitted.get("ok"))
-            emitted = {}
-            with mock.patch.object(zm, "state_dir", lambda: state), \
-                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_update_check(["status"])
-            self.assertTrue(emitted.get("enabled"))
-            with mock.patch.object(zm, "state_dir", lambda: state), \
-                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_update_check(["off"])
-            emitted = {}
-            with mock.patch.object(zm, "state_dir", lambda: state), \
-                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_update_check(["status"])
-            self.assertFalse(emitted.get("enabled"))
+    def _set(self, var, key, value, calls):
+        emitted = {}
+        with mock.patch.object(zm, "require_installed", lambda: None), \
+             mock.patch.object(zm, "VAR", var), \
+             mock.patch.object(zm, "restart_if_active", lambda: calls.append(1) or True), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_set(key, value)
+        return emitted
 
-    def test_run_reports_engine_and_stale(self):
-        import tempfile
-        from unittest import mock
+    def test_on_off(self):
         with tempfile.TemporaryDirectory() as tmp:
-            state = __import__("os").path.join(tmp, "state")
-            var = __import__("os").path.join(tmp, "var")
-            __import__("os").makedirs(state)
-            __import__("os").makedirs(__import__("os").path.join(var, "lists", "upstream"))
-            emitted = {}
-            with mock.patch.object(zm, "state_dir", lambda: state), \
-                 mock.patch.object(zm, "VAR", var), \
-                 mock.patch.object(zm, "load_record", lambda: {"version": "v1"}), \
-                 mock.patch.object(zm, "latest_release", lambda: {"version": "v2"}), \
-                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_update_check(["on"])
-                zm.cmd_update_check(["run"])
-            self.assertTrue(emitted.get("ok"))
-            self.assertTrue(emitted["engine"]["update"])
-            self.assertEqual(emitted["engine"]["latest"], "v2")
-            self.assertTrue(emitted.get("listsStale"))
-            self.assertTrue(emitted.get("presetsStale"))
+            var = os.path.join(tmp, "var")
+            os.makedirs(var)
+            for key in ("update_check", "updatecheck"):
+                calls = []
+                res = self._set(var, key, "on", calls)
+                self.assertTrue(res.get("ok"))
+                self.assertTrue(res["settings"]["updateCheck"])
+                self.assertFalse(res.get("restarted"))
+                self.assertEqual(calls, [])                  # no service restart for a UI-only flag
+                calls = []
+                res = self._set(var, key, "off", calls)
+                self.assertTrue(res.get("ok"))
+                self.assertFalse(res["settings"]["updateCheck"])
+                self.assertFalse(res.get("restarted"))
+                self.assertEqual(calls, [])
 
-    def test_run_requires_opt_in(self):
+    def test_invalid_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = os.path.join(tmp, "var")
+            os.makedirs(var)
+            with self.assertRaises(zm.Fail):
+                self._set(var, "update_check", "maybe", [])
+
+    def test_status_has_updates(self):
+        emitted = {}
+        cached = {"time": 111, "engine": True, "lists": False, "presets": None, "latest": "v9"}
+        with mock.patch.object(zm, "installed", lambda: False), \
+             mock.patch.object(zm, "load_state", lambda name, default: cached if name == "updates.json" else default), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_status()
+        self.assertEqual(emitted.get("updates"),
+                         {"checked": 111, "engine": True, "lists": False, "presets": None, "latest": "v9"})
+
+    def test_updates_check_engine(self):
+        emitted, saved = {}, {}
+        with mock.patch.object(zm, "load_record", lambda: {"version": "v0.0.1"}), \
+             mock.patch.object(zm, "latest_release", lambda: {"version": "v9.9.9"}), \
+             mock.patch.object(zm, "http_get", side_effect=zm.Fail("no net")), \
+             mock.patch.object(zm, "load_state", lambda name, default: default), \
+             mock.patch.object(zm, "save_state", lambda name, obj: saved.update({name: obj})), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_updates_check()
+        self.assertTrue(emitted.get("ok"))
+        self.assertTrue(emitted.get("engine"))
+        self.assertEqual(emitted.get("latest"), "v9.9.9")
+        self.assertIsNone(emitted.get("lists"))
+        self.assertIsNone(emitted.get("presets"))
+        self.assertEqual(saved["updates.json"]["latest"], "v9.9.9")
+
+    def test_updates_check_total_failure(self):
+        with mock.patch.object(zm, "load_record", lambda: None), \
+             mock.patch.object(zm, "latest_release", side_effect=zm.Fail("no net")), \
+             mock.patch.object(zm, "http_get", side_effect=zm.Fail("no net")), \
+             mock.patch.object(zm, "load_state", lambda name, default: default):
+            with self.assertRaises(zm.Fail):
+                zm.cmd_updates_check()
+
+
+class SecureDns(unittest.TestCase):
+    def test_status_parses_resolv_conf(self):
         import tempfile
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp:
-            state = __import__("os").path.join(tmp, "state")
-            __import__("os").makedirs(state)
-            with mock.patch.object(zm, "state_dir", lambda: state):
-                with self.assertRaises(zm.Fail):
-                    zm.cmd_update_check(["run"])
+            rc = __import__("os").path.join(tmp, "resolv.conf")
+            with open(rc, "w", encoding="utf-8") as f:
+                f.write("# comment\n \nnameserver 1.1.1.1\nnameserver 8.8.8.8 # tail\nsearch example.com\n")
+            emitted = {}
+            with mock.patch.object(zm, "read_nofollow", lambda path, cap: open(rc, encoding="utf-8").read() if path == "/etc/resolv.conf" else None), \
+                 mock.patch.object(zm, "tool", lambda n: "/usr/bin/resolvectl" if n == "resolvectl" else None), \
+                 mock.patch.object(zm, "unit_state", lambda u: {"ActiveState": "active"}), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_dns(["status"])
+            self.assertTrue(emitted.get("ok"))
+            self.assertEqual(emitted.get("dns"), ["1.1.1.1", "8.8.8.8"])
+            self.assertTrue(emitted.get("resolvedActive"))
+
+    def test_flush_uses_resolvectl(self):
+        from unittest import mock
+        calls = []
+        def fake_sh(*a, **kw):
+            calls.append(a)
+            return mock.Mock(returncode=0, stdout="", stderr="")
+        emitted = {}
+        with mock.patch.object(zm, "tool", lambda n: "/usr/bin/resolvectl" if n == "resolvectl" else None), \
+             mock.patch.object(zm, "sh", fake_sh), \
+             mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+            zm.cmd_dns(["flush"])
+        self.assertTrue(emitted.get("flushed"))
+        self.assertTrue(any("flush-caches" in a for a in calls[0]))
+
+    def test_flush_no_tool(self):
+        from unittest import mock
+        with mock.patch.object(zm, "tool", lambda n: None):
+            with self.assertRaises(zm.Fail):
+                zm.cmd_dns(["flush"])
 
 
 if __name__ == "__main__":

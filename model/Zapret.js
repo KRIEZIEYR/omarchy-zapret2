@@ -587,6 +587,23 @@ function staleStatus(check, now) {
   return { text: staleLabel(check, old, now), severity: (old && hasFailing(check)) ? "error" : "none" }
 }
 
+// Update badge for the opt-in daily check (Service updates.*, cached by
+// `updates check`). "Есть обновления: …" when anything is pending,
+// otherwise when it was last verified, or that it never ran.
+function updateBadgeLabel(u, now) {
+  var d = u || {}
+  if (d.engine === true || d.lists === true || d.presets === true) {
+    var parts = []
+    if (d.engine === true) parts.push("движок" + (d.latest ? " " + d.latest : ""))
+    if (d.lists === true) parts.push("списки")
+    if (d.presets === true) parts.push("стратегии")
+    return "Есть обновления: " + parts.join(", ")
+  }
+  if (!d.checked) return "Проверка обновлений ещё не выполнялась"
+  var a = ago(d.checked, now)
+  return "Обновлений нет" + (a ? " · проверено " + a : "")
+}
+
 // Severity for a doctor row: "ok" when passing, otherwise
 // "action" (needs a password step now), "optional" (expected / info only),
 // or "error" (real failure). host/nslookup (bind) and VPN-tunnel notes are
@@ -718,17 +735,12 @@ function isValidBackupFileSize(size) {
   return n >= 0 && n <= MAX_BACKUP_FILE
 }
 
-// Daily update check summary (engine, lists, presets). Pure, null-safe.
-function updateCheckText(info) {
+// DNS status line for the Secure DNS card. Pure, null-safe.
+function dnsStatusText(info) {
   var r = info || {}
-  var e = r.engine || {}
-  var parts = []
-  if (e.latest) parts.push(e.update ? "Движок: есть " + e.latest : "Движок актуален")
-  else if (e.error) parts.push("Движок: не проверен")
-  else parts.push("Движок: не проверен")
-  parts.push(r.listsStale ? "списки устарели" : "списки свежие")
-  parts.push(r.presetsStale ? "стратегии устарели" : "стратегии свежие")
-  return parts.join(" · ")
+  var servers = r.dns || []
+  if (servers.length === 0) return "DNS-серверы не определены"
+  return "DNS: " + servers.slice(0, 3).join(", ")
 }
 
 // Live valid/dropped counts mirroring the manager clean_list rules:

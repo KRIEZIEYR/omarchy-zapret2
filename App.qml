@@ -2168,6 +2168,19 @@ Item {
           foreground: root.fg
           onClicked: root.svc.toggleIpv6()
         }
+        Toggle {
+          Layout.fillWidth: true
+          label: "Проверять обновления ежедневно"
+          description: "Движок, списки и стратегии — раз в сутки, в фоне"
+          checked: root.ready && root.svc.updateCheck === true
+          foreground: root.fg
+          onClicked: root.svc.toggleUpdateCheck()
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: root.ready && root.svc.updateCheck === true
+          text: root.ready ? Model.updateBadgeLabel(root.svc.updates) : ""
+        }
       }
 
       Card {
@@ -2370,29 +2383,33 @@ Item {
         }
       }
 
+
       Card {
-        Toggle {
+        PanelSectionHeader { Layout.fillWidth: true; text: "Безопасный DNS"; foreground: root.fg; fontFamily: root.fontFamily }
+        Hint {
           Layout.fillWidth: true
-          label: "Проверять обновления ежедневно"
-          description: "Движок, списки и стратегии. Проверка раз в день, без пароля."
-          checked: root.ready && root.svc.updateCheckOn === true
-          foreground: root.fg
-          onClicked: root.svc.setUpdateCheck(!(root.ready && root.svc.updateCheckOn === true))
+          text: "DPI видит ваши DNS-запросы. Включите DoH: systemd-resolved с DNSOverTLS, либо DoH в браузере (Firefox: Настройки → Приватность → DNS через HTTPS; Chrome: Настройки → Конфиденциальность → Использовать безопасный DNS)."
         }
         Hint {
           Layout.fillWidth: true
-          visible: root.ready && root.svc.updateLast > 0
-          text: (typeof Model.updateCheckText === "function" && root.svc.updateInfo ? Model.updateCheckText(root.svc.updateInfo) : "")
+          text: (typeof Model.dnsStatusText === "function" ? Model.dnsStatusText(root.ready ? root.svc.dnsInfo : {}) : "")
         }
         RowLayout {
           Layout.fillWidth: true
           spacing: Style.space(8)
           Button {
             bordered: true
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Проверить сейчас"
-            tooltipText: "Проверить обновления движка, списков и стратегий"
-            onClicked: root.svc.runUpdateCheck(true)
+            enabled: root.ready && !root.svc.busy
+            text: "Обновить"
+            tooltipText: "Показать текущие DNS-серверы"
+            onClicked: root.svc.loadDns()
+          }
+          Button {
+            bordered: true
+            enabled: root.ready && !root.svc.busy
+            text: "Очистить кэш DNS"
+            tooltipText: "Сбросить кэш DNS (resolvectl flush-caches)"
+            onClicked: root.svc.flushDns()
           }
         }
       }

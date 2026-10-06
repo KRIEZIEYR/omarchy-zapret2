@@ -29,6 +29,9 @@ Item {
   readonly property var fakeChoices: st && st.fakeChoices ? st.fakeChoices : []
   readonly property bool hostsOn: st ? st.hosts === true : false
   readonly property var check: st && st.check ? st.check : ({})
+  readonly property var updates: st && st.updates ? st.updates : ({})
+  readonly property bool updateCheck: settings.updateCheck === true
+  readonly property bool updatesAvailable: updates.engine === true || updates.lists === true || updates.presets === true
   readonly property var autopickResult: st && st.autopick ? st.autopick : ({})
   readonly property bool appCurrent: !st || st.appCurrent !== false
   readonly property string summary: reachable ? Model.summary(st) : "Zapret2 · нет связи с менеджером"
@@ -41,9 +44,7 @@ Item {
   readonly property bool blockcheckRunning: blockcheck !== null
       ? (blockcheck.active === "active" || blockcheck.active === "activating")
       : (st !== null && (st.blockcheck === "active" || st.blockcheck === "activating"))
-  property var updateInfo: ({})
-  property bool updateCheckOn: false
-  property double updateLast: 0
+  property var dnsInfo: ({})
   property var doctorItems: []
   property var logLines: []
   property string logNote: ""
@@ -141,8 +142,8 @@ Item {
       if (r.data && r.data.ok !== false) {
         st = r.data
         maybeAutostart()
+        maybeUpdateCheck()
       }
-      maybeUpdateCheck()
       if (blockcheckRunning && watched) refreshBlockcheck()
     }, "status")
   }
@@ -185,6 +186,34 @@ Item {
   // onToggled instead of deriving on/off from `checked`.
   function toggleAutostart() { setOption("autostart", settings.autostart === true ? "off" : "on") }
   function toggleIpv6() { setOption("ipv6", settings.ipv6 !== false ? "off" : "on") }
+  function toggleUpdateCheck() { setOption("update_check", updateCheck ? "off" : "on") }
+
+  // Opt-in daily update check: when enabled and the cached result is older
+  // than 24h, one background `updates check` runs (engine API + upstream
+  // blob shas, no downloads). Failures retry at most once an hour.
+  property bool _updateCheckRunning: false
+  property double _updateCheckAt: 0
+  function maybeUpdateCheck() {
+    if (!installed || !updateCheck || _updateCheckRunning) return
+    var now = Date.now() / 1000
+    var last = updates && updates.checked ? updates.checked : 0
+    if (now - last < 24 * 3600 || now - _updateCheckAt < 3600) return
+    var p = _aux.running ? (_aux2.running ? null : _aux2) : _aux
+    if (!p) return
+    _updateCheckRunning = true
+    _updateCheckAt = now
+    run(p, ["updates", "check"], function(r) {
+      _updateCheckRunning = false
+      if (r.ok && r.data && (r.data.engine === true || r.data.lists === true || r.data.presets === true)) {
+        var parts = []
+        if (r.data.engine === true) parts.push("движок" + (r.data.latest ? " " + r.data.latest : ""))
+        if (r.data.lists === true) parts.push("списки")
+        if (r.data.presets === true) parts.push("стратегии")
+        notify("Доступны обновления Zapret2: " + parts.join(", "))
+      }
+      refresh()
+    }, "проверка обновлений")
+  }
 
   function runCheck(domainText) {
     var args = ["check"]
@@ -229,38 +258,18 @@ Item {
       return n > 0 ? "Стратегии обновлены: " + n : "Стратегии обновлены"
     })
   }
-  function setUpdateCheck(on) {
-    act(["update-check", on ? "on" : "off"], "проверка обновлений", "", function(r) { refreshUpdateCheck() })
-  }
-  function refreshUpdateCheck() {
-    run(_aux, ["update-check", "status"], function(r) {
-      if (r.data && r.data.ok) {
-        updateCheckOn = r.data.enabled === true
-        updateLast = Number(r.data.last) || 0
-        if (r.data.result) updateInfo = r.data.result
-      }
-    }, "проверка обновлений")
-  }
-  function runUpdateCheck(force) {
-    var args = ["update-check", "run"]
-    if (force) args.push("--force")
-    longJob(args, "проверка обновлений", function(d) {
-      if (d) {
-        updateInfo = d
-        updateLast = Number(d.time) || updateLast
-        if (d.engine && d.engine.update) return "Есть обновление движка" + (d.engine.latest ? " " + d.engine.latest : "")
-        if (d.listsStale || d.presetsStale) return "Есть обновления списков или стратегий"
-        return "Всё актуально"
-      }
-      return "Готово"
-    })
-  }
   function hostsSet(on) {
     longJob(["hosts", on ? "on" : "off"], "hosts", function(d) {
       if (d && d.on && typeof d.lines === "number")
         return "Hosts включён: " + d.lines + " записей"
       return on ? "Hosts включён" : "Hosts выключен"
     })
+  }
+  function loadDns() {
+    run(_aux, ["dns", "status"], function(r) { if (r.data && r.data.ok) dnsInfo = r.data }, "DNS")
+  }
+  function flushDns() {
+    act(["dns", "flush"], "очистка кэша DNS", "Кэш DNS очищен")
   }
   function clearDiscordCache() {
     act(["discord-cache", "clear"], "очистка кэша Discord", "", function(r) {
@@ -330,26 +339,6 @@ Item {
     else Quickshell.execDetached(["omarchy-shell", "shell", "toggle", pluginId, "{}"])
   }
 
-  property bool _updateCheckDone: false
-  function maybeUpdateCheck() {
-    if (_updateCheckDone) return
-    _updateCheckDone = true
-    refreshUpdateCheck()
-  }
-  function dailyUpdateCheck() {
-    if (!updateCheckOn) return
-    var now = Date.now() / 1000
-    if (updateLast > 0 && (now - updateLast) < 20 * 3600) return
-    run(_aux2, ["update-check", "run"], function(r) {
-      if (r.data && r.data.ok) {
-        updateInfo = r.data
-        updateLast = Number(r.data.time) || updateLast
-        if (r.data.engine && r.data.engine.update) notify("Доступно обновление движка zapret2", false)
-        else if (r.data.listsStale || r.data.presetsStale) notify("Списки или стратегии устарели: откройте Zapret2", false)
-      }
-    }, "проверка обновлений")
-  }
-
   // --- processes -----------------------------------------------------------
   // Inline components do not see this file's ids: the owner is handed in.
   component Slot: Process {
@@ -393,12 +382,6 @@ Item {
     onTriggered: if (!_status.running) root.refresh()
   }
 
-  Timer {
-    interval: 3600000
-    running: true
-    repeat: true
-    onTriggered: root.dailyUpdateCheck()
-  }
 
   Component.onCompleted: Quickshell.execDetached([manager, "desktop", "on"])
 
