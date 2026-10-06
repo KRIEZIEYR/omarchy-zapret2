@@ -27,7 +27,7 @@ allowlist of nfqws2 options and Lua desync functions.
   presets                      built-in and custom strategies
   presets update               fetch fresh Flowseal strategies
   hosts on|off|status          Flowseal hosts block in /etc/hosts
-  services | service on|off <name>  per-service host picker (ChatGPT, Gemini, ...)
+  services | service on|off <name>  per-service host picker (Telegram, WhatsApp, ...)
   discord-cache clear          delete Discord cache folders
   dns status|flush               show DNS servers, flush DNS cache
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
@@ -1793,14 +1793,16 @@ def cmd_lists_update():
 
 
 SERVICES = {
-    "chatgpt": ["chatgpt.com", "chat.openai.com", "auth.openai.com", "api.openai.com", "cdn.openai.com"],
-    "gemini": ["gemini.google.com", "generativelanguage.googleapis.com", "ai.google.dev"],
-    "claude": ["claude.ai", "api.anthropic.com", "console.anthropic.com"],
-    "notion": ["notion.so", "notion.com", "notion.site", "api.notion.com"],
-    "figma": ["figma.com", "api.figma.com", "www.figma.com"],
-    "miro": ["miro.com", "api.miro.com", "realtime.miro.com"],
-    "zoom": ["zoom.us", "api.zoom.us", "zoom.com"],
-    "slack": ["slack.com", "api.slack.com", "app.slack.com"],
+    "telegram": ["telegram.org", "t.me", "telegram.me", "web.telegram.org"],
+    "whatsapp": ["whatsapp.com", "web.whatsapp.com", "whatsapp.net"],
+    "instagram": ["instagram.com", "cdninstagram.com", "fbcdn.net"],
+    "facebook": ["facebook.com", "fb.com", "fbcdn.net", "fbsbx.com"],
+    "twitter": ["x.com", "twitter.com", "twimg.com"],
+    "signal": ["signal.org", "signal.me"],
+    "viber": ["viber.com"],
+    "snapchat": ["snapchat.com", "snap.com", "sc-cdn.net"],
+    "linkedin": ["linkedin.com", "licdn.com"],
+    "rutracker": ["rutracker.org", "rutracker.cc", "rutracker.net"],
 }
 
 

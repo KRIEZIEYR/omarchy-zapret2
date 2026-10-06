@@ -23,8 +23,8 @@ test("suggestImportName", () => {
 })
 
 test("serviceTitle", () => {
-  eq(Model.serviceTitle("chatgpt"), "ChatGPT")
-  eq(Model.serviceTitle("notion"), "Notion")
+  eq(Model.serviceTitle("telegram"), "Telegram")
+  eq(Model.serviceTitle("whatsapp"), "WhatsApp")
   eq(Model.serviceTitle("unknown-xyz"), "unknown-xyz")
 })
 

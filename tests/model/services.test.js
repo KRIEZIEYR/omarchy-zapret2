@@ -1,8 +1,8 @@
 test("service titles and state", () => {
-  eq(Model.serviceTitle("chatgpt"), "ChatGPT")
-  eq(Model.serviceTitle("gemini"), "Gemini")
-  eq(Model.serviceTitle("claude"), "Claude")
-  eq(Model.serviceTitle("notion"), "Notion")
+  eq(Model.serviceTitle("telegram"), "Telegram")
+  eq(Model.serviceTitle("whatsapp"), "WhatsApp")
+  eq(Model.serviceTitle("twitter"), "X (Twitter)")
+  eq(Model.serviceTitle("rutracker"), "RuTracker")
   eq(Model.serviceTitle("unknown-x"), "unknown-x")
   eq(Model.serviceStateLabel(true), "включён")
   eq(Model.serviceStateLabel(false), "выключен")

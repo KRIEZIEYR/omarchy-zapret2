@@ -751,9 +751,10 @@ function firstRunStep(st, autopick) {
 }
 
 function serviceTitle(name) {
-  var titles = { chatgpt: "ChatGPT", gemini: "Gemini", claude: "Claude",
-                 notion: "Notion", figma: "Figma", miro: "Miro",
-                 zoom: "Zoom", slack: "Slack" }
+  var titles = { telegram: "Telegram", whatsapp: "WhatsApp", instagram: "Instagram",
+                 facebook: "Facebook", twitter: "X (Twitter)", signal: "Signal",
+                 viber: "Viber", snapchat: "Snapchat", linkedin: "LinkedIn",
+                 rutracker: "RuTracker" }
   var n = String(name || "")
   return titles.hasOwnProperty(n) ? titles[n] : n
 }

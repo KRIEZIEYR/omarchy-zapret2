@@ -1115,20 +1115,20 @@ class Services(unittest.TestCase):
                  mock.patch.object(zm, "require_installed", lambda: None), \
                  mock.patch.object(zm, "restart_if_active", lambda: False), \
                  mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_service(["on", "chatgpt"])
+                zm.cmd_service(["on", "telegram"])
             self.assertTrue(emitted.get("ok"))
             with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
                 content = f.read()
-            for d in zm.SERVICES["chatgpt"]:
+            for d in zm.SERVICES["telegram"]:
                 self.assertIn(d, content)
             emitted = {}
             with mock.patch.object(zm, "VAR", var), \
                  mock.patch.object(zm, "require_installed", lambda: None), \
                  mock.patch.object(zm, "restart_if_active", lambda: False), \
                  mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_service(["off", "chatgpt"])
+                zm.cmd_service(["off", "telegram"])
             with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
-                self.assertNotIn("chatgpt.com", f.read())
+                self.assertNotIn("t.me", f.read())
 
     def test_on_idempotent_keeps_others(self):
         import os, tempfile
@@ -1143,15 +1143,15 @@ class Services(unittest.TestCase):
                      mock.patch.object(zm, "restart_if_active", lambda: False), \
                      mock.patch.object(zm, "out", lambda obj: None):
                     zm.cmd_service(list(a))
-            run("on", "chatgpt")
-            run("on", "chatgpt")
+            run("on", "telegram")
+            run("on", "telegram")
             with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
                 lines = [l for l in f.read().splitlines() if l.strip()]
             self.assertIn("example.com", lines)
             self.assertEqual(len(lines), len(set(lines)))
             self.assertEqual(sorted(lines),
-                             sorted(set(["example.com"] + zm.SERVICES["chatgpt"])))
-            run("off", "chatgpt")
+                             sorted(set(["example.com"] + zm.SERVICES["telegram"])))
+            run("off", "telegram")
             with open(os.path.join(var, "lists", "list-general-user.txt"), encoding="utf-8") as f:
                 self.assertEqual(f.read().splitlines(), ["example.com"])
 
@@ -1176,8 +1176,9 @@ class Services(unittest.TestCase):
                 zm.cmd_services()
             self.assertTrue(emitted.get("ok"))
             names = [s["name"] for s in emitted["services"]]
-            self.assertIn("chatgpt", names)
-            self.assertIn("notion", names)
+            self.assertIn("telegram", names)
+            self.assertIn("whatsapp", names)
+            self.assertIn("rutracker", names)
 
 
 class FirstRun(unittest.TestCase):

@@ -97,7 +97,7 @@ User-space (no password needed):
 4. Secure DNS (DoH) guidance + DNS cache flush helper.
 5. One "copy diagnostics" button, redacted (no hosts/IPs).
 6. Strategy import from file/link + copy own strategy (validated as data).
-7. Per-service hosts picker (ChatGPT, Gemini, Notion...).
+7. Per-service hosts picker (Telegram, WhatsApp, ...).
 8. First-run flow: install -> autopick -> done.
 Root-side (need `setup --app-only` by the user to take effect):
 9. Per-list enable/disable. 10. Replace fake blob in a strategy (allowlist).
