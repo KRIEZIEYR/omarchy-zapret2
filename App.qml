@@ -188,8 +188,7 @@ Item {
     text: (disc.expanded ? "▾ " : "▸ ") + disc.caption
     onClicked: disc.toggled()
     Accessible.role: Accessible.Button
-    Accessible.name: disc.caption
-    Accessible.expanded: disc.expanded
+    Accessible.name: disc.caption + (disc.expanded ? ", развёрнуто" : ", свёрнуто")
   }
 
   component PickRow: CursorSurface {
@@ -299,9 +298,6 @@ Item {
     Layout.fillWidth: true
     Layout.fillHeight: true
     clip: true
-    // Editors do not wrap, so long lines need a scrollbar instead of being
-    // silently clipped at the card edge.
-    contentWidth: Math.max(availableWidth, area.implicitWidth)
     background: BorderSurface {
       color: Style.normalFillFor(root.fg, Color.accent)
       borderSpec: Border.controlSpec("normal", root.fg, Color.accent)
@@ -333,8 +329,7 @@ Item {
     minimumSize: Qt.size(Style.space(640), Style.space(440))
     // The shell may offer more room than the content can use; capping the
     // window keeps pages from turning into a column of cards over 60% void.
-    maximumWidth: Style.space(1280)
-    maximumHeight: Style.space(820)
+    maximumSize: Qt.size(Style.space(1280), Style.space(820))
     // closed by the window manager (Super+W, close button): tell the shell
     onVisibleChanged: if (!visible && !root.closingFromHost) root.dismiss()
 
