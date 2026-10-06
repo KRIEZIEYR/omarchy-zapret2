@@ -792,5 +792,64 @@ class CheckDomains(unittest.TestCase):
         self.assertEqual(emitted["categories"], canned["categories"])
 
 
+class UpdateCheck(unittest.TestCase):
+    def test_on_off_status(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            state = __import__("os").path.join(tmp, "state")
+            __import__("os").makedirs(state)
+            emitted = {}
+            with mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_update_check(["on"])
+            self.assertTrue(emitted.get("ok"))
+            emitted = {}
+            with mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_update_check(["status"])
+            self.assertTrue(emitted.get("enabled"))
+            with mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_update_check(["off"])
+            emitted = {}
+            with mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_update_check(["status"])
+            self.assertFalse(emitted.get("enabled"))
+
+    def test_run_reports_engine_and_stale(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            state = __import__("os").path.join(tmp, "state")
+            var = __import__("os").path.join(tmp, "var")
+            __import__("os").makedirs(state)
+            __import__("os").makedirs(__import__("os").path.join(var, "lists", "upstream"))
+            emitted = {}
+            with mock.patch.object(zm, "state_dir", lambda: state), \
+                 mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "load_record", lambda: {"version": "v1"}), \
+                 mock.patch.object(zm, "latest_release", lambda: {"version": "v2"}), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_update_check(["on"])
+                zm.cmd_update_check(["run"])
+            self.assertTrue(emitted.get("ok"))
+            self.assertTrue(emitted["engine"]["update"])
+            self.assertEqual(emitted["engine"]["latest"], "v2")
+            self.assertTrue(emitted.get("listsStale"))
+            self.assertTrue(emitted.get("presetsStale"))
+
+    def test_run_requires_opt_in(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            state = __import__("os").path.join(tmp, "state")
+            __import__("os").makedirs(state)
+            with mock.patch.object(zm, "state_dir", lambda: state):
+                with self.assertRaises(zm.Fail):
+                    zm.cmd_update_check(["run"])
+
+
 if __name__ == "__main__":
     unittest.main()

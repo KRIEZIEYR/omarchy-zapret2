@@ -41,6 +41,9 @@ Item {
   readonly property bool blockcheckRunning: blockcheck !== null
       ? (blockcheck.active === "active" || blockcheck.active === "activating")
       : (st !== null && (st.blockcheck === "active" || st.blockcheck === "activating"))
+  property var updateInfo: ({})
+  property bool updateCheckOn: false
+  property double updateLast: 0
   property var doctorItems: []
   property var logLines: []
   property string logNote: ""
@@ -139,6 +142,7 @@ Item {
         st = r.data
         maybeAutostart()
       }
+      maybeUpdateCheck()
       if (blockcheckRunning && watched) refreshBlockcheck()
     }, "status")
   }
@@ -225,6 +229,32 @@ Item {
       return n > 0 ? "Стратегии обновлены: " + n : "Стратегии обновлены"
     })
   }
+  function setUpdateCheck(on) {
+    act(["update-check", on ? "on" : "off"], "проверка обновлений", "", function(r) { refreshUpdateCheck() })
+  }
+  function refreshUpdateCheck() {
+    run(_aux, ["update-check", "status"], function(r) {
+      if (r.data && r.data.ok) {
+        updateCheckOn = r.data.enabled === true
+        updateLast = Number(r.data.last) || 0
+        if (r.data.result) updateInfo = r.data.result
+      }
+    }, "проверка обновлений")
+  }
+  function runUpdateCheck(force) {
+    var args = ["update-check", "run"]
+    if (force) args.push("--force")
+    longJob(args, "проверка обновлений", function(d) {
+      if (d) {
+        updateInfo = d
+        updateLast = Number(d.time) || updateLast
+        if (d.engine && d.engine.update) return "Есть обновление движка" + (d.engine.latest ? " " + d.engine.latest : "")
+        if (d.listsStale || d.presetsStale) return "Есть обновления списков или стратегий"
+        return "Всё актуально"
+      }
+      return "Готово"
+    })
+  }
   function hostsSet(on) {
     longJob(["hosts", on ? "on" : "off"], "hosts", function(d) {
       if (d && d.on && typeof d.lines === "number")
@@ -300,6 +330,26 @@ Item {
     else Quickshell.execDetached(["omarchy-shell", "shell", "toggle", pluginId, "{}"])
   }
 
+  property bool _updateCheckDone: false
+  function maybeUpdateCheck() {
+    if (_updateCheckDone) return
+    _updateCheckDone = true
+    refreshUpdateCheck()
+  }
+  function dailyUpdateCheck() {
+    if (!updateCheckOn) return
+    var now = Date.now() / 1000
+    if (updateLast > 0 && (now - updateLast) < 20 * 3600) return
+    run(_aux2, ["update-check", "run"], function(r) {
+      if (r.data && r.data.ok) {
+        updateInfo = r.data
+        updateLast = Number(r.data.time) || updateLast
+        if (r.data.engine && r.data.engine.update) notify("Доступно обновление движка zapret2", false)
+        else if (r.data.listsStale || r.data.presetsStale) notify("Списки или стратегии устарели: откройте Zapret2", false)
+      }
+    }, "проверка обновлений")
+  }
+
   // --- processes -----------------------------------------------------------
   // Inline components do not see this file's ids: the owner is handed in.
   component Slot: Process {
@@ -341,6 +391,13 @@ Item {
     repeat: true
     triggeredOnStart: true
     onTriggered: if (!_status.running) root.refresh()
+  }
+
+  Timer {
+    interval: 3600000
+    running: true
+    repeat: true
+    onTriggered: root.dailyUpdateCheck()
   }
 
   Component.onCompleted: Quickshell.execDetached([manager, "desktop", "on"])

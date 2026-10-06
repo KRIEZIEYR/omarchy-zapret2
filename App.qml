@@ -2371,6 +2371,33 @@ Item {
       }
 
       Card {
+        Toggle {
+          Layout.fillWidth: true
+          label: "Проверять обновления ежедневно"
+          description: "Движок, списки и стратегии. Проверка раз в день, без пароля."
+          checked: root.ready && root.svc.updateCheckOn === true
+          foreground: root.fg
+          onClicked: root.svc.setUpdateCheck(!(root.ready && root.svc.updateCheckOn === true))
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: root.ready && root.svc.updateLast > 0
+          text: (typeof Model.updateCheckText === "function" && root.svc.updateInfo ? Model.updateCheckText(root.svc.updateInfo) : "")
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+          Button {
+            bordered: true
+            enabled: root.ready && root.svc.installed && !root.svc.busy
+            text: "Проверить сейчас"
+            tooltipText: "Проверить обновления движка, списков и стратегий"
+            onClicked: root.svc.runUpdateCheck(true)
+          }
+        }
+      }
+
+      Card {
         PanelSectionHeader { Layout.fillWidth: true; text: "Горячие клавиши"; foreground: root.fg; fontFamily: root.fontFamily }
         Hint {
           Layout.fillWidth: true

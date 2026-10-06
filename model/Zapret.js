@@ -718,6 +718,19 @@ function isValidBackupFileSize(size) {
   return n >= 0 && n <= MAX_BACKUP_FILE
 }
 
+// Daily update check summary (engine, lists, presets). Pure, null-safe.
+function updateCheckText(info) {
+  var r = info || {}
+  var e = r.engine || {}
+  var parts = []
+  if (e.latest) parts.push(e.update ? "Движок: есть " + e.latest : "Движок актуален")
+  else if (e.error) parts.push("Движок: не проверен")
+  else parts.push("Движок: не проверен")
+  parts.push(r.listsStale ? "списки устарели" : "списки свежие")
+  parts.push(r.presetsStale ? "стратегии устарели" : "стратегии свежие")
+  return parts.join(" · ")
+}
+
 // Live valid/dropped counts mirroring the manager clean_list rules:
 // domains with optional ^ prefix (host lists) or IP/CIDR (ipset lists).
 // Blank and comment-only lines are ignored (neither valid nor dropped).

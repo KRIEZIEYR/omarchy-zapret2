@@ -19,10 +19,11 @@ allowlist of nfqws2 options and Lua desync functions.
   status                       JSON state (what the widget reads)
   setup                        download the latest zapret2 release, verify it, install (one prompt)
   engine check                 installed vs latest release
+  update-check on|off|status|run  opt-in daily check: engine, lists, presets
   on | off | restart           the bypass service
   set <key> <value>            preset, game (off|tcp|udp|all), ipset (loaded|none|any),
                                voice (compatible|standard|off), ipv6 (on|off), autostart (on|off),
-                               gametcp|gameudp <ports>, discordfake|gamefake <default|blob>
+                               updatecheck (on|off), gametcp|gameudp <ports>, discordfake|gamefake <default|blob>
   presets                      built-in and custom strategies
   presets update               fetch fresh Flowseal strategies
   hosts on|off|status          Flowseal hosts block in /etc/hosts
@@ -91,6 +92,7 @@ MAX_TARBALL = 64 * 1024 * 1024
 MAX_LIST = 8 * 1024 * 1024
 MAX_SMALL = 64 * 1024
 # Backup/restore caps (mirrored by model/Zapret.js isValidBackupSize/FileSize).
+UPDATE_STALE_DAYS = 7
 MAX_BACKUP_FILE = 512 * 1024
 MAX_BACKUP_TOTAL = 2 * 1024 * 1024
 MAX_BACKUP_ZIP = 4 * 1024 * 1024
@@ -99,7 +101,7 @@ MAX_BACKUP_ZIP = 4 * 1024 * 1024
 # hostlist domains; "loaded" applies it to ~33k networks and can break sites
 # that are not blocked at all.
 DEFAULTS = {"preset": "fs-general", "game": "off", "ipset": "none", "voice": "compatible",
-            "ipv6": True, "autostart": False, "gameTcp": "1024-65535", "gameUdp": "1024-65535",
+            "ipv6": True, "autostart": False, "updateCheck": False, "gameTcp": "1024-65535", "gameUdp": "1024-65535",
             "discordFake": "default", "gameFake": "default"}
 ENUMS = {"game": ("off", "tcp", "udp", "all"), "ipset": ("loaded", "none", "any"),
          "voice": ("compatible", "standard", "off")}
@@ -313,7 +315,7 @@ def clean_settings(raw):
     for k, allowed in ENUMS.items():
         if raw.get(k) in allowed:
             s[k] = raw[k]
-    for k in ("ipv6", "autostart"):
+    for k in ("ipv6", "autostart", "updateCheck"):
         if isinstance(raw.get(k), bool):
             s[k] = raw[k]
     for k in ("gameTcp", "gameUdp"):
@@ -1050,13 +1052,41 @@ def save_state(name, obj):
     atomic_write(os.path.join(state_dir(), name), json.dumps(obj, ensure_ascii=False), mode=0o600)
 
 
+def updates_state():
+    """Cached update hints for status: no network here, ever.
+
+    Written by `updates check` (the daily background job); lists/presets
+    manual updates clear their sha baselines via note_updated()."""
+    u = load_state("updates.json", {})
+    if not isinstance(u, dict):
+        u = {}
+    def flag(v):
+        return v if v is True or v is False or v is None else None
+    return {"checked": int(u.get("time") or 0), "engine": flag(u.get("engine")),
+            "lists": flag(u.get("lists")), "presets": flag(u.get("presets")),
+            "latest": u.get("latest") if isinstance(u.get("latest"), str) else None}
+
+
+def note_updated(kind):
+    """A manual `lists/presets update` re-baselines the daily check silently."""
+    try:
+        u = load_state("updates.json", {})
+        if not isinstance(u, dict):
+            u = {}
+        u[kind + "Sha"] = None
+        save_state("updates.json", u)
+    except (Fail, OSError, ValueError):
+        pass
+
+
 def cmd_status():
     rec = load_record()
     st = {"ok": True, "installed": installed(), "engine": rec.get("version") if rec else None,
           "appCurrent": True, "settings": load_settings(),
           "presets": all_presets(), "fakeChoices": ["default"] + fake_choices(),
           "hosts": hosts_state()[0],
-          "check": load_state("check.json", {}), "autopick": load_state("autopick.json", {})}
+          "check": load_state("check.json", {}), "autopick": load_state("autopick.json", {}),
+          "updates": updates_state()}
     if rec and rec.get("uid") != os.getuid():
         st["error"] = "zapret2 is set up for another user on this machine"
     if st["installed"]:
@@ -1157,6 +1187,7 @@ def cmd_presets_update():
             except OSError:
                 pass
     out({"ok": True, "updated": updated, "skipped": skipped})
+    note_updated("presets")
     restart_if_active()
 
 
@@ -1218,10 +1249,11 @@ def cmd_set(key, value):
         if value not in ENUMS[key]:
             raise Fail("%s takes one of: %s" % (key, ", ".join(ENUMS[key])))
         s[key] = value
-    elif key in ("ipv6", "autostart"):
+    elif key.lower() in ("ipv6", "autostart", "updatecheck"):
+        setting = {"ipv6": "ipv6", "autostart": "autostart", "updatecheck": "updateCheck"}[key.lower()]
         if value not in ("on", "off"):
-            raise Fail("%s takes on or off" % key)
-        s[key] = value == "on"
+            raise Fail("%s takes on or off" % key.lower())
+        s[setting] = value == "on"
     elif key.lower() in ("gametcp", "gameudp"):
         setting = "gameTcp" if key.lower() == "gametcp" else "gameUdp"
         if not valid_game_ports(value):
@@ -1235,7 +1267,7 @@ def cmd_set(key, value):
     else:
         raise Fail("unknown setting: %s" % key)
     save_settings(s)
-    restarted = key != "autostart" and restart_if_active()
+    restarted = key.lower() not in ("autostart", "updatecheck") and restart_if_active()
     out({"ok": True, "settings": load_settings(), "restarted": restarted})
 
 
@@ -1667,6 +1699,7 @@ def cmd_lists_update():
         atomic_write(var_path("lists", "upstream", name + ".txt"), "\n".join(lines) + "\n")
     restarted = restart_if_active()
     out({"ok": True, "updated": {k: len(v) for k, v in updated.items()}, "skipped": skipped, "restarted": restarted})
+    note_updated("lists")
 
 
 def cmd_hosts(args):
@@ -2038,11 +2071,167 @@ def latest_release():
     raise Fail("release %s has no %s" % (tag, want))
 
 
+UPDATE_STATE = "update-check.json"
+
+
+def update_state_path():
+    return os.path.join(state_dir(), UPDATE_STATE)
+
+
+def load_update_state():
+    try:
+        text = read_nofollow(update_state_path(), MAX_SMALL)
+        v = json.loads(text) if text else {}
+        if not isinstance(v, dict):
+            return {}
+        return v
+    except (Fail, ValueError):
+        return {}
+
+
+def save_update_state(obj):
+    atomic_write(update_state_path(), json.dumps(obj, ensure_ascii=False), mode=0o600)
+
+
+def upstream_mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0
+
+
+def lists_stale():
+    now = time.time()
+    limit = UPDATE_STALE_DAYS * 86400
+    for name in UPSTREAM_LISTS:
+        p = var_path("lists", "upstream", name + ".txt")
+        if upstream_mtime(p) == 0:
+            return True
+        if now - upstream_mtime(p) > limit:
+            return True
+    return False
+
+
+def presets_stale():
+    now = time.time()
+    limit = UPDATE_STALE_DAYS * 86400
+    d = var_path("flowseal")
+    try:
+        files = [f for f in os.listdir(d) if f.startswith("fs-") and f.endswith(".txt")]
+    except OSError:
+        return True
+    if not files:
+        return False
+    newest = max([upstream_mtime(os.path.join(d, f)) for f in files])
+    if newest == 0:
+        return True
+    return (now - newest) > limit
+
+
+def cmd_update_check(args):
+    verb = args[0] if args else "status"
+    st = load_update_state()
+    if verb == "on":
+        st["enabled"] = True
+        save_update_state(st)
+        out({"ok": True, "enabled": True})
+    elif verb == "off":
+        st["enabled"] = False
+        save_update_state(st)
+        out({"ok": True, "enabled": False})
+    elif verb == "status":
+        out({"ok": True, "enabled": st.get("enabled") is True, "last": st.get("last", 0), "result": st.get("result", {})})
+    elif verb == "run":
+        force = "--force" in args
+        if st.get("enabled") is not True and not force:
+            raise Fail("daily update check is off: turn it on first")
+        rec = load_record()
+        engine = {"installed": rec.get("version") if rec else None, "latest": None, "update": False, "error": ""}
+        try:
+            latest = latest_release()
+            engine["latest"] = latest["version"]
+            engine["update"] = (not rec) or (rec.get("version") != latest["version"])
+        except Fail as e:
+            engine["error"] = str(e)
+        result = {"time": int(time.time()), "engine": engine,
+                  "listsStale": lists_stale(), "presetsStale": presets_stale()}
+        st["result"] = result
+        st["last"] = result["time"]
+        save_update_state(st)
+        out(dict(result, ok=True, enabled=st.get("enabled") is True))
+    else:
+        raise Fail("usage: update-check on|off|status|run [--force]")
+
+
 def cmd_engine_check():
     rec = load_record()
     latest = latest_release()
     out({"ok": True, "installed": rec.get("version") if rec else None, "latest": latest["version"],
          "update": not rec or rec.get("version") != latest["version"]})
+
+
+def remote_sha(url):
+    """The GitHub blob sha of one repo file, or None when unreachable."""
+    try:
+        data = json.loads(http_get(url, 256 * 1024).decode("utf-8", "replace"))
+    except (Fail, ValueError):
+        return None
+    sha = data.get("sha") if isinstance(data, dict) else None
+    return sha if isinstance(sha, str) and sha else None
+
+
+def compare_shas(current, stored):
+    """(changed|None, current): None when nothing could be fetched; a first
+    sight only stores the baseline and reports no change."""
+    if not current:
+        return None, stored
+    if not isinstance(stored, dict):
+        return False, current
+    if set(current) != set(stored):
+        return True, current
+    return any(current[k] != stored[k] for k in current), current
+
+
+def cmd_updates_check():
+    """The daily background job: engine via the releases API, lists/presets
+    via upstream blob shas compared to the previous check. Manual updates
+    clear their baselines, so they never raise a phantom badge."""
+    now = int(time.time())
+    prev = load_state("updates.json", {})
+    if not isinstance(prev, dict):
+        prev = {}
+    rec = load_record()
+    installed_v = rec.get("version") if rec else None
+    engine, latest = None, prev.get("latest") if isinstance(prev.get("latest"), str) else None
+    try:
+        rel = latest_release()
+        latest = rel["version"]
+        engine = bool(installed_v) and installed_v != latest
+    except Fail:
+        engine = None
+    lists_urls = [(rel, FS_CONTENTS_API + rel) for rel in UPSTREAM_LISTS.values()]
+    lists_current = {}
+    for key, url in lists_urls:
+        s = remote_sha(url)
+        if s is not None:
+            lists_current[key] = s
+    lists, lists_sha = compare_shas(lists_current, prev.get("listsSha"))
+    try:
+        entries = json.loads(http_get(FS_CONTENTS_API, 256 * 1024).decode("utf-8", "replace"))
+    except (Fail, ValueError):
+        entries = None
+    presets_current = None
+    if isinstance(entries, list):
+        presets_current = {e["name"]: e["sha"] for e in entries
+                           if isinstance(e, dict) and re.match(r"^general.*\.bat$", e.get("name", ""))
+                           and isinstance(e.get("sha"), str)}
+    presets, presets_sha = compare_shas(presets_current, prev.get("presetsSha"))
+    if engine is None and lists is None and presets is None:
+        raise Fail("update check failed: no upstream reachable")
+    cache = {"time": now, "engine": engine, "lists": lists, "presets": presets, "latest": latest,
+             "listsSha": lists_sha, "presetsSha": presets_sha}
+    save_state("updates.json", cache)
+    out({"ok": True, "checked": now, "engine": engine, "lists": lists, "presets": presets, "latest": latest})
 
 
 def escalate(*args):
@@ -2660,6 +2849,8 @@ def main(argv):
         cmd_engine_check()
     elif cmd == "engine" and args[:1] == ["update"]:
         cmd_setup(args[1:])
+    elif cmd == "update-check":
+        cmd_update_check(args)
     elif cmd == "remove":
         cmd_remove(args)
     elif cmd == "doctor":
