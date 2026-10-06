@@ -29,27 +29,36 @@ test("staleLabel unified wording", () => {
   eq(Model.staleLabel({ time: 1000 }, false, 1030), "только что")
 })
 
-test("staleStatus helper", () => {
-  const now = 1000 + 7200
-  const st = { installed: true, active: "active", settings: { preset: "alt5" } }
+test("staleStatus reports age only; the mismatch lives in verdict()", () => {
+  const now = 100000
+  const fresh = { time: now - 7200, preset: "alt5", active: true }
   // No check
-  eq(Model.staleStatus(null, st, now), { text: "", severity: "none" })
-  eq(Model.staleStatus({}, st, now), { text: "", severity: "none" })
-  // Fresh check, no mismatch
-  eq(Model.staleStatus({ time: 1000, preset: "alt5", active: true }, st, now), { text: "", severity: "none" })
-  // Preset mismatch -> neutral
-  eq(Model.staleStatus({ time: 1000, preset: "general", active: true }, st, now), { text: "проверено для другой стратегии", severity: "neutral" })
-  // Active mismatch -> neutral
-  eq(Model.staleStatus({ time: 1000, preset: "alt5", active: false }, st, now), { text: "проверено для другой стратегии", severity: "neutral" })
+  eq(Model.staleStatus(null, now), { text: "", severity: "none" })
+  eq(Model.staleStatus({}, now), { text: "", severity: "none" })
+  // Fresh check: age, never a mismatch verdict
+  eq(Model.staleStatus(fresh, now), { text: "2 ч назад", severity: "none" })
+  eq(Model.staleStatus(Object.assign({}, fresh, { preset: "general" }), now), { text: "2 ч назад", severity: "none" })
+  eq(Model.staleStatus(Object.assign({}, fresh, { active: false }), now), { text: "2 ч назад", severity: "none" })
   // Old (>6h) with failing categories -> error
-  const oldCheck = { time: 1000 - 7 * 3600, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 0, total: 3 } } }
-  eq(Model.staleStatus(oldCheck, st, now), { text: "проверено для другой стратегии", severity: "error" })
-  // Old but no failing categories -> neutral
-  const oldCheckOk = { time: 1000 - 7 * 3600, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 3, total: 3 } } }
-  eq(Model.staleStatus(oldCheckOk, st, now), { text: "проверено для другой стратегии", severity: "neutral" })
-  // Not old but failing -> neutral
-  const recentFailing = { time: 1000, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 0, total: 3 } } }
-  eq(Model.staleStatus(recentFailing, st, now), { text: "проверено для другой стратегии", severity: "neutral" })
+  const oldCheck = { time: now - 32400, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 0, total: 3 } } }
+  eq(Model.staleStatus(oldCheck, now), { text: "устарело · 9 ч назад", severity: "error" })
+  // Old but nothing failing -> no error
+  const oldCheckOk = { time: now - 32400, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 3, total: 3 } } }
+  eq(Model.staleStatus(oldCheckOk, now), { text: "устарело · 9 ч назад", severity: "none" })
+  // Not old but failing -> not an error, the failures are in the verdict
+  const recentFailing = { time: now - 7200, preset: "general", active: true, categories: { youtube: { label: "YouTube", ok: 0, total: 3 } } }
+  eq(Model.staleStatus(recentFailing, now), { text: "2 ч назад", severity: "none" })
+})
+
+test("mixColor moves toward the background in both themes", () => {
+  const white = { r: 255, g: 255, b: 255 }
+  const black = { r: 0, g: 0, b: 0 }
+  eq(Model.mixColor(white, black, 0), "#ffffff")
+  eq(Model.mixColor(white, black, 1), "#000000")
+  eq(Model.mixColor(white, black, 0.5), "#808080")
+  // Same call on a dark theme: toward the background, never darker than bg.
+  eq(Model.mixColor(white, black, 0.34), "#a8a8a8")
+  eq(Model.mixColor({}, black, 0.5), "#000000")
 })
 
 test("validLines host lists", () => {

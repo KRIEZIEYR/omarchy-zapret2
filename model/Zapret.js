@@ -225,6 +225,9 @@ function quicWarning() {
 
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
 var NOT_NEEDED_TEXT = "Всё открывается без обхода — ничего делать не нужно"
+// Why a baseline that already passes needs no bypass. Shared by Overview and
+// Strategies so the two tabs cannot drift into contradicting each other.
+var NOT_NEEDED_EXPL = "Сайты открываются и так — возможно, роутер или VPN уже обходят блокировки"
 var CHECK_EXPLAINER = "14 проверок = адреса YouTube, Discord, Google, Cloudflare по TLS и (для YouTube) QUIC. Если не проходит только QUIC — видео работает, но может грузиться медленнее: попробуйте «Подбор»."
 function failedHosts(check) {
   var cats = (check && check.categories) || {}
@@ -282,8 +285,13 @@ function verdict(st, check, autopick, now) {
           ? String(check.preset) : curPreset
       var checkedTitle = presetTitle(checked) || checked || "—"
       var curTitle = presetTitle(curPreset) || "—"
+      // The one place that knows a check belongs to another configuration.
+      // Spelled out with both sides, so the warning has a referent instead of
+      // an unexplained "для другой стратегии".
       return { text: "", tone: "neutral", action: "check",
-               note: "Проверено для " + checkedTitle + " (" + (check.active ? "вкл" : "выкл") + ") · сейчас " + curTitle + " (" + (curOn ? "вкл" : "выкл") + ")" }
+               note: "Последняя проверка была для " + checkedTitle + " (обход "
+                   + (check.active ? "вкл" : "выкл") + ") — сейчас " + curTitle
+                   + " (обход " + (curOn ? "вкл" : "выкл") + ")" }
     }
   }
   var s = stateOf(st)
@@ -422,6 +430,25 @@ function pickBad(urgent, bg, fallback) {
   return contrastRatio(urgent, bg) >= 3 ? urgent : fb
 }
 
+// Mix two colors, t = 0 keeps `a`, t = 1 gives `b`. Secondary text is built by
+// mixing toward the background instead of darkening the foreground: Qt.darker
+// only ever darkens, so it collapses on a light theme. Returns "#rrggbb", which
+// QML accepts anywhere a color is expected.
+function mixColor(a, b, t) {
+  var k = Math.max(0, Math.min(1, Number(t) || 0))
+  var ch = function(p) {
+    var x = Number(a && a[p])
+    var y = Number(b && b[p])
+    if (isNaN(x) || isNaN(y)) return 0
+    return Math.round(x * (1 - k) + y * k)
+  }
+  var hex = function(v) {
+    var s = Math.max(0, Math.min(255, v)).toString(16)
+    return s.length < 2 ? "0" + s : s
+  }
+  return "#" + hex(ch("r")) + hex(ch("g")) + hex(ch("b"))
+}
+
 // Split search rows into the no-bypass baseline and the ranked rest:
 // baseline (flagged baseline/isBaseline/"(off)", else the first row),
 // best (single max-score row, first on tie), ties (same score as best),
@@ -557,25 +584,16 @@ function staleLabel(check, isStale, now) {
   return (isStale ? "устарело · " : "") + a
 }
 
-// Stale check status for UI: returns { text: "", severity: "neutral" | "error" | "none" }
-// - "neutral": preset/state mismatch → "проверено для другой стратегии" (dim text)
-// - "error": check older than 6 hours AND has failing categories → error color
-// - "none": not stale
-function staleStatus(check, st, now) {
+// Age and severity of the last check. The preset/state mismatch is NOT decided
+// here: verdict() owns it and spells it out in its note, so one predicate, one
+// wording. `st` is gone from the signature for that reason.
+// Returns { text: "", severity: "none" | "error" }; "error" = older than 6h
+// while something is still failing.
+function staleStatus(check, now) {
   if (!check || !check.time) return { text: "", severity: "none" }
-  var curPreset = (st && st.settings) ? String(st.settings.preset || "") : ""
-  var curOn = (stateOf(st) === "on" || stateOf(st) === "starting")
-  var presetMismatch = check.preset !== undefined && String(check.preset) !== curPreset
-  var activeMismatch = check.active !== undefined && (!!check.active) !== curOn
-  if (!(presetMismatch || activeMismatch)) return { text: "", severity: "none" }
-  // Preset/state mismatch: neutral dim text
-  var baseText = "проверено для другой стратегии"
-  // Error colour only when older than 6 hours AND has failing categories
   var ageSec = Math.max(0, Math.round((now || Date.now() / 1000) - Number(check.time)))
   var old = ageSec > 6 * 3600
-  var failing = hasFailing(check)
-  if (old && failing) return { text: baseText, severity: "error" }
-  return { text: baseText, severity: "neutral" }
+  return { text: staleLabel(check, old, now), severity: (old && hasFailing(check)) ? "error" : "none" }
 }
 
 // Severity for a doctor row: "ok" when passing, otherwise

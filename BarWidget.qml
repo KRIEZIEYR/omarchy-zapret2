@@ -23,7 +23,10 @@ Panel {
   readonly property bool ready: svc !== null
   readonly property string fontFamily: Style.font.family
   readonly property color fg: Color.popups.text
-  readonly property color dim: Qt.darker(fg, 1.4)
+  readonly property color bg: Color.popups.background
+  // Mixed toward the background, not darkened: Qt.darker collapses on a light
+  // theme. Same helper the app window uses.
+  readonly property color dim: Model.mixColor(root.fg, root.bg, 0.34)
   readonly property color errorColor: {
     var u = Color.urgent
     return u.hslSaturation < 0.2 ? fg : u
@@ -83,7 +86,23 @@ Panel {
 
   function staleStatus() {
     if (!root.ready) return { text: "", severity: "none" }
-    return Model.staleStatus(root.svc.check, root.svc.st, Date.now() / 1000)
+    return Model.staleStatus(root.svc.check, Date.now() / 1000)
+  }
+
+  // One status line for the popup: the explicit mismatch sentence when the
+  // last check belongs to another configuration, otherwise the check's age.
+  function checkStatusText() {
+    if (!root.ready) return ""
+    var v = Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult)
+    if (v && v.action === "check") return v.note
+    var ss = root.staleStatus()
+    if (ss.text !== "") return ss.text
+    return (v && v.note) ? v.note : ""
+  }
+
+  function checkStatusSeverity() {
+    if (!root.ready) return "none"
+    return root.staleStatus().severity
   }
 
   function cursorRows() {
@@ -390,7 +409,8 @@ Panel {
           id: strategy
           width: parent.width
           visible: root.ready && root.svc.installed
-          label: root.ready && root.svc.preset ? "Стратегия: " + Model.presetTitle(root.svc.preset) : "Стратегия"
+          // Constant label: the value already starts with the strategy name.
+          label: "Стратегия"
           rowHeight: root.ctlHeight
           popupRowHeight: root.ctlHeight
           foreground: root.fg
@@ -451,21 +471,23 @@ Panel {
           RowLayout {
             Layout.fillWidth: true
             PanelSectionHeader { text: "Доступность"; Layout.fillWidth: true }
+            HoverHandler { id: statusHover }
             Text {
-              text: {
-                if (!root.ready) return ""
-                var ss = root.staleStatus()
-                if (ss.text !== "") return ss.text
-                return Model.staleLabel(root.svc.check, ss.severity !== "none")
-              }
-              color: {
-                if (!root.ready) return root.dim
-                var ss = root.staleStatus()
-                if (ss.severity === "error") return root.errorColor
-                return root.dim
-              }
+              id: statusText
+              text: root.checkStatusText()
+              color: root.checkStatusSeverity() === "error" ? root.errorColor : root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              Layout.maximumWidth: Style.space(200)
+            }
+            PanelToolTip {
+              // The popup has no room for the explainer inline, so it is one
+              // hover away instead of missing entirely.
+              visible: statusHover.hovered && statusText.text !== ""
+              text: Model.CHECK_EXPLAINER
+              fontFamily: root.fontFamily
             }
           }
           Repeater {
@@ -502,20 +524,31 @@ Panel {
         RowLayout {
           width: parent.width
           spacing: Style.space(6)
-          Button {
+          // The popup's one filled action.
+          BorderSurface {
             Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
+            implicitWidth: checkBtn.implicitWidth + Style.space(24)
+            implicitHeight: Math.max(checkBtn.implicitHeight, root.ctlHeight)
+            color: Style.selectedFillFor(root.fg, Color.accent)
+            borderSpec: Border.controlSpec("selected", root.fg, Color.accent)
+            radius: Style.cornerRadius
             visible: root.ready && root.svc.installed
-            bordered: true
-            implicitHeight: root.ctlHeight
-            hasCursor: root.cursorRow === "check"
-            text: "Проверить"
-            tooltipText: "Проверить доступность (c)"
-            onClicked: root.svc.runCheck()
-            onHovered: function(h) { if (h) root.setCursor("check") }
-            Accessible.role: Accessible.Button
-            Accessible.name: "Проверить доступность"
-            Accessible.focusable: true
-            Accessible.focused: hasCursor
+            Button {
+              id: checkBtn
+              anchors.fill: parent
+              bordered: false
+              foreground: Style.selectedStateColor(root.fg, Color.accent)
+              hasCursor: root.cursorRow === "check"
+              text: "Проверить"
+              tooltipText: "Проверить доступность (c)"
+              onClicked: root.svc.runCheck()
+              onHovered: function(h) { if (h) root.setCursor("check") }
+              Accessible.role: Accessible.Button
+              Accessible.name: "Проверить доступность"
+              Accessible.focusable: true
+              Accessible.focused: hasCursor
+            }
           }
           Button {
             Layout.fillWidth: true

@@ -194,11 +194,11 @@ test("verdict stale check", () => {
   const cats = { youtube: { label: "YouTube", ok: 3, total: 3 }, google: { label: "Google", ok: 2, total: 2 } }
   const fresh = { time: 1000, preset: "alt5", active: true, categories: cats }
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "general" }), null),
-    { text: "", tone: "neutral", action: "check", note: "Проверено для NEXT · General (вкл) · сейчас NEXT · ALT 5 (вкл)" })
+    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для NEXT · General (обход вкл) — сейчас NEXT · ALT 5 (обход вкл)" })
   eq(Model.verdict(on, Object.assign({}, fresh, { active: false }), null),
-    { text: "", tone: "neutral", action: "check", note: "Проверено для NEXT · ALT 5 (выкл) · сейчас NEXT · ALT 5 (вкл)" })
+    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для NEXT · ALT 5 (обход выкл) — сейчас NEXT · ALT 5 (обход вкл)" })
   eq(Model.verdict(on, Object.assign({}, fresh, { preset: "fs-general-alt" }), null),
-    { text: "", tone: "neutral", action: "check", note: "Проверено для ALT (вкл) · сейчас NEXT · ALT 5 (вкл)" })
+    { text: "", tone: "neutral", action: "check", note: "Последняя проверка была для ALT (обход вкл) — сейчас NEXT · ALT 5 (обход вкл)" })
   eq(Model.verdict(off, Object.assign({}, fresh, { preset: "alt5", active: false, categories: cats }), null).text, "Всё открывается без обхода — ничего делать не нужно")
   eq(Model.verdict(on, fresh, null, 1010), { text: "Всё открывается", tone: "good", action: "none", note: "по проверке только что, обход был включён" })
   eq(Model.verdict(on, null, null), { text: "Проверок ещё не было", tone: "neutral", action: "none", note: "" })
