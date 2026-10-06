@@ -298,6 +298,21 @@ Item {
     run(p, ["export", "--stdout"], function(r) { cb(r) }, "экспорт")
   }
   function importBackup(data, cb) { act(["import"], "импорт", "Резервная копия восстановлена", cb, data) }
+  function importCustomFile(path, name, cb) {
+    var args = ["custom", "import", "--file", String(path)]
+    if (name && String(name).trim() !== "") args = args.concat(["--name", String(name).trim()])
+    act(args, "импорт стратегии", "Стратегия импортирована", cb)
+  }
+  function importCustomUrl(url, name, cb) {
+    var args = ["custom", "import", "--url", String(url)]
+    if (name && String(name).trim() !== "") args = args.concat(["--name", String(name).trim()])
+    act(args, "импорт стратегии", "Стратегия импортирована", cb)
+  }
+  function copyCustom(src, dst, cb) {
+    var args = ["custom", "copy", String(src)]
+    if (dst && String(dst).trim() !== "") args.push(String(dst).trim())
+    act(args, "копирование стратегии", "Стратегия скопирована", cb)
+  }
   function removeCustom(name) { act(["custom", "rm", name], "удаление стратегии", "Стратегия удалена") }
   function presetText(name, cb) {
     var p = _aux.running ? _aux2 : _aux

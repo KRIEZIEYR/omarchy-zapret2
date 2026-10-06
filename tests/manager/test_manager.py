@@ -967,5 +967,89 @@ class Diagnostics(unittest.TestCase):
             self.assertIn("~", text)
 
 
+class CustomTransfer(unittest.TestCase):
+    def _var(self, tmp):
+        import os
+        var = os.path.join(tmp, "var")
+        os.makedirs(os.path.join(var, "custom"), exist_ok=True)
+        os.makedirs(os.path.join(var, "lists"), exist_ok=True)
+        return var
+
+    def test_import_file(self):
+        import os, tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            src = os.path.join(tmp, "home", "s.txt")
+            os.makedirs(os.path.dirname(src))
+            with open(src, "w", encoding="utf-8") as f:
+                f.write(MINIMAL)
+            home = os.path.join(tmp, "home")
+            emitted = {}
+            with mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(os.path, "expanduser", lambda p: p.replace("~", home)), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_custom(["import", "--file", src, "--name", "fromfile"])
+            self.assertEqual(emitted.get("name"), "my-fromfile")
+            with open(os.path.join(var, "custom", "my-fromfile.txt"), encoding="utf-8") as f:
+                zm.parse_preset(f.read())
+
+    def test_import_rejects_evil(self):
+        import os, tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            src = os.path.join(tmp, "home", "evil.txt")
+            os.makedirs(os.path.dirname(src))
+            with open(src, "w", encoding="utf-8") as f:
+                f.write(MINIMAL.replace("[TCP_TLS]\n", "[TCP_TLS]\n--user=root\n", 1))
+            home = os.path.join(tmp, "home")
+            with mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(os.path, "expanduser", lambda p: p.replace("~", home)):
+                with self.assertRaises(zm.Fail):
+                    zm.cmd_custom(["import", "--file", src, "--name", "evil"])
+            self.assertFalse(os.path.exists(os.path.join(var, "custom", "my-evil.txt")))
+
+    def test_import_outside_home_rejected(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            with mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "require_installed", lambda: None):
+                with self.assertRaises(zm.Fail):
+                    zm.cmd_custom(["import", "--file", "/etc/passwd"])
+
+    def test_import_url(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            emitted = {}
+            with mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(zm, "http_get", lambda url, cap: MINIMAL.encode("utf-8")), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_custom(["import", "--url", "https://example.com/s.txt", "--name", "fromurl"])
+            self.assertEqual(emitted.get("name"), "my-fromurl")
+
+    def test_copy(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            emitted = {}
+            with mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_custom(["copy", "general", "mycopy"])
+            self.assertEqual(emitted.get("name"), "my-mycopy")
+            self.assertEqual(emitted.get("from"), "general")
+            with self.assertRaises(zm.Fail):
+                zm.cmd_custom(["copy", "no-such-xyz"])
+
+
 if __name__ == "__main__":
     unittest.main()

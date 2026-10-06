@@ -30,6 +30,10 @@ allowlist of nfqws2 options and Lua desync functions.
   discord-cache clear          delete Discord cache folders
   dns status|flush               show DNS servers, flush DNS cache
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
+  strategy import [--name <name>] [file|url]   import a strategy (stdin, file or http(s) link)
+  strategy copy <src> [new-name]               duplicate an own (my-*) strategy
+  custom import --file PATH|--url URL [--name N]  import a strategy (validated)
+  custom copy <src> [dst]                 copy any strategy as own (validated)
   list show <name> | list save <name> [--no-restart]   user lists (save reads stdin)
   export                           backup settings + user lists + own strategies (base64 zip)
   import [file]                    restore a backup (base64 zip from stdin or file)
@@ -1311,6 +1315,24 @@ def is_full_preset_text(text):
     return has_filter
 
 
+def preset_text_by_name(name):
+    if name in PRESETS:
+        with open(os.path.join(DATA, "presets", name + ".txt"), encoding="utf-8") as f:
+            return f.read()
+    if name.startswith("fs-"):
+        if not RE_NAME.match(name):
+            raise Fail("no such strategy: %s" % name)
+        text = read_nofollow(var_path("flowseal", name + ".txt"), MAX_SMALL * 4)
+        if text is None:
+            try:
+                with open(os.path.join(DATA, "presets", "flowseal", name + ".txt"), encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                raise Fail("no such strategy: %s" % name)
+        return text
+    return None
+
+
 def cmd_custom(args):
     require_installed()
     if not args:
@@ -1347,6 +1369,93 @@ def cmd_custom(args):
         out({"ok": True})
     else:
         raise Fail("usage: custom save|show|rm <name>")
+
+
+def fetch_strategy_url(url):
+    """A user-given http(s) link as strategy text: capped, timed out, no
+    redirect off http(s). Content is still validated as data afterwards."""
+    if not re.match(r"^https?://", url, re.IGNORECASE):
+        raise Fail("link must start with http:// or https://")
+    req = urllib.request.Request(url, headers={"User-Agent": "omarchy-zapret2"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            if not re.match(r"^https?://", r.geturl(), re.IGNORECASE):
+                raise Fail("redirected away from http(s)")
+            data = r.read(MAX_SMALL + 1)
+    except urllib.error.URLError as e:
+        raise Fail("download failed: %s" % getattr(e, "reason", e))
+    if len(data) > MAX_SMALL:
+        raise Fail("download is larger than %d bytes" % MAX_SMALL)
+    return data.decode("utf-8", "replace")
+
+
+def free_custom_name(prefix):
+    """First free my-<prefix>[-N] name (for imports and copies)."""
+    i = 0
+    while True:
+        i += 1
+        cand = "my-%s%s" % (prefix, "" if i == 1 else "-%d" % i)
+        cand = cand[:32].rstrip("-")
+        if RE_NAME.match(cand) and not os.path.exists(var_path("custom", cand + ".txt")):
+            return cand
+        if i > 999:
+            raise Fail("too many strategies: pick a name")
+
+
+def validate_strategy_text(text):
+    if is_full_preset_text(text):
+        parse_full(text)
+    else:
+        parse_preset(text)
+
+
+def cmd_strategy(args):
+    require_installed()
+    if not args:
+        raise Fail("usage: strategy import|copy ...")
+    verb = args[0]
+    if verb == "import":
+        name, pos = None, []
+        i = 1
+        while i < len(args):
+            if args[i] == "--name":
+                if i + 1 >= len(args):
+                    raise Fail("usage: strategy import [--name <name>] [file|url]")
+                name = custom_name(args[i + 1])
+                i += 2
+            else:
+                pos.append(args[i])
+                i += 1
+        if len(pos) > 1:
+            raise Fail("usage: strategy import [--name <name>] [file|url]")
+        if pos and re.match(r"^https?://", pos[0], re.IGNORECASE):
+            text = fetch_strategy_url(pos[0])
+        elif pos:
+            text = read_nofollow(pos[0], MAX_SMALL)
+            if text is None:
+                raise Fail("no such file: %s" % pos[0])
+        else:
+            text = read_stdin(MAX_SMALL)
+        validate_strategy_text(text)
+        if name is None:
+            name = free_custom_name("import")
+        atomic_write(var_path("custom", name + ".txt"), text.strip() + "\n")
+        out({"ok": True, "name": name})
+    elif verb == "copy":
+        if len(args) < 2 or len(args) > 3:
+            raise Fail("usage: strategy copy <src> [new-name]")
+        if not args[1].startswith("my-"):
+            raise Fail("only own strategies (my-*) can be copied")
+        src = custom_name(args[1])
+        text = read_nofollow(var_path("custom", src + ".txt"), MAX_SMALL)
+        if text is None:
+            raise Fail("no such strategy: %s" % src)
+        name = custom_name(args[2]) if len(args) == 3 else free_custom_name(src[3:] + "-copy")
+        validate_strategy_text(text)
+        atomic_write(var_path("custom", name + ".txt"), text.strip() + "\n")
+        out({"ok": True, "name": name, "from": src})
+    else:
+        raise Fail("usage: strategy import|copy ...")
 
 
 def cmd_list(args):
@@ -2872,6 +2981,8 @@ def main(argv):
         cmd_set(args[0], args[1])
     elif cmd == "custom":
         cmd_custom(args)
+    elif cmd == "strategy":
+        cmd_strategy(args)
     elif cmd == "list":
         cmd_list(args)
     elif cmd == "lists" and args[:1] == ["update"]:

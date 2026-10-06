@@ -15,3 +15,9 @@ test("redactIps", () => {
   eq(Model.redactIps("open youtube.com now"), "open [host] now")
   eq(Model.redactIps("Oct 06 10:00:00 h ok"), "Oct 06 10:00:00 h ok")
 })
+
+test("suggestImportName", () => {
+  eq(Model.suggestImportName("~/my-strategy.txt"), "my-strategy")
+  eq(Model.suggestImportName("https://example.com/General ALT.txt?x=1"), "general-alt")
+  eq(Model.suggestImportName(""), "imported")
+})

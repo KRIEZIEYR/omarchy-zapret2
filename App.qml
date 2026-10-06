@@ -1144,7 +1144,9 @@ Item {
     }
 
     readonly property bool uiBlocked: (filterField.activeFocus || nameField.activeFocus
-        || editor.area.activeFocus || viewerEditor.area.activeFocus)
+        || editor.area.activeFocus || viewerEditor.area.activeFocus
+        || impFile.activeFocus || impUrl.activeFocus || impName.activeFocus
+        || cpSrc.activeFocus || cpDst.activeFocus)
 
     Card {
       id: recCard
@@ -1186,6 +1188,68 @@ Item {
         onClicked: root.svc.turnOff()
       }
     }
+    Card {
+      visible: !sp.editing && !sp.showing
+      PanelSectionHeader { Layout.fillWidth: true; text: "Импорт стратегии"; foreground: root.fg; fontFamily: root.fontFamily }
+      Hint { Layout.fillWidth: true; text: "Файл или ссылка https (до 64 КБ). Проверяется теми же правилами, сохраняется как своя." }
+      TextField {
+        id: impFile
+        Layout.fillWidth: true
+        placeholderText: "Путь к файлу, например ~/my-strategy.txt"
+      }
+      TextField {
+        id: impUrl
+        Layout.fillWidth: true
+        placeholderText: "Ссылка https на стратегию"
+        inputMethodHints: Qt.ImhUrlCharactersOnly
+      }
+      TextField {
+        id: impName
+        Layout.fillWidth: true
+        placeholderText: "Имя (необязательно, например home)"
+      }
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(8)
+        Button {
+          bordered: true
+          enabled: root.ready && !root.svc.busy && impFile.text.trim() !== ""
+          text: "Импорт из файла"
+          tooltipText: "Импортировать стратегию из файла"
+          onClicked: root.svc.importCustomFile(impFile.text.trim(), impName.text.trim())
+        }
+        Button {
+          bordered: true
+          enabled: root.ready && !root.svc.busy && impUrl.text.trim() !== ""
+          text: "Импорт по ссылке"
+          tooltipText: "Импортировать стратегию по ссылке https"
+          onClicked: root.svc.importCustomUrl(impUrl.text.trim(), impName.text.trim())
+        }
+      }
+      Hint { Layout.fillWidth: true; text: "Копия любой стратегии как своя (проверяется как данные)." }
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(8)
+        TextField {
+          id: cpSrc
+          Layout.fillWidth: true
+          placeholderText: "Откуда, например fs-general"
+        }
+        TextField {
+          id: cpDst
+          Layout.fillWidth: true
+          placeholderText: "Куда (необязательно)"
+        }
+        Button {
+          bordered: true
+          enabled: root.ready && !root.svc.busy && cpSrc.text.trim() !== ""
+          text: "Копировать"
+          tooltipText: "Скопировать стратегию как свою"
+          onClicked: root.svc.copyCustom(cpSrc.text.trim(), cpDst.text.trim())
+        }
+      }
+    }
+
     TextField {
       id: filterField
       Layout.fillWidth: true

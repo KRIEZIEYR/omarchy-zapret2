@@ -739,6 +739,16 @@ function isValidBackupFileSize(size) {
 // Mirrors manager redact_ips: URLs, IPv4, real IPv6 (timestamps like
 // 10:00:00 are kept), bare domains. Home-dir shortening lives in the
 // manager (it knows ~).
+// Default own-strategy name for an import source (file path or https link).
+function suggestImportName(source) {
+  var s = String(source || "").split("?", 1)[0]
+  s = s.split("\\").join("/")
+  var tail = s.split("/").pop() || ""
+  tail = tail.replace(/\.[a-z0-9]+$/i, "")
+  var slug = tail.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").substring(0, 32)
+  return slug || "imported"
+}
+
 function redactIps(text) {
   var s = String(text || "")
   s = s.replace(/https?:\/\/[^\s]+/gi, "[URL]")
