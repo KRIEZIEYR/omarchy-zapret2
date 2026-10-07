@@ -2225,7 +2225,7 @@ def save_circular_findings(findings):
             domain = re.sub(r"[^a-z0-9]+", "-", item["domain"].lower()).strip("-") or "site"
             name = custom_name("circular-%s-%d" % (domain, index + 1))
             atomic_write(var_path("custom", name + ".txt"), text)
-            by_domain.setdefault(item["domain"].lower().rstrip("."), []).append("my-" + name)
+            by_domain.setdefault(item["domain"].lower().rstrip("."), []).append(name)
         except Fail:
             continue
     return by_domain

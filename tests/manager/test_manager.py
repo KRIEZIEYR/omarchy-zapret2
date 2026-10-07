@@ -638,6 +638,17 @@ class CircularPlanner(unittest.TestCase):
         self.assertEqual(result["domains"]["one"], ["good"])
         self.assertEqual(result["next"], "ready")
 
+    def test_saved_findings_reference_existing_files(self):
+        findings = [{"test": "curl_test_tls", "ip": "ipv4", "domain": "YouTube.com",
+                     "args": "--lua-desync=fake:blob=tls_google:tcp_md5:repeats=6 --lua-desync=multisplit:pos=2,midsld"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(zm, "var_path", side_effect=lambda *p: os.path.join(tmp, *p)):
+                by_domain = zm.save_circular_findings(findings)
+            names = by_domain["youtube.com"]
+            self.assertEqual(len(names), 1)
+            self.assertFalse(names[0].startswith("my-my-"), names[0])
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "custom", names[0] + ".txt")))
+
 
 
     def test_fails(self):
