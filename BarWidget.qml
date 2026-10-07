@@ -406,6 +406,8 @@ Panel {
         // strategy
         Dropdown {
           id: strategy
+          property real closedAt: 0
+          onPopupOpenChanged: if (!popupOpen) closedAt = Date.now()
           width: parent.width
           visible: root.ready && root.svc.installed
           // Constant label: the value already starts with the strategy name.
@@ -460,6 +462,15 @@ Panel {
             if (v !== root.svc.preset) root.svc.setOption("preset", v)
           }
           onHovered: function(h) { if (h) root.setCursor("strategy") }
+          MouseArea {
+            z: 10
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: strategy.rowHeight
+            cursorShape: Qt.PointingHandCursor
+            onClicked: if (Date.now() - strategy.closedAt > 300) strategy.open()
+          }
         }
 
         // last check
