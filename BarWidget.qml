@@ -31,9 +31,21 @@ Panel {
     var u = Color.urgent
     return u.hslSaturation < 0.2 ? fg : u
   }
-  readonly property int ctlHeight: Style.spacing.controlHeight
+  component PanelDropdown: Dropdown {
+    id: pd
+    property real closedAt: 0
+    onPopupOpenChanged: if (!popupOpen) closedAt = Date.now()
+    MouseArea {
+      z: 10
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: pd.rowHeight
+      cursorShape: Qt.PointingHandCursor
+      onClicked: if (Date.now() - pd.closedAt > 300) pd.open()
+    }
+  }
 
-  // --- keyboard cursor -------------------------------------------------------
   // One cursor walks the interactive controls (hero switch, install,
   // strategy, check, open); mouse hover joins the same model so there is a
   // single highlight. `?` toggles the legend, which otherwise stays put.
@@ -404,10 +416,8 @@ Panel {
         }
 
         // strategy
-        Dropdown {
+        PanelDropdown {
           id: strategy
-          property real closedAt: 0
-          onPopupOpenChanged: if (!popupOpen) closedAt = Date.now()
           width: parent.width
           visible: root.ready && root.svc.installed
           // Constant label: the value already starts with the strategy name.
@@ -462,15 +472,6 @@ Panel {
             if (v !== root.svc.preset) root.svc.setOption("preset", v)
           }
           onHovered: function(h) { if (h) root.setCursor("strategy") }
-          MouseArea {
-            z: 10
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            height: strategy.rowHeight
-            cursorShape: Qt.PointingHandCursor
-            onClicked: if (Date.now() - strategy.closedAt > 300) strategy.open()
-          }
         }
 
         // last check
