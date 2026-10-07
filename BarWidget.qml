@@ -41,7 +41,7 @@ Panel {
       z: 10
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.top: parent.top
+      anchors.bottom: parent.bottom
       height: pd.rowHeight
       cursorShape: Qt.PointingHandCursor
       onClicked: if (Date.now() - pd.closedAt > 300) pd.open()
