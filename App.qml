@@ -421,11 +421,8 @@ Item {
                 required property int index
                 Layout.fillWidth: true
                 spacing: Style.space(6)
-                // Tabs read as a quiet list, not six bordered boxes: idle
-                // rows are bare text, hover lifts a tinted fill, the active
-                // tab takes the selected fill plus an accent rail on the
-                // left edge. The Button's own selected state provides the
-                // tint and the bold label.
+                // Active state uses the selected fill and border; no extra rail
+                // is needed now that every tab has a consistent outline.
                 BorderSurface {
                   id: tabSurface
                   Layout.fillWidth: true
@@ -448,16 +445,6 @@ Item {
                     onClicked: root.tab = index
                     Accessible.role: Accessible.Button
                     Accessible.name: modelData + (tabSurface.isActive ? ", выбрана" : "")
-                  }
-                  // Accent rail marking the active tab, drawn over the fill.
-                  Rectangle {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Style.space(3)
-                    height: parent.height - Style.space(10)
-                    radius: width / 2
-                    visible: tabSurface.isActive
-                    color: Color.accent
                   }
                 }
                 // A quiet badge, not a chip: the update is a status, and it
