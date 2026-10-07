@@ -31,6 +31,8 @@ Panel {
     var u = Color.urgent
     return u.hslSaturation < 0.2 ? fg : u
   }
+  readonly property int ctlHeight: Style.spacing.controlHeight
+
   component PanelDropdown: Dropdown {
     id: pd
     property real closedAt: 0
