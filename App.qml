@@ -432,13 +432,13 @@ Item {
                   property bool isActive: root.tab === index
                   implicitHeight: tabBtn.implicitHeight
                   color: "transparent"
-                  borderSpec: tabSurface.isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.none()
+                  borderSpec: tabSurface.isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
                   radius: Style.cornerRadius
                   Button {
                     id: tabBtn
                     anchors.fill: parent
                     leftAlign: true
-                    bordered: false
+                    bordered: true
                     selected: tabSurface.isActive
                     horizontalPadding: Style.space(12)
                     verticalPadding: Style.space(7)
