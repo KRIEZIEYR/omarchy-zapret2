@@ -1227,28 +1227,50 @@ bordered: true
       }
     }
 
+    property bool importOpen: false
     readonly property bool uiBlocked: (filterField.activeFocus || nameField.activeFocus
         || editor.area.activeFocus || viewerEditor.area.activeFocus
         || impText.activeFocus || impName.activeFocus)
 
-    Section {
+    // Recommendation: one quiet line, not a card. Title, score, and the one
+    // action that matters.
+    BorderSurface {
       id: recCard
-      title: "РЕКОМЕНДУЕМАЯ"
+      Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
       property bool notNeeded: root.ready && root.svc.autopickResult.notNeeded === true
-      Label { Layout.fillWidth: true; fixedWidth: true; text: recCard.notNeeded ? "Обход не нужен" : Model.presetTitle(sp.recommendedName()) }
-      Hint {
-        Layout.fillWidth: true
-        // Same two sentences as Обзор: the tabs must not answer the same
-        // question differently.
-        text: recCard.notNeeded ? Model.NOT_NEEDED_TEXT + ". " + Model.NOT_NEEDED_EXPL : sp.recommendedText()
-      }
+      implicitHeight: recRow.implicitHeight + Style.space(12)
+      color: Style.normalFillFor(root.fg, Color.accent)
+      borderSpec: Border.flat(root.innerLine, 1)
+      radius: Style.cornerRadius
       RowLayout {
-        Layout.fillWidth: true
-        visible: !recCard.notNeeded
+        id: recRow
+        anchors.fill: parent
+        anchors.leftMargin: Style.space(12)
+        anchors.rightMargin: Style.space(6)
+        anchors.topMargin: Style.space(6)
+        anchors.bottomMargin: Style.space(6)
+        spacing: Style.space(10)
+        Text {
+          textFormat: Text.PlainText
+          text: "★"
+          color: Color.accent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+        Label {
+          text: recCard.notNeeded ? "Обход не нужен" : Model.presetTitle(sp.recommendedName())
+          font.bold: true
+        }
+        Hint {
+          Layout.fillWidth: true
+          elide: Text.ElideRight
+          text: recCard.notNeeded ? Model.NOT_NEEDED_EXPL : sp.recommendedText()
+        }
         PrimaryButton {
+          visible: !recCard.notNeeded
           enabled: root.ready && root.svc.installed && !root.svc.busy
-          text: "Включить " + Model.presetTitle(sp.recommendedName())
+          text: "Включить"
           tooltipText: "Включить обход со стратегией " + Model.presetTitle(sp.recommendedName())
           onClicked: {
             var n = sp.recommendedName()
@@ -1258,13 +1280,11 @@ bordered: true
         }
       }
     }
-    // Secondary actions live in the list header line, not as bordered
-    // buttons. "Выключить обход" duplicates the Обзор hero (Ctrl+T, bar):
-    // it is not repeated here.
+    // Secondary actions live in the list header line as text links.
     RowLayout {
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
-      spacing: Style.space(8)
+      spacing: Style.space(12)
       PanelSectionHeader {
         Layout.fillWidth: true
         text: "СТРАТЕГИИ"
@@ -1281,54 +1301,62 @@ bordered: true
       Button {
         bordered: false
         fontSize: Style.font.caption
+        text: sp.importOpen ? "Скрыть импорт" : "Импорт"
+        tooltipText: "Текст стратегии, путь к файлу или ссылка http(s); сохраняется как своя (my-*)"
+        onClicked: sp.importOpen = !sp.importOpen
+      }
+      Button {
+        bordered: false
+        fontSize: Style.font.caption
         text: "Новая"
         tooltipText: "Своя стратегия nfqws2: имя и текст пресета"
         onClicked: sp.edit("")
       }
     }
-    Section {
-      title: "ИМПОРТ СТРАТЕГИИ"
-      visible: !sp.editing && !sp.showing
-      Hint { Layout.fillWidth: true; text: "Текст стратегии, путь к файлу или ссылка http(s). Сохраняется как своя (my-*)." }
+    // Import is rare: one row, shown on demand.
+    RowLayout {
+      Layout.fillWidth: true
+      visible: !sp.editing && !sp.showing && sp.importOpen
+      spacing: Style.space(8)
       TextField {
         id: impText
         Layout.fillWidth: true
-        placeholderText: "Текст стратегии, путь к файлу или ссылка http(s)"
+        placeholderText: "Текст, путь к файлу или ссылка http(s)"
       }
-      RowLayout {
+      TextField {
+        id: impName
+        Layout.preferredWidth: Style.space(160)
+        placeholderText: "Имя (необязательно)"
+      }
+      ActionButton {
+        enabled: root.ready && !root.svc.busy && impText.text.trim() !== ""
+        text: "Импортировать"
+        tooltipText: "Проверить и сохранить как свою стратегию"
+        onClicked: root.svc.importStrategy(impText.text, impName.text.trim(), function(r) {
+          if (r.ok) { impText.text = ""; impName.text = ""; sp.importOpen = false }
+        })
+      }
+    }
+    // Search and the worse-than-baseline filter share one line.
+    RowLayout {
+      Layout.fillWidth: true
+      visible: !sp.editing && !sp.showing
+      spacing: Style.space(8)
+      TextField {
+        id: filterField
         Layout.fillWidth: true
-        spacing: Style.space(8)
-        TextField {
-          id: impName
-          Layout.preferredWidth: Style.space(220)
-          placeholderText: "Имя (необязательно, например home)"
-        }
-        ActionButton {
-          enabled: root.ready && !root.svc.busy && impText.text.trim() !== ""
-          text: "Импортировать"
-          tooltipText: "Проверить и сохранить как свою стратегию"
-          onClicked: root.svc.importStrategy(impText.text, impName.text.trim(), function(r) {
-            if (r.ok) { impText.text = ""; impName.text = "" }
-          })
-        }
+        placeholderText: "Найти стратегию"
+        text: sp.filter
+        onTextChanged: sp.filter = text
       }
-    }
-
-    TextField {
-      id: filterField
-      Layout.fillWidth: true
-      visible: !sp.editing && !sp.showing
-      placeholderText: "Найти стратегию"
-      text: sp.filter
-      onTextChanged: sp.filter = text
-    }
-    ToggleRow {
-      Layout.fillWidth: true
-      visible: !sp.editing && !sp.showing
-      label: "Скрыть стратегии хуже базы"
-      note: (sp.hiddenWorseCount > 0 ? "Скрыто " + sp.hiddenWorseCount + " · " : "") + "хуже базы остаются в файле"
-      checked: sp.onlyGood
-      onFlip: sp.onlyGood = !sp.onlyGood
+      ToggleRow {
+        Layout.fillWidth: false
+        Layout.preferredWidth: Style.space(250)
+        label: "Скрыть хуже базы" + (sp.onlyGood && sp.hiddenWorseCount > 0 ? " · " + sp.hiddenWorseCount : "")
+        a11yName: "Скрыть стратегии хуже базы"
+        checked: sp.onlyGood
+        onFlip: sp.onlyGood = !sp.onlyGood
+      }
     }
 
     ScrollView {
@@ -1411,11 +1439,12 @@ bordered: true
                 // The surface is not layout-managed, so it may anchor one
                 // column; the rows inside that column must not anchor, or
                 // Qt warns and their height is never measured.
-                implicitHeight: rowCol.implicitHeight + Style.space(14)
+                implicitHeight: rowCol.implicitHeight + Style.space(8)
                 ColumnLayout {
                   id: rowCol
                   anchors.fill: parent
-                  anchors.margins: Style.space(7)
+                  anchors.margins: Style.space(4)
+                  anchors.leftMargin: Style.space(8)
                   spacing: Style.space(2)
                   // Main flat row: marker, title, dim meta right — xray node style.
                   RowLayout {
@@ -1474,14 +1503,14 @@ bordered: true
                   Hint {
                     Layout.fillWidth: true
                     Layout.leftMargin: Style.space(20)
-                    visible: text !== ""
+                    visible: text !== "" && isActive
                     color: sp.isWorse(modelData.name) ? root.bad : root.dim
                     text: breaksLine
                   }
                   Hint {
                     Layout.fillWidth: true
                     Layout.leftMargin: Style.space(20)
-                    visible: flowSrc !== ""
+                    visible: false
                     color: root.dim
                     text: flowSrc
                   }
