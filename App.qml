@@ -388,6 +388,7 @@ bordered: true
           ColumnLayout {
             Layout.preferredWidth: Math.min(Style.space(205), Math.max(Style.space(178), window.width * 0.19))
             Layout.minimumWidth: Style.space(178)
+            Layout.maximumWidth: Style.space(205)
             Layout.fillHeight: true
             spacing: Style.space(6)
 
@@ -1740,14 +1741,11 @@ bordered: true
         }
         Hint { Layout.fillWidth: true; text: lp.info }
       }
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
-        Hint {
-          Layout.fillWidth: true
-          text: lp.editable ? "Мои — можно править: домен или IP/CIDR на строку."
-                            : "Встроенные — только чтение; свои записи — в «Мои …»."
-        }
+
+    Section {
+      title: "ЗАПИСИ"
+      trailing: lp.editable ? "домен или IP/CIDR на строку" : "только чтение"
+      actions: [
         Button {
           bordered: false
           fontSize: Style.font.caption
@@ -1755,7 +1753,76 @@ bordered: true
           tooltipText: "Загрузить списки Flowseal заново"
           onClicked: root.svc.updateLists()
         }
+      ]
+      // The empty state is a real state, not a three-line placeholder that reads
+      // like content.
+      ColumnLayout {
+        Layout.fillWidth: true
+        visible: lp.editable && listEditor.text === ""
+        spacing: Style.space(2)
+        Label { Layout.fillWidth: true; text: "Список пуст — так и должно быть" }
+        Hint { Layout.fillWidth: true; text: "Встроенные списки уже покрывают YouTube и Discord. Добавьте свой домен, только если он не открывается." }
+        ActionButton {
+          text: "Вставить пример"
+          tooltipText: "Вставить пример записей в редактор"
+          onClicked: listEditor.text += lp.exampleText()
+        }
       }
+      Editor {
+        id: listEditor
+        Layout.fillHeight: false
+        Layout.preferredHeight: Style.space(160)
+        readOnly: !lp.editable
+        placeholderText: lp.editable ? "example.com\n203.0.113.0/24" : "Список только для чтения"
+      }
+      RowLayout {
+        id: listActions
+        visible: lp.editable
+        spacing: Style.space(8)
+        property var liveCounts: (typeof Model.validLines === "function") ? Model.validLines(listEditor.text, lp.kind) : { valid: Model.countLines(listEditor.text), dropped: 0 }
+        property bool changed: listEditor.text !== lp.loadedText
+        readonly property bool canSave: root.ready && !root.svc.busy && listActions.changed
+        // Saving is the page's filled action; clearing is destructive and never
+        // takes the emphasis.
+        PrimaryButton {
+          visible: listActions.liveCounts.valid > 0 || lp.loadedText === ""
+          enabled: listActions.canSave
+          text: "Сохранить"
+          tooltipText: "Сохранить список (" + listActions.liveCounts.valid + " строк, отброшено " + listActions.liveCounts.dropped + ")" + (lp.restartAfterSave ? " и перезапустить обход" : " без перезапуска обхода")
+          onClicked: lp.save()
+        }
+        Button {
+          bordered: false
+          fontSize: Style.font.caption
+          foreground: root.bad
+          visible: listActions.liveCounts.valid === 0 && lp.loadedText !== "" && listActions.changed
+          enabled: listActions.canSave
+          text: "Очистить и сохранить"
+          tooltipText: "Удалить все записи и сохранить пустой список" + (lp.restartAfterSave ? " с перезапуском обхода" : " без перезапуска обхода")
+          onClicked: lp.save()
+        }
+        Hint {
+          text: {
+            var c = listActions.liveCounts
+            var s = c.valid + " строк"
+            if (c.dropped > 0) s += " · отброшено " + c.dropped
+            return s
+          }
+        }
+      }
+      ToggleRow {
+        visible: lp.editable
+        label: "Перезапустить обход после сохранения"
+        note: "Новые списки применятся после перезапуска"
+        checked: lp.restartAfterSave
+        onFlip: lp.restartAfterSave = !lp.restartAfterSave
+      }
+      Hint {
+        Layout.fillWidth: true
+        visible: lp.editable && lp.saveResult !== ""
+        text: lp.saveResult
+      }
+    }
     Section {
       title: "СЕРВИСЫ"
       Hint { Layout.fillWidth: true; text: "Готовые наборы доменов в «Мои: сайты»; поддомены включаются сами." }
@@ -1772,75 +1839,6 @@ bordered: true
             }
           }
       Component.onCompleted: if (root.ready) root.svc.loadServices()
-    }
-
-    // The empty state is a real state, not a three-line placeholder that reads
-    // like content.
-    ColumnLayout {
-      Layout.fillWidth: true
-      visible: lp.editable && listEditor.text === ""
-      spacing: Style.space(2)
-      Label { Layout.fillWidth: true; text: "Список пуст — так и должно быть" }
-      Hint { Layout.fillWidth: true; text: "Встроенные списки уже покрывают YouTube и Discord. Добавьте свой домен, только если он не открывается." }
-      ActionButton {
-        text: "Вставить пример"
-        tooltipText: "Вставить пример записей в редактор"
-        onClicked: listEditor.text += lp.exampleText()
-      }
-    }
-    Editor {
-      id: listEditor
-      Layout.fillHeight: false
-      Layout.preferredHeight: Style.space(160)
-      readOnly: !lp.editable
-      placeholderText: lp.editable ? "example.com\n203.0.113.0/24" : "Список только для чтения"
-    }
-    RowLayout {
-      id: listActions
-      visible: lp.editable
-      spacing: Style.space(8)
-      property var liveCounts: (typeof Model.validLines === "function") ? Model.validLines(listEditor.text, lp.kind) : { valid: Model.countLines(listEditor.text), dropped: 0 }
-      property bool changed: listEditor.text !== lp.loadedText
-      readonly property bool canSave: root.ready && !root.svc.busy && listActions.changed
-      // Saving is the page's filled action; clearing is destructive and never
-      // takes the emphasis.
-      PrimaryButton {
-        visible: listActions.liveCounts.valid > 0 || lp.loadedText === ""
-        enabled: listActions.canSave
-        text: "Сохранить"
-        tooltipText: "Сохранить список (" + listActions.liveCounts.valid + " строк, отброшено " + listActions.liveCounts.dropped + ")" + (lp.restartAfterSave ? " и перезапустить обход" : " без перезапуска обхода")
-        onClicked: lp.save()
-      }
-      Button {
-        bordered: false
-        fontSize: Style.font.caption
-        foreground: root.bad
-        visible: listActions.liveCounts.valid === 0 && lp.loadedText !== "" && listActions.changed
-        enabled: listActions.canSave
-        text: "Очистить и сохранить"
-        tooltipText: "Удалить все записи и сохранить пустой список" + (lp.restartAfterSave ? " с перезапуском обхода" : " без перезапуска обхода")
-        onClicked: lp.save()
-      }
-      Hint {
-        text: {
-          var c = listActions.liveCounts
-          var s = c.valid + " строк"
-          if (c.dropped > 0) s += " · отброшено " + c.dropped
-          return s
-        }
-      }
-    }
-    ToggleRow {
-      visible: lp.editable
-      label: "Перезапустить обход после сохранения"
-      note: "Новые списки применятся после перезапуска"
-      checked: lp.restartAfterSave
-      onFlip: lp.restartAfterSave = !lp.restartAfterSave
-    }
-    Hint {
-      Layout.fillWidth: true
-      visible: lp.editable && lp.saveResult !== ""
-      text: lp.saveResult
     }
     }
   }
@@ -2307,15 +2305,16 @@ bordered: true
             text: "Обновить"
             tooltipText: "Обновить журнал"
             onClicked: root.svc.loadLogs()
+          },
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
+            text: ep.onlyImportant ? "Весь журнал" : "Только важное"
+            tooltipText: ep.onlyImportant ? "Показать все строки" : "Только ошибки, предупреждения и перезапуски"
+            onClicked: ep.onlyImportant = !ep.onlyImportant
           }
         ]
         Hint { visible: root.ready && root.svc.logNote !== ""; Layout.fillWidth: true; text: root.ready ? root.svc.logNote : "" }
-        ToggleRow {
-          label: "Только важное"
-          note: "Ошибки, предупреждения и перезапуски"
-          checked: ep.onlyImportant
-          onFlip: ep.onlyImportant = !ep.onlyImportant
-        }
         Editor {
           id: logEditor
           Layout.preferredHeight: Math.min(Style.space(240), Math.max(Style.space(60), logEditor.area.contentHeight + Style.space(16)))
@@ -2337,14 +2336,12 @@ bordered: true
       Section {
         title: "УДАЛЕНИЕ"
         visible: root.ready && root.svc.installed
-        Hint { Layout.fillWidth: true; text: "Останавливает обход; удаляет /opt, юниты, polkit. Данные остаются." }
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(12)
-          Button { bordered: false; fontSize: Style.font.caption; foreground: root.bad; text: ep.armRemove ? "Точно удалить?" : "Удалить"; tooltipText: ep.armRemove ? "Нажмите ещё раз для удаления" : "Удалить движок и настройки плагина"; onClicked: { if (ep.armRemove) { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(false) } else { ep.armRemove = true; armRemoveTimer.restart() } } }
-          Button { visible: ep.armRemove; bordered: false; fontSize: Style.font.caption; foreground: root.bad; text: "Вместе с данными"; tooltipText: "Удалить и свои списки и стратегии"; onClicked: { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(true) } }
+        actions: [
+          Button { bordered: false; fontSize: Style.font.caption; foreground: root.bad; text: ep.armRemove ? "Точно удалить?" : "Удалить"; tooltipText: ep.armRemove ? "Нажмите ещё раз для удаления" : "Удалить движок и настройки плагина"; onClicked: { if (ep.armRemove) { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(false) } else { ep.armRemove = true; armRemoveTimer.restart() } } },
+          Button { visible: ep.armRemove; bordered: false; fontSize: Style.font.caption; foreground: root.bad; text: "Вместе с данными"; tooltipText: "Удалить и свои списки и стратегии"; onClicked: { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(true) } },
           Button { visible: ep.armRemove; bordered: false; fontSize: Style.font.caption; text: "Отмена"; tooltipText: "Оставить всё как есть"; onClicked: { ep.armRemove = false; armRemoveTimer.stop() } }
-        }
+        ]
+        Hint { Layout.fillWidth: true; text: "Останавливает обход; удаляет /opt, юниты, polkit. Данные остаются." }
       }
     }
   }
