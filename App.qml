@@ -478,10 +478,13 @@ Item {
               color: Border.color(Border.controlSpec("normal", root.fg, Color.accent))
             }
 
-            // Bottom status card (Linear/Discord-style): the header hero says
-            // on/off, this says with what — strategy, engine build, live job.
-            Card {
+            // Bottom status: with what — strategy, engine build, live job.
+            // Flat text under the hairline, not a boxed card.
+            ColumnLayout {
               id: sbStatus
+              Layout.fillWidth: true
+              Layout.topMargin: Style.space(4)
+              spacing: Style.space(2)
               property string stateText: !root.ready ? "Загрузка…"
                   : root.svc.bypassState === "error" ? "Ошибка"
                   : root.svc.busy ? "Выполняется"
@@ -490,16 +493,12 @@ Item {
                   : root.svc.bypassState === "error" ? root.bad
                   : root.svc.busy ? Color.accent
                   : root.svc.isOn ? Color.accent : root.dim
-              RowLayout {
+              Label {
                 Layout.fillWidth: true
-                spacing: Style.space(6)
-                Label {
-                  Layout.fillWidth: true
-                  fixedWidth: true
-                  text: "● " + sbStatus.stateText
-                  color: sbStatus.dotColor
-                  font.bold: true
-                }
+                fixedWidth: true
+                text: "● " + sbStatus.stateText
+                color: sbStatus.dotColor
+                font.bold: true
               }
               Hint {
                 Layout.fillWidth: true
@@ -563,15 +562,14 @@ Item {
               }
             }
 
-            Card {
+            Section {
+              title: "ДВИЖОК ZAPRET2 НЕ УСТАНОВЛЕН"
               visible: root.ready && root.svc.reachable && !root.svc.installed
-              PanelSectionHeader { Layout.fillWidth: true; text: "Движок zapret2 не установлен"; foreground: root.fg; fontFamily: root.fontFamily }
               Hint {
                 Layout.fillWidth: true
-                text: "Установка скачает последний релиз bol-van/zapret2 с GitHub, сверит sha256 и разложит файлы в /opt/omarchy-zapret2 (root). "
-                    + "Пароль спросят один раз. Дальше включение, стратегии, списки и blockcheck2 работают без пароля."
+                text: "Скачивает релиз bol-van/zapret2, сверяет sha256 и кладёт в /opt/omarchy-zapret2. Пароль — один раз."
               }
-              Button { bordered: true; text: root.ready && root.svc.busy ? "Установка…" : "Установить"; tooltipText: "Установить движок zapret2"; onClicked: root.svc.setup() }
+              PrimaryButton { text: root.ready && root.svc.busy ? "Установка…" : "Установить"; tooltipText: "Установить движок zapret2"; onClicked: root.svc.setup() }
             }
 
             StackLayout {
@@ -630,15 +628,14 @@ Item {
       width: parent.width
       spacing: Style.space(12)
 
-      Card {
-        id: frCard
-        level: "primary"
-        visible: root.ready && frCard.frStep < 3
+      Section {
+        id: frSec
+        title: "ПЕРВЫЙ ЗАПУСК"
+        visible: root.ready && frSec.frStep < 3
         property int frStep: (typeof Model.firstRunStep === "function" && root.ready) ? Model.firstRunStep(root.svc.st, root.svc.autopickResult) : 3
-        PanelSectionHeader { Layout.fillWidth: true; text: "Первый запуск: установка → подбор → готово"; foreground: root.fg; fontFamily: root.fontFamily }
         Label {
           Layout.fillWidth: true
-          text: frCard.frStep === 1 ? "Шаг 1 из 3: установите движок zapret2 (один пароль)."
+          text: frSec.frStep === 1 ? "Шаг 1 из 3: установите движок zapret2 (один пароль)."
                : "Шаг 2 из 3: запустите автоподбор стратегии (1–3 минуты)."
         }
         Hint { Layout.fillWidth: true; text: "Шаг 3 — готово: обход включён или не нужен." }
@@ -646,22 +643,23 @@ Item {
           Layout.fillWidth: true
           spacing: Style.space(8)
           PrimaryButton {
-            visible: frCard.frStep === 1
+            visible: frSec.frStep === 1
             enabled: root.ready && !root.svc.busy
             text: root.ready && root.svc.busyLabel === "установка" ? "Установка…" : "Установить"
             tooltipText: "Установить движок zapret2 (спросит пароль один раз)"
             onClicked: root.svc.setup()
           }
           PrimaryButton {
-            visible: frCard.frStep === 2
+            visible: frSec.frStep === 2
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: "Запустить автоподбор"
             tooltipText: "Подобрать стратегию для вашей сети"
             onClicked: { root.svc.autopick([]); root.tab = 3 }
           }
           Button {
-            bordered: true
-            visible: frCard.frStep === 2
+            bordered: false
+            fontSize: Style.font.caption
+            visible: frSec.frStep === 2
             text: "Открыть Подбор"
             tooltipText: "Открыть вкладку Подбор"
             onClicked: root.tab = 3
@@ -671,33 +669,26 @@ Item {
 
       // The plugin update has one action and one name: this notice on Обзор
       // and a labelled button on the Движок diagnostics row.
-      Card {
-        level: "info"
+      Section {
+        title: "ДОСТУПНО ОБНОВЛЕНИЕ ZAPRET2"
         visible: root.sysUpdate
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(8)
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Style.space(2)
-            PanelSectionHeader { Layout.fillWidth: true; text: "Доступно обновление Zapret2"; foreground: root.fg; fontFamily: root.fontFamily }
-            Hint { Layout.fillWidth: true; text: "Обновит системную часть плагина и спросит пароль. Настройки, списки и стратегии останутся." }
-          }
-          Button {
-            bordered: true
-            text: "Открыть Движок"
-            tooltipText: "Открыть вкладку Движок: обновление плагина"
-            onClicked: root.tab = 4
-          }
+        Hint { Layout.fillWidth: true; text: "Системная часть плагина; спросит пароль. Настройки, списки и стратегии останутся." }
+        Button {
+          bordered: false
+          fontSize: Style.font.caption
+          text: "Открыть Движок"
+          tooltipText: "Открыть вкладку Движок: обновление плагина"
+          onClicked: root.tab = 4
         }
       }
 
-      Card {
+      ColumnLayout {
         id: headCard
-        level: "primary"
-        // One verdict object drives the whole card: `action === "check"` is the
+        Layout.fillWidth: true
+        spacing: Style.space(6)
+        // One verdict object drives the whole block: `action === "check"` is the
         // explicit "this check belongs to another configuration" case, so the
-        // card never has to guess from Russian substrings.
+        // block never has to guess from Russian substrings.
         readonly property var info: root.ready ? Model.verdict(root.svc.st, root.svc.check, root.svc.autopickResult) : null
         readonly property var staleStatus: root.ready ? Model.staleStatus(root.svc.check) : ({ text: "", severity: "none" })
         property bool isMismatch: !!headCard.info && headCard.info.action === "check"
@@ -795,13 +786,6 @@ Item {
           Layout.fillWidth: true
           visible: root.ready && root.svc.installed
           spacing: Style.space(8)
-          Button {
-            bordered: true
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Проверить"
-            tooltipText: "Проверить доступность с текущей стратегией"
-            onClicked: root.svc.runCheck()
-          }
           // The filled action of this page. Emphasis never depends on data.
           PrimaryButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
@@ -813,6 +797,14 @@ Item {
               if (root.svc.isOn) root.svc.turnOff()
               else root.svc.turnOn()
             }
+          }
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
+            enabled: root.ready && root.svc.installed && !root.svc.busy
+            text: "Проверить"
+            tooltipText: "Проверить доступность с текущей стратегией"
+            onClicked: root.svc.runCheck()
           }
         }
         RowLayout {
@@ -826,7 +818,8 @@ Item {
             onAccepted: root.svc.runCheck(text)
           }
           Button {
-            bordered: true
+            bordered: false
+            fontSize: Style.font.caption
             enabled: root.ready && root.svc.installed && !root.svc.busy && domainField.text.trim() !== ""
             text: "Проверить домен"
             tooltipText: "Проверить свои домены через пробел или запятую (до 10)"
@@ -835,16 +828,16 @@ Item {
         }
       }
 
-      Card {
-        visible: root.ready && root.svc.installed
+      PanelSeparator { Layout.fillWidth: true; foreground: root.fg; visible: root.ready && root.svc.installed }
+
+      Section {
         id: availCard
+        title: "ДОСТУПНОСТЬ"
+        visible: root.ready && root.svc.installed
         readonly property var staleStatus: root.ready ? Model.staleStatus(root.svc.check) : ({ text: "", severity: "none" })
-        property bool staleError: staleStatus.severity === "error"
+        property bool staleError: availCard.staleStatus.severity === "error"
         property bool showExplainer: false
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(6)
-          PanelSectionHeader { text: "Доступность"; foreground: root.fg; fontFamily: root.fontFamily }
+        actions: [
           PanelActionButton {
             iconText: "?"
             tooltipText: "Что означают проверки"
@@ -852,16 +845,17 @@ Item {
             fontFamily: root.fontFamily
             onClicked: availCard.showExplainer = !availCard.showExplainer
           }
-          Item { Layout.fillWidth: true }
-          Hint {
-            color: availCard.staleError ? root.bad : root.dim
-            text: availCard.staleStatus.text
-          }
-        }
+        ]
         Hint {
           Layout.fillWidth: true
           visible: availCard.showExplainer
           text: Model.CHECK_EXPLAINER
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: availCard.staleStatus.text !== ""
+          color: availCard.staleError ? root.bad : root.dim
+          text: availCard.staleStatus.text
         }
         Repeater {
           model: root.ready ? Model.categories(root.svc.check) : []
