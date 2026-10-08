@@ -130,8 +130,17 @@ Item {
   // tooltip and keyboard behaviour; this wrapper supplies the accent fill.
   // `selected: true` is deliberately not used: in the kit it means "chosen"
   // and would paint the button like a nav row instead of an action.
+  // Every boxed action has the same width, as in omarchy-xray: one action,
+  // one size, wherever it sits.
+  readonly property real actionW: Style.space(170)
+  component ActionButton: Button {
+    bordered: true
+    Layout.preferredWidth: Math.max(implicitWidth, root.actionW)
+  }
+
   component PrimaryButton: BorderSurface {
     id: primary
+    Layout.preferredWidth: Math.max(implicitWidth, root.actionW)
     property string text: ""
     property string tooltipText: ""
     property color fg: root.fg
@@ -629,9 +638,7 @@ Item {
             tooltipText: "Подобрать стратегию для вашей сети"
             onClicked: { root.svc.autopick([]); root.tab = 3 }
           }
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+          ActionButton {
             visible: frSec.frStep === 2
             text: "Открыть Подбор"
             tooltipText: "Открыть вкладку Подбор"
@@ -646,9 +653,7 @@ Item {
         title: "ДОСТУПНО ОБНОВЛЕНИЕ ZAPRET2"
         visible: root.sysUpdate
         Hint { Layout.fillWidth: true; text: "Системная часть плагина; спросит пароль. Настройки, списки и стратегии останутся." }
-        Button {
-          bordered: false
-          fontSize: Style.font.caption
+        ActionButton {
           text: "Открыть Движок"
           tooltipText: "Открыть вкладку Движок: обновление плагина"
           onClicked: root.tab = 4
@@ -771,9 +776,7 @@ Item {
               else root.svc.turnOn()
             }
           }
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+          ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: "Проверить"
             tooltipText: "Проверить доступность с текущей стратегией"
@@ -790,9 +793,7 @@ Item {
             placeholderText: "Проверить домен…"
             onAccepted: root.svc.runCheck(text)
           }
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+          ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy && domainField.text.trim() !== ""
             text: "Проверить домен"
             tooltipText: "Проверить свои домены через пробел или запятую (до 10)"
@@ -1293,9 +1294,7 @@ Item {
           Layout.preferredWidth: Style.space(220)
           placeholderText: "Имя (необязательно, например home)"
         }
-        Button {
-          bordered: false
-          fontSize: Style.font.caption
+        ActionButton {
           enabled: root.ready && !root.svc.busy && impText.text.trim() !== ""
           text: "Импортировать"
           tooltipText: "Проверить и сохранить как свою стратегию"
@@ -1516,10 +1515,8 @@ Item {
                         else { sp.armDelete = modelData.name; disarmTimer.restart() }
                       }
                     }
-                    Button {
+                    ActionButton {
                       visible: sp.armDelete === modelData.name && modelData.name.indexOf("my-") === 0
-                      bordered: false
-                      fontSize: Style.font.caption
                       text: "Отмена"
                       tooltipText: "Оставить стратегию"
                       onClicked: { sp.armDelete = ""; disarmTimer.stop() }
@@ -1542,9 +1539,7 @@ Item {
         Layout.fillWidth: true
         spacing: Style.space(8)
         PanelSectionHeader { Layout.fillWidth: true; text: Model.presetTitle(sp.shownName); foreground: root.fg; fontFamily: root.fontFamily }
-        Button {
-          bordered: false
-          fontSize: Style.font.caption
+        ActionButton {
           visible: root.ready && root.svc.preset !== sp.shownName
           text: "Применить"
           tooltipText: "Применить " + Model.presetTitle(sp.shownName)
@@ -1732,9 +1727,7 @@ Item {
       spacing: Style.space(2)
       Label { Layout.fillWidth: true; text: "Список пуст — так и должно быть" }
       Hint { Layout.fillWidth: true; text: "Встроенные списки уже покрывают YouTube и Discord. Добавьте свой домен, только если он не открывается." }
-      Button {
-        bordered: false
-        fontSize: Style.font.caption
+      ActionButton {
         text: "Вставить пример"
         tooltipText: "Вставить пример записей в редактор"
         onClicked: listEditor.text += lp.exampleText()
@@ -1997,9 +1990,7 @@ Item {
             color: root.bad
             text: "Нужен bind для blockcheck2: omarchy pkg add bind"
           }
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+          ActionButton {
             text: "Скопировать"
             tooltipText: "Скопировать команду установки bind (установка — вручную)"
             onClicked: root.copyText("omarchy pkg add bind")
@@ -2059,9 +2050,7 @@ Item {
                 Label { Layout.fillWidth: true; text: Model.findingTitle(modelData); font.bold: true }
                 Hint { Layout.fillWidth: true; text: modelData.args; font.family: root.monoFamily }
               }
-              Button {
-                bordered: false
-                fontSize: Style.font.caption
+              ActionButton {
                 text: "Сохранить"
                 tooltipText: "Сохранить найденное как свою стратегию"
                 onClicked: root.svc.blockcheckSave(index)
