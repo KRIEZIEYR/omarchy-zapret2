@@ -24,14 +24,34 @@ App.qml ───────┼─▶ Service.qml ─▶ bin/omarchy-zapret2 �
 omarchy plugin add https://github.com/KRIEZIEYR/omarchy-zapret2.git --enable
 ```
 
-Open **Zapret2** from the launcher (or click the shield in the bar) and press
+Open **Zapret2** from the launcher (or click the padlock in the bar) and press
 **Install**. The manager downloads the latest `zapret2-vX.tar.gz` from
 bol-van/zapret2's GitHub releases, checks it against the sha256 digest GitHub
 publishes for the asset, and asks for your password once (polkit). Then
 switch it on.
 
-Requirements: Omarchy with shell plugins, `/usr/bin/python3`, `curl`,
-`nftables`, polkit (all part of Omarchy). x86_64 only (the release binary).
+## Dependencies
+
+- Omarchy with shell plugins (Quickshell), x86_64 only (the release binary).
+- `/usr/bin/python3`, `curl`, `nftables`, polkit — all part of Omarchy.
+- The zapret2 engine itself (bol-van/zapret2, MIT) is downloaded from its
+  GitHub releases on first install and verified by sha256.
+- Optional: `bind` (`omarchy pkg add bind`) for the deep search (blockcheck2).
+
+## Remove
+
+Turn the bypass off, then remove the system part (asks for your password)
+and the plugin:
+
+```bash
+~/.config/omarchy/plugins/krieziey.omarchy-zapret2/bin/omarchy-zapret2 remove --purge
+omarchy plugin remove krieziey.omarchy-zapret2
+```
+
+`remove` deletes `/opt/omarchy-zapret2`, the systemd unit, the polkit rule and
+the nftables table; `--purge` also deletes your lists and own strategies in
+`/var/lib/omarchy-zapret2` (without it they are kept). The same action is in
+the app under Движок → Удаление.
 
 ## What it does
 
