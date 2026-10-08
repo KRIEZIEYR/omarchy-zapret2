@@ -628,8 +628,18 @@ bordered: true
 
   // --- pages ---------------------------------------------------------------
   component OverviewPage: ScrollView {
-    // Room for the scrollbar, so it never slides over the content.
-    rightPadding: Style.space(14)
+    // Square, thin scrollbar pressed into the window's right margin, outside
+    // the content, so it never covers anything and takes no room.
+    ScrollBar.vertical: ScrollBar {
+      policy: ScrollBar.AsNeeded
+      x: ov.width + Style.space(8)
+      y: ov.topPadding
+      height: ov.availableHeight
+      width: Style.space(4)
+      padding: 0
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      background: Item {}
+    }
     id: ov
     property var expanded: ({})
     property string cursorKey: ""
@@ -660,7 +670,8 @@ bordered: true
         ov.expanded = e
       }
     }
-    clip: true
+    clip: false
+    Component.onCompleted: contentItem.clip = true
     ColumnLayout {
       width: ov.availableWidth
       spacing: Style.space(12)
@@ -1410,12 +1421,23 @@ bordered: true
 
     ScrollView {
       id: stratScroll
-    // Room for the scrollbar, so it never slides over the content.
-    rightPadding: Style.space(14)
+      // Square, thin scrollbar pressed into the window's right margin, outside
+      // the content, so it never covers anything and takes no room.
+      ScrollBar.vertical: ScrollBar {
+        policy: ScrollBar.AsNeeded
+        x: stratScroll.width + Style.space(8)
+        y: stratScroll.topPadding
+        height: stratScroll.availableHeight
+        width: Style.space(4)
+        padding: 0
+        contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+        background: Item {}
+      }
       Layout.fillWidth: true
       Layout.fillHeight: true
       visible: !sp.editing && !sp.showing
-      clip: true
+      clip: false
+      Component.onCompleted: contentItem.clip = true
       ColumnLayout {
         width: stratScroll.availableWidth
         spacing: Style.space(10)
@@ -1703,8 +1725,18 @@ bordered: true
   }
 
   component ListsPage: ScrollView {
-    // Room for the scrollbar, so it never slides over the content.
-    rightPadding: Style.space(14)
+    // Square, thin scrollbar pressed into the window's right margin, outside
+    // the content, so it never covers anything and takes no room.
+    ScrollBar.vertical: ScrollBar {
+      policy: ScrollBar.AsNeeded
+      x: lp.width + Style.space(8)
+      y: lp.topPadding
+      height: lp.availableHeight
+      width: Style.space(4)
+      padding: 0
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      background: Item {}
+    }
     id: lp
     property string current: "list-general-user"
     readonly property bool editable: current.indexOf("-user") !== -1
@@ -1761,8 +1793,8 @@ bordered: true
       }, lp.restartAfterSave)
     }
     onCurrentChanged: { lp.saveResult = ""; load() }
-    Component.onCompleted: load()
-    clip: true
+    Component.onCompleted: { contentItem.clip = true; load() }
+    clip: false
 
     ColumnLayout {
       width: lp.availableWidth
@@ -1889,8 +1921,18 @@ bordered: true
   }
 
   component SearchPage: ScrollView {
-    // Room for the scrollbar, so it never slides over the content.
-    rightPadding: Style.space(14)
+    // Square, thin scrollbar pressed into the window's right margin, outside
+    // the content, so it never covers anything and takes no room.
+    ScrollBar.vertical: ScrollBar {
+      policy: ScrollBar.AsNeeded
+      x: se.width + Style.space(8)
+      y: se.topPadding
+      height: se.availableHeight
+      width: Style.space(4)
+      padding: 0
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      background: Item {}
+    }
     id: se
     property bool showFull: false
     property bool onlyImportantBc: true
@@ -1934,7 +1976,8 @@ bordered: true
       }
       return out.length > 0 ? out.join(" ") : "youtube.com discord.com"
     }
-    clip: true
+    clip: false
+    Component.onCompleted: contentItem.clip = true
     ColumnLayout {
       width: se.availableWidth
       spacing: Style.space(12)
@@ -2212,10 +2255,21 @@ bordered: true
   }
 
   component EnginePage: ScrollView {
-    // Room for the scrollbar, so it never slides over the content.
-    rightPadding: Style.space(14)
+    // Square, thin scrollbar pressed into the window's right margin, outside
+    // the content, so it never covers anything and takes no room.
+    ScrollBar.vertical: ScrollBar {
+      policy: ScrollBar.AsNeeded
+      x: ep.width + Style.space(8)
+      y: ep.topPadding
+      height: ep.availableHeight
+      width: Style.space(4)
+      padding: 0
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      background: Item {}
+    }
     id: ep
-    clip: true
+    clip: false
+    Component.onCompleted: contentItem.clip = true
     property bool armRemove: false
     property int hoverDoc: -1
     property bool onlyImportant: true
@@ -2402,8 +2456,18 @@ bordered: true
   }
 
   component SettingsPage: ScrollView {
-    // Room for the scrollbar, so it never slides over the content.
-    rightPadding: Style.space(14)
+    // Square, thin scrollbar pressed into the window's right margin, outside
+    // the content, so it never covers anything and takes no room.
+    ScrollBar.vertical: ScrollBar {
+      policy: ScrollBar.AsNeeded
+      x: stp.width + Style.space(8)
+      y: stp.topPadding
+      height: stp.availableHeight
+      width: Style.space(4)
+      padding: 0
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      background: Item {}
+    }
     id: stp
     property bool hostsConfirm: false
     property string backupImport: ""
@@ -2412,7 +2476,8 @@ bordered: true
         || gameDrop.popupOpen || ipsetDrop.popupOpen || voiceDrop.popupOpen
         || discordFakeDrop.popupOpen || gameFakeDrop.popupOpen
     Timer { id: hostsTimer; interval: 4000; onTriggered: stp.hostsConfirm = false }
-    clip: true
+    clip: false
+    Component.onCompleted: contentItem.clip = true
     ColumnLayout {
       width: stp.availableWidth
       spacing: Style.space(12)
