@@ -2348,7 +2348,6 @@ bordered: true
 
   component SettingsPage: ScrollView {
     id: stp
-    property bool showExtra: false
     property bool hostsConfirm: false
     property string backupImport: ""
     property string backupExported: ""
@@ -2389,7 +2388,6 @@ bordered: true
         }
       }
 
-      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
 
       Section {
         title: "СЕТЬ И DNS"
@@ -2458,23 +2456,11 @@ bordered: true
         }
       }
 
-      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
-
-      ColumnLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(6)
-        RowLayout {
-          Layout.fillWidth: true
-          Disclosure {
-            caption: "Дополнительно"
-            expanded: stp.showExtra
-            onToggled: stp.showExtra = !stp.showExtra
-          }
-        }
+      Section {
+        title: "ФЕЙКИ"
         Dropdown {
           id: discordFakeDrop
           Layout.fillWidth: true
-          visible: stp.showExtra
           label: "Фейк для голоса Discord"
           value: root.ready ? (root.svc.settings.discordFake || "default") : "default"
           options: (root.ready && root.svc.fakeChoices ? root.svc.fakeChoices : ["default"]).map(function(n) {
@@ -2485,7 +2471,6 @@ bordered: true
         Dropdown {
           id: gameFakeDrop
           Layout.fillWidth: true
-          visible: stp.showExtra
           label: "Фейк для игр"
           value: root.ready ? (root.svc.settings.gameFake || "default") : "default"
           options: (root.ready && root.svc.fakeChoices ? root.svc.fakeChoices : ["default"]).map(function(n) {
@@ -2495,7 +2480,6 @@ bordered: true
         }
       }
 
-      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
 
       Section {
         title: "HOSTS FLOWSEAL"
@@ -2530,7 +2514,6 @@ bordered: true
         }
       }
 
-      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
 
       Section {
         title: "DISCORD"
@@ -2546,7 +2529,6 @@ bordered: true
         Hint { Layout.fillWidth: true; text: "Помогает, если Discord не грузится; закройте Discord перед очисткой" }
       }
 
-      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
 
       Section {
         title: "РЕЗЕРВНАЯ КОПИЯ"
@@ -2597,7 +2579,6 @@ bordered: true
         }
       }
 
-      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
 
       Section {
         title: "БЕЗОПАСНЫЙ DNS"
@@ -2629,7 +2610,6 @@ bordered: true
         }
       }
 
-      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
 
       Section {
         title: "ГОРЯЧИЕ КЛАВИШИ"
