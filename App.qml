@@ -628,6 +628,8 @@ bordered: true
 
   // --- pages ---------------------------------------------------------------
   component OverviewPage: ScrollView {
+    // Room for the scrollbar, so it never slides over the content.
+    rightPadding: Style.space(14)
     id: ov
     property var expanded: ({})
     property string cursorKey: ""
@@ -1408,6 +1410,8 @@ bordered: true
 
     ScrollView {
       id: stratScroll
+    // Room for the scrollbar, so it never slides over the content.
+    rightPadding: Style.space(14)
       Layout.fillWidth: true
       Layout.fillHeight: true
       visible: !sp.editing && !sp.showing
@@ -1699,6 +1703,8 @@ bordered: true
   }
 
   component ListsPage: ScrollView {
+    // Room for the scrollbar, so it never slides over the content.
+    rightPadding: Style.space(14)
     id: lp
     property string current: "list-general-user"
     readonly property bool editable: current.indexOf("-user") !== -1
@@ -1883,6 +1889,8 @@ bordered: true
   }
 
   component SearchPage: ScrollView {
+    // Room for the scrollbar, so it never slides over the content.
+    rightPadding: Style.space(14)
     id: se
     property bool showFull: false
     property bool onlyImportantBc: true
@@ -2204,6 +2212,8 @@ bordered: true
   }
 
   component EnginePage: ScrollView {
+    // Room for the scrollbar, so it never slides over the content.
+    rightPadding: Style.space(14)
     id: ep
     clip: true
     property bool armRemove: false
@@ -2392,6 +2402,8 @@ bordered: true
   }
 
   component SettingsPage: ScrollView {
+    // Room for the scrollbar, so it never slides over the content.
+    rightPadding: Style.space(14)
     id: stp
     property bool hostsConfirm: false
     property string backupImport: ""
