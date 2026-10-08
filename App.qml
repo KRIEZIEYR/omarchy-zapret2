@@ -56,6 +56,13 @@ Item {
     closingFromHost = false
     window.visible = true
     if (ready) { svc.appOpen = true; svc.refresh() }
+    // {"scroll": 0..1} jumps the page to that fraction (screenshots, links).
+    if (p.scroll !== undefined) Qt.callLater(function() {
+      var pg = [ovPg, null, lpPg, sePg, epPg, stpPg][tab]
+      if (!pg) return
+      var f = pg.contentItem
+      f.contentY = Math.max(0, (f.contentHeight - f.height) * Math.max(0, Math.min(1, Number(p.scroll) || 0)))
+    })
   }
 
   function close() {
@@ -2044,17 +2051,14 @@ bordered: true
             onClicked: root.copyText("omarchy pkg add bind")
           }
         }
-        Hint {
-          Layout.fillWidth: true
-          text: "Официальный перебор zapret2. Обход на время поиска выключается."
-        }
+        // Domains and mode on one line; one hint line under it.
         RowLayout {
           Layout.fillWidth: true
+          spacing: Style.space(8)
           TextField { id: domains; Layout.fillWidth: true; text: se.failingHosts; placeholderText: "домены через пробел" }
           Dropdown {
             id: level
-            Layout.preferredWidth: Style.space(180)
-            label: "Режим"
+            Layout.preferredWidth: root.actionW
             value: "quick"
             options: [{ value: "quick", label: "быстрый" }, { value: "standard", label: "обычный" }]
             onChanged: function(v) { value = v }
@@ -2062,17 +2066,13 @@ bordered: true
         }
         Hint {
           Layout.fillWidth: true
-          visible: level.value === "standard"
-          color: Color.accent
-          text: "Обычный поиск может занять до часа и дольше."
-        }
-        Hint {
-          Layout.fillWidth: true
+          color: level.value === "standard" ? Color.accent : root.dim
           text: {
             var c = Model.validHosts(domains.text)
-            var base = "Подставлено из неуспешных проверок — можно править"
-            if ((c.total | 0) === 0) return base
-            return base + " · " + c.valid + " из " + c.total + " корректны"
+            var parts = ["Обход на время поиска выключается"]
+            if ((c.total | 0) > 0) parts.push(c.valid + " из " + c.total + " доменов корректны")
+            parts.push(level.value === "standard" ? "обычный — до часа и дольше" : "быстрый — минуты")
+            return parts.join(" · ")
           }
         }
         Repeater {
@@ -2109,8 +2109,12 @@ bordered: true
             }
           }
         }
-        Hint {
+        RowLayout {
+          Layout.fillWidth: true
           visible: root.ready && root.svc.blockcheck !== null && root.svc.blockcheck.lines > 0
+          spacing: Style.space(8)
+        Hint {
+          Layout.fillWidth: true
           text: {
             if (!root.ready || !root.svc.blockcheck) return ""
             var bc = root.svc.blockcheck
@@ -2119,19 +2123,13 @@ bordered: true
             return prefix + bc.lines + " строк журнала"
           }
         }
-        ToggleRow {
-          visible: root.ready && root.svc.blockcheck !== null && root.svc.blockcheck.lines > 0
-          label: "Показать весь журнал"
-          note: "Когда выключено — только ошибки и найденные стратегии"
-          checked: se.showFull
-          onFlip: se.showFull = !se.showFull
-        }
-        ToggleRow {
-          visible: root.ready && root.svc.blockcheck !== null && root.svc.blockcheck.lines > 0 && !se.showFull
-          label: "Только важное"
-          note: "Ошибки, найденное и итог; служебное скрыто"
-          checked: se.onlyImportantBc
-          onFlip: se.onlyImportantBc = !se.onlyImportantBc
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
+            text: se.showFull ? "Только важное" : "Весь журнал"
+            tooltipText: se.showFull ? "Скрыть служебные строки" : "Показать все строки журнала"
+            onClicked: se.showFull = !se.showFull
+          }
         }
         Editor {
           id: bcEditor
