@@ -114,7 +114,7 @@ Item {
     }, label, input)
   }
 
-  function longJob(args, label, okText, after) {
+  function longJob(args, label, okText, after, input) {
     if (_long.running) { flash("Подождите: " + _long._label); return false }
     lastError = ""
     progressInfo = null
@@ -124,7 +124,7 @@ Item {
       else if (okText) flash(typeof okText === "function" ? okText(r.data) : okText)
       if (after) after(r)
       refresh()
-    }, label)
+    }, label, input)
   }
 
   function flash(text) {
@@ -324,8 +324,9 @@ Item {
   }
   function importBackup(data, cb) { act(["import"], "импорт", "Резервная копия восстановлена", cb, data) }
   function importStrategy(input, name, cb) {
-    // Pasted text goes through stdin, a file path or http(s) link as the
-    // source argument — the manager validates either as data.
+    // Pasted text and links go through stdin, never argv: a signed link's
+    // query token must not be visible to other local processes. A file path
+    // is the source argument. The manager validates every source as data.
     var args = ["strategy", "import"]
     var nm = name === undefined || name === null ? "" : String(name).trim()
     if (nm !== "") {
@@ -337,6 +338,7 @@ Item {
     var kind = Model.importSourceKind(t)
     if (kind === "url" && !Model.isImportableUrl(t)) { flash("Ссылка должна начинаться с http(s)://"); return false }
     if (kind === "text") return act(args, "импорт стратегии", "Стратегия импортирована", cb, input)
+    if (kind === "url") return longJob(args.concat(["--url-stdin"]), "импорт стратегии", "Стратегия импортирована", cb, t + "\n")
     return longJob(args.concat([t]), "импорт стратегии", "Стратегия импортирована", cb)
   }
   function copyStrategy(src, name, cb) {

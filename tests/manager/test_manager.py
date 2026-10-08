@@ -1009,6 +1009,29 @@ class StrategyImport(unittest.TestCase):
             with open(os.path.join(var, "custom", "my-fromurl.txt"), encoding="utf-8") as f:
                 zm.parse_preset(f.read())
 
+    def test_import_url_stdin_ok(self):
+        # The link arrives on stdin, so a signed URL never appears in argv.
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            seen = []
+            emitted = {}
+            with mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(zm, "VAR", var), \
+                 mock.patch.object(zm, "read_stdin", lambda cap: "https://example.com/s.txt?token=secret\n"), \
+                 mock.patch.object(zm, "fetch_strategy_url", lambda url: seen.append(url) or MINIMAL), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_strategy(["import", "--url-stdin", "--name", "signed"])
+            self.assertEqual(seen, ["https://example.com/s.txt?token=secret"])
+            self.assertEqual(emitted.get("name"), "my-signed")
+
+    def test_import_url_stdin_rejects_non_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._var(tmp)
+            with self.assertRaises(zm.Fail):
+                self._strategy(var, ["import", "--url-stdin"], stdin="ftp://example.com/s.txt\n")
+            with self.assertRaises(zm.Fail):
+                self._strategy(var, ["import", "--url-stdin", "/tmp/x"], stdin="https://example.com/s\n")
+
     def test_fetch_bad_scheme_rejected(self):
         with self.assertRaises(zm.Fail):
             zm.fetch_strategy_url("ftp://example.com/s.txt")

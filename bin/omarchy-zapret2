@@ -31,7 +31,7 @@ allowlist of nfqws2 options and Lua desync functions.
   discord-cache clear          delete Discord cache folders
   dns status|flush               show DNS servers, flush DNS cache
   custom save <name> | show <name> | rm <name>     own strategies (save reads stdin)
-  strategy import [--name <name>] [file|url]   import a strategy (stdin, file or http(s) link)
+  strategy import [--name <name>] [file|url|--url-stdin]   import a strategy (stdin text, file, link; --url-stdin reads the link from stdin)
   strategy copy <src> [new-name]               duplicate an own (my-*) strategy
   list show <name> | list save <name> [--no-restart]   user lists (save reads stdin)
   export                           backup settings + user lists + own strategies (base64 zip)
@@ -1398,20 +1398,31 @@ def cmd_strategy(args):
         raise Fail("usage: strategy import|copy ...")
     verb = args[0]
     if verb == "import":
-        name, pos = None, []
+        name, pos, url_stdin = None, [], False
         i = 1
         while i < len(args):
-            if args[i] == "--name":
+            if args[i] == "--url-stdin":
+                url_stdin = True
+                i += 1
+            elif args[i] == "--name":
                 if i + 1 >= len(args):
-                    raise Fail("usage: strategy import [--name <name>] [file|url]")
+                    raise Fail("usage: strategy import [--name <name>] [file|url|--url-stdin]")
                 name = custom_name(args[i + 1])
                 i += 2
             else:
                 pos.append(args[i])
                 i += 1
-        if len(pos) > 1:
-            raise Fail("usage: strategy import [--name <name>] [file|url]")
-        if pos and re.match(r"^https?://", pos[0], re.IGNORECASE):
+        if len(pos) > 1 or (url_stdin and pos):
+            raise Fail("usage: strategy import [--name <name>] [file|url|--url-stdin]")
+        if url_stdin:
+            # The link comes on stdin so a signed URL's token never shows up
+            # in the process list.
+            url = (read_stdin(4096) or "").strip().splitlines()
+            url = url[0].strip() if url else ""
+            if not re.match(r"^https?://", url, re.IGNORECASE):
+                raise Fail("expected an http(s) link on stdin")
+            text = fetch_strategy_url(url)
+        elif pos and re.match(r"^https?://", pos[0], re.IGNORECASE):
             text = fetch_strategy_url(pos[0])
         elif pos:
             text = read_nofollow(pos[0], MAX_SMALL)
