@@ -4,10 +4,9 @@ import qs.Commons
 import qs.Ui
 import "model/Zapret.js" as Model
 
-// Flat section: a small uppercase header line with optional dim trailing note
-// and optional right-side text actions, plus content below. Sections are NOT
-// boxed: callers divide them with a PanelSeparator. Mirrors the omarchy-xray
-// panel language (SectionTitle header row without the box).
+// Section: a small uppercase header line with optional dim trailing note and
+// optional right-side text actions, plus an outlined box holding the content.
+// Rows inside carry their own outline too.
 ColumnLayout {
   id: root
 
@@ -50,9 +49,18 @@ ColumnLayout {
     }
   }
 
-  ColumnLayout {
-    id: body
+  BorderSurface {
     Layout.fillWidth: true
-    spacing: Style.space(6)
+    implicitHeight: body.implicitHeight + Style.space(20)
+    color: "transparent"
+    borderSpec: Border.controlSpec("normal", root.foreground, Color.accent)
+    radius: Style.cornerRadius
+
+    ColumnLayout {
+      id: body
+      anchors.fill: parent
+      anchors.margins: Style.space(10)
+      spacing: Style.space(6)
+    }
   }
 }

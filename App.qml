@@ -172,6 +172,7 @@ Item {
   }
 
   component PickRow: CursorSurface {
+    bordered: true
     id: pickRow
     required property var row
     property int baseScore: -1
@@ -836,6 +837,7 @@ Item {
             Layout.fillWidth: true
             spacing: Style.space(2)
             CursorSurface {
+              bordered: true
               Layout.fillWidth: true
               implicitHeight: catHead.implicitHeight + Style.space(8)
               foreground: root.fg
@@ -1348,6 +1350,7 @@ Item {
               id: rowsRep
               model: sp.groupRows(modelData)
               delegate: CursorSurface {
+                bordered: true
                 required property var modelData
                 property bool isActive: root.ready && root.svc.preset === modelData.name
                 property bool isBest: {
@@ -1705,17 +1708,18 @@ Item {
     Section {
       title: "СЕРВИСЫ"
       Hint { Layout.fillWidth: true; text: "Готовые наборы доменов в «Мои: сайты»; поддомены включаются сами." }
-      Repeater {
-        model: root.ready ? root.svc.services : []
-        delegate: ToggleRow {
-          required property var modelData
-          label: Model.serviceTitle(modelData.name)
-          a11yName: Model.serviceTitle(modelData.name) + ", " + Model.serviceStateLabel(modelData.active)
-          note: modelData.domains.join(", ") + " · " + Model.serviceStateLabel(modelData.active)
-          checked: modelData.active === true
-          onFlip: modelData.active === true ? root.svc.serviceOff(modelData.name) : root.svc.serviceOn(modelData.name)
-        }
-      }
+          Repeater {
+            model: root.ready ? root.svc.services : []
+            delegate: ToggleRow {
+              required property var modelData
+              foreground: root.fg
+              label: Model.serviceTitle(modelData.name)
+              a11yName: Model.serviceTitle(modelData.name) + ", " + Model.serviceStateLabel(modelData.active)
+              note: modelData.domains.join(", ") + " · " + Model.serviceStateLabel(modelData.active)
+              checked: modelData.active === true
+              onFlip: modelData.active === true ? root.svc.serviceOff(modelData.name) : root.svc.serviceOn(modelData.name)
+            }
+          }
       Component.onCompleted: if (root.ready) root.svc.loadServices()
     }
 
@@ -2044,6 +2048,7 @@ Item {
         Repeater {
           model: root.ready && root.svc.blockcheck ? root.svc.blockcheck.found : []
           delegate: CursorSurface {
+            bordered: true
             required property var modelData
             required property int index
             foreground: root.fg
@@ -2187,6 +2192,7 @@ Item {
         Repeater {
           model: root.ready ? root.svc.doctorItems : []
           delegate: CursorSurface {
+            bordered: true
             id: docRow
             required property var modelData
             required property int index

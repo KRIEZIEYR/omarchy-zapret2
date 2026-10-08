@@ -4,10 +4,10 @@ import qs.Commons
 import qs.Ui
 import "model/Zapret.js" as Model
 
-// Flat toggle row: dim label on the left, switch beside it, dim one-line
-// description below. No box. Clicking the label flips too (a small switch is
-// a small target). Mirrors the omarchy-xray panel's SettingToggle.
-ColumnLayout {
+// Toggle row in its own outline: label on the left, switch on the right,
+// dim one-line description below. The outline ties each switch to its label.
+// Clicking the label flips too (a small switch is a small target).
+BorderSurface {
   id: root
 
   property string label: ""
@@ -23,6 +23,17 @@ ColumnLayout {
   signal flip()
 
   Layout.fillWidth: true
+  implicitHeight: body.implicitHeight + Style.space(16)
+  color: "transparent"
+  borderSpec: Border.controlSpec("normal", root.foreground, Color.accent)
+  radius: Style.cornerRadius
+
+  ColumnLayout {
+  id: body
+  anchors.fill: parent
+  anchors.margins: Style.space(8)
+  anchors.leftMargin: Style.space(12)
+  anchors.rightMargin: Style.space(12)
   spacing: Style.space(2)
 
   RowLayout {
@@ -35,7 +46,7 @@ ColumnLayout {
       Layout.alignment: Qt.AlignVCenter
       textFormat: Text.PlainText
       text: root.label
-      color: labelHover.containsMouse ? root.foreground : Model.mixColor(root.foreground, Color.popups.background, 0.34)
+      color: root.foreground
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
       elide: Text.ElideRight
@@ -87,4 +98,5 @@ ColumnLayout {
     elide: Text.ElideRight
     maximumLineCount: 1
   }
+}
 }
