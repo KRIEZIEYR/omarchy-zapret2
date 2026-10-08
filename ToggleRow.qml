@@ -25,7 +25,8 @@ BorderSurface {
   Layout.fillWidth: true
   implicitHeight: body.implicitHeight + Style.space(16)
   color: "transparent"
-  borderSpec: Border.controlSpec("normal", root.foreground, Color.accent)
+  // Nested inside a section box: a quieter outline than the section.
+  borderSpec: Border.flat(Model.mixColor(root.foreground, Color.popups.background, 0.78), 1)
   radius: Style.cornerRadius
 
   ColumnLayout {

@@ -133,6 +133,9 @@ Item {
   // Every boxed action has the same width, as in omarchy-xray: one action,
   // one size, wherever it sits.
   readonly property real actionW: Style.space(170)
+  // Boxes nested inside a section box get a quieter outline so the eye reads
+  // the section first and its rows second.
+  readonly property color innerLine: Model.mixColor(root.fg, root.bg, 0.78)
   component ActionButton: Button {
     bordered: true
     Layout.preferredWidth: Math.max(implicitWidth, root.actionW)
@@ -181,7 +184,10 @@ Item {
   }
 
   component PickRow: CursorSurface {
-    bordered: true
+bordered: true
+    borderSpec: hasCursor ? Border.controlSpec("hover-cursor", root.fg, Color.accent)
+      : current ? Border.controlSpec("selected", root.fg, Color.accent)
+      : Border.flat(root.innerLine, 1)
     id: pickRow
     required property var row
     property int baseScore: -1
@@ -839,7 +845,10 @@ Item {
             Layout.fillWidth: true
             spacing: Style.space(2)
             CursorSurface {
-              bordered: true
+bordered: true
+              borderSpec: hasCursor ? Border.controlSpec("hover-cursor", root.fg, Color.accent)
+                : current ? Border.controlSpec("selected", root.fg, Color.accent)
+                : Border.flat(root.innerLine, 1)
               Layout.fillWidth: true
               implicitHeight: catHead.implicitHeight + Style.space(8)
               foreground: root.fg
@@ -1350,7 +1359,10 @@ Item {
               id: rowsRep
               model: sp.groupRows(modelData)
               delegate: CursorSurface {
-                bordered: true
+bordered: true
+                borderSpec: hasCursor ? Border.controlSpec("hover-cursor", root.fg, Color.accent)
+                  : current ? Border.controlSpec("selected", root.fg, Color.accent)
+                  : Border.flat(root.innerLine, 1)
                 required property var modelData
                 property bool isActive: root.ready && root.svc.preset === modelData.name
                 property bool isBest: {
@@ -2030,7 +2042,10 @@ Item {
         Repeater {
           model: root.ready && root.svc.blockcheck ? root.svc.blockcheck.found : []
           delegate: CursorSurface {
-            bordered: true
+bordered: true
+            borderSpec: hasCursor ? Border.controlSpec("hover-cursor", root.fg, Color.accent)
+              : current ? Border.controlSpec("selected", root.fg, Color.accent)
+              : Border.flat(root.innerLine, 1)
             required property var modelData
             required property int index
             foreground: root.fg
@@ -2172,7 +2187,10 @@ Item {
         Repeater {
           model: root.ready ? root.svc.doctorItems : []
           delegate: CursorSurface {
-            bordered: true
+bordered: true
+            borderSpec: hasCursor ? Border.controlSpec("hover-cursor", root.fg, Color.accent)
+              : current ? Border.controlSpec("selected", root.fg, Color.accent)
+              : Border.flat(root.innerLine, 1)
             id: docRow
             required property var modelData
             required property int index
