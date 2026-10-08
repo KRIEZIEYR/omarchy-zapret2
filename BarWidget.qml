@@ -368,7 +368,8 @@ Panel {
           Button {
             visible: root.statusKind === "error"
             Layout.alignment: Qt.AlignTop
-            bordered: true
+            bordered: false
+            fontSize: Style.font.caption
             text: "Журнал"
             tooltipText: "Открыть диагностику и журнал (вкладка Движок)"
             onClicked: { root.close(); root.svc.openApp(4) }
@@ -402,18 +403,30 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
-          Button {
+          // First run: installing is the popup's one filled action.
+          BorderSurface {
             Layout.fillWidth: true
-            bordered: true
-            implicitHeight: root.ctlHeight
-            hasCursor: root.cursorRow === "install"
-            text: root.ready && root.svc.busy ? "Установка…" : "Установить"
-            onClicked: root.svc.setup()
-            onHovered: function(h) { if (h) root.setCursor("install") }
-            Accessible.role: Accessible.Button
-            Accessible.name: "Установить движок zapret2"
-            Accessible.focusable: true
-            Accessible.focused: hasCursor
+            Layout.alignment: Qt.AlignVCenter
+            implicitWidth: installBtn.implicitWidth + Style.space(24)
+            implicitHeight: Math.max(installBtn.implicitHeight, root.ctlHeight)
+            color: Style.selectedFillFor(root.fg, Color.accent)
+            borderSpec: Border.controlSpec("selected", root.fg, Color.accent)
+            radius: Style.cornerRadius
+            Button {
+              id: installBtn
+              anchors.fill: parent
+              bordered: false
+              foreground: Style.selectedStateColor(root.fg, Color.accent)
+              hasCursor: root.cursorRow === "install"
+              text: root.ready && root.svc.busy ? "Установка…" : "Установить"
+              tooltipText: "Установить движок zapret2 (t)"
+              onClicked: root.svc.setup()
+              onHovered: function(h) { if (h) root.setCursor("install") }
+              Accessible.role: Accessible.Button
+              Accessible.name: "Установить движок zapret2"
+              Accessible.focusable: true
+              Accessible.focused: hasCursor
+            }
           }
         }
 
@@ -483,7 +496,7 @@ Panel {
           spacing: Style.space(4)
           RowLayout {
             Layout.fillWidth: true
-            PanelSectionHeader { text: "Доступность"; Layout.fillWidth: true }
+            PanelSectionHeader { text: "Доступность"; Layout.fillWidth: true; foreground: root.fg; fontFamily: root.fontFamily }
             HoverHandler { id: statusHover }
             Text {
               id: statusText
@@ -565,7 +578,8 @@ Panel {
           }
           Button {
             Layout.fillWidth: true
-            bordered: true
+            bordered: false
+            fontSize: Style.font.caption
             implicitHeight: root.ctlHeight
             hasCursor: root.cursorRow === "open"
             text: "Открыть"
