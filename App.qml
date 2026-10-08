@@ -299,12 +299,11 @@ Item {
     title: "Zapret2"
     visible: false
     color: root.bg
+    // Fixed size: min == max, so Hyprland floats it instead of tiling.
     implicitWidth: Style.space(900)
-    implicitHeight: Style.space(580)
-    minimumSize: Qt.size(Style.space(640), Style.space(440))
-    // The shell may offer more room than the content can use; capping the
-    // window keeps pages from turning into a column of cards over 60% void.
-    maximumSize: Qt.size(Style.space(1280), Style.space(720))
+    implicitHeight: Style.space(640)
+    minimumSize: Qt.size(implicitWidth, implicitHeight)
+    maximumSize: Qt.size(implicitWidth, implicitHeight)
     // closed by the window manager (Super+W, close button): tell the shell
     onVisibleChanged: if (!visible && !root.closingFromHost) root.dismiss()
 
