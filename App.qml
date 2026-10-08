@@ -2352,31 +2352,25 @@ Item {
       spacing: Style.space(12)
       enabled: root.ready && root.svc.installed
 
-      Card {
-        level: "primary"
-        Toggle {
-          Layout.fillWidth: true
+      Section {
+        title: "ОСНОВНОЕ"
+        ToggleRow {
           label: "Включать при входе"
-          description: "Шелл включает обход после входа в систему"
+          note: "Шелл включает обход после входа в систему"
           checked: root.ready && root.svc.settings.autostart === true
-          foreground: root.fg
-          onClicked: root.svc.toggleAutostart()
+          onFlip: root.svc.toggleAutostart()
         }
-        Toggle {
-          Layout.fillWidth: true
+        ToggleRow {
           label: "IPv6"
-          description: "Обход и для IPv6-соединений. Включено по умолчанию."
+          note: "Обход и для IPv6-соединений"
           checked: root.ready && root.svc.settings.ipv6 !== false
-          foreground: root.fg
-          onClicked: root.svc.toggleIpv6()
+          onFlip: root.svc.toggleIpv6()
         }
-        Toggle {
-          Layout.fillWidth: true
+        ToggleRow {
           label: "Проверять обновления ежедневно"
-          description: "Движок, списки и стратегии — раз в сутки, в фоне"
+          note: "Движок, списки и стратегии — раз в сутки, в фоне"
           checked: root.ready && root.svc.updateCheck === true
-          foreground: root.fg
-          onClicked: root.svc.toggleUpdateCheck()
+          onFlip: root.svc.toggleUpdateCheck()
         }
         Hint {
           Layout.fillWidth: true
@@ -2385,10 +2379,10 @@ Item {
         }
       }
 
-      Card {
-        level: "info"
-        PanelSectionHeader { Layout.fillWidth: true; text: "Сеть и DNS"; foreground: root.fg; fontFamily: root.fontFamily }
-        Hint { Layout.fillWidth: true; text: "DNS и игровые параметры влияют на весь обход; редкие настройки находятся в «Дополнительно»." }
+      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
+
+      Section {
+        title: "СЕТЬ И DNS"
         Dropdown {
           id: gameDrop
           Layout.fillWidth: true
@@ -2398,7 +2392,7 @@ Item {
                     { value: "udp", label: "UDP 1024–65535" }, { value: "all", label: "TCP и UDP" }]
           onChanged: function(v) { root.svc.setOption("game", v) }
         }
-        Hint { Layout.fillWidth: true; text: "Обход для игр по IP-сетям (ipset). Нагружает сильнее: включайте, если игра не подключается." }
+        Hint { Layout.fillWidth: true; text: "Если игра не подключается; нагружает сильнее." }
         RowLayout {
           Layout.fillWidth: true
           visible: root.ready && (root.svc.settings.game || "off") !== "off"
@@ -2454,7 +2448,11 @@ Item {
         }
       }
 
-      Card {
+      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(6)
         RowLayout {
           Layout.fillWidth: true
           Disclosure {
@@ -2487,76 +2485,65 @@ Item {
         }
       }
 
-      Card {
-        RowLayout {
-          Layout.fillWidth: true
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 0
-            PanelSectionHeader { Layout.fillWidth: true; text: "Hosts Flowseal"; foreground: root.fg; fontFamily: root.fontFamily }
-            Hint { Layout.fillWidth: true; text: "Добавляет в /etc/hosts адреса Discord-серверов из репозитория Flowseal, нужен пароль" }
-            Hint {
-              Layout.fillWidth: true
-              visible: root.ready && root.svc.hostsOn === true
-              text: "Включён"
-            }
-          }
+      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
+
+      Section {
+        title: "HOSTS FLOWSEAL"
+        trailing: root.ready && root.svc.hostsOn === true ? "включён" : ""
+        actions: [
           Button {
+            bordered: false
+            fontSize: Style.font.caption
             visible: root.ready && root.svc.hostsOn === true
-            bordered: true
             enabled: root.ready && !root.svc.busy
             text: "Выключить"
             tooltipText: "Убрать записи из /etc/hosts (спросит пароль)"
             onClicked: root.svc.hostsSet(false)
-          }
-          // Enabling is the page's one filled action; turning it back off is a
-          // revert and stays secondary.
-          PrimaryButton {
+          },
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
             visible: !(root.ready && root.svc.hostsOn === true) && !stp.hostsConfirm
             text: "Включить"
             tooltipText: "Добавить адреса Discord-серверов из Flowseal в /etc/hosts (спросит пароль)"
             onClicked: { stp.hostsConfirm = true; hostsTimer.restart() }
           }
-        }
+        ]
+        Hint { Layout.fillWidth: true; text: "Адреса Discord-серверов из Flowseal в /etc/hosts · нужен пароль" }
         RowLayout {
           Layout.fillWidth: true
           visible: stp.hostsConfirm && !(root.ready && root.svc.hostsOn)
+          spacing: Style.space(12)
           Hint { Layout.fillWidth: true; text: "Изменит /etc/hosts, нужен пароль" }
-          Button { bordered: true; text: "Подтвердить"; tooltipText: "Изменить /etc/hosts (спросит пароль)"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop(); root.svc.hostsSet(true) } }
-          Button { text: "Отмена"; tooltipText: "Оставить /etc/hosts как есть"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop() } }
+          Button { bordered: false; fontSize: Style.font.caption; text: "Подтвердить"; tooltipText: "Изменить /etc/hosts (спросит пароль)"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop(); root.svc.hostsSet(true) } }
+          Button { bordered: false; fontSize: Style.font.caption; text: "Отмена"; tooltipText: "Оставить /etc/hosts как есть"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop() } }
         }
       }
 
-      Card {
-        RowLayout {
-          Layout.fillWidth: true
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 0
-            PanelSectionHeader { Layout.fillWidth: true; text: "Discord"; foreground: root.fg; fontFamily: root.fontFamily }
-            Hint { Layout.fillWidth: true; text: "Помогает, если Discord не грузится после включения обхода; закройте Discord перед очисткой" }
+      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
+
+      Section {
+        title: "DISCORD"
+        actions: [
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
+            text: "Очистить кэш"
+            tooltipText: "Удалить кэш Discord"
+            onClicked: root.svc.clearDiscordCache()
           }
-          Button { bordered: true; text: "Очистить кэш Discord"; tooltipText: "Удалить кэш Discord"; onClicked: root.svc.clearDiscordCache() }
-        }
+        ]
+        Hint { Layout.fillWidth: true; text: "Помогает, если Discord не грузится; закройте Discord перед очисткой" }
       }
 
-      Card {
-        level: "primary"
-        RowLayout {
-          Layout.fillWidth: true
-          PanelSectionHeader { Layout.fillWidth: true; text: "Резервная копия"; foreground: root.fg; fontFamily: root.fontFamily }
-        }
-        PanelSectionHeader { Layout.fillWidth: true; text: "Резервная копия"; foreground: root.fg; fontFamily: root.fontFamily }
-        Hint { Layout.fillWidth: true; text: "Настройки, пользовательские списки и свои стратегии в одном файле (base64). Экспорт копирует его в буфер обмена." }
-        Hint {
-          Layout.fillWidth: true
-          visible: stp.backupExported !== ""
-          text: stp.backupExported
-        }
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(8)
-          PrimaryButton {
+      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
+
+      Section {
+        title: "РЕЗЕРВНАЯ КОПИЯ"
+        actions: [
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: "Экспорт"
             tooltipText: "Скопировать резервную копию в буфер обмена"
@@ -2570,9 +2557,10 @@ Item {
                 }
               })
             }
-          }
+          },
           Button {
-            bordered: true
+            bordered: false
+            fontSize: Style.font.caption
             enabled: root.ready && root.svc.installed && !root.svc.busy && stp.backupImport.trim() !== ""
             text: "Импорт"
             tooltipText: "Восстановить из вставленного текста"
@@ -2583,6 +2571,12 @@ Item {
               root.svc.importBackup(t)
             }
           }
+        ]
+        Hint { Layout.fillWidth: true; text: "Настройки, списки и стратегии в одном файле; экспорт — в буфер обмена." }
+        Hint {
+          Layout.fillWidth: true
+          visible: stp.backupExported !== ""
+          text: stp.backupExported
         }
         TextField {
           id: backupField
@@ -2593,43 +2587,55 @@ Item {
         }
       }
 
+      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
 
-      Card {
-        PanelSectionHeader { Layout.fillWidth: true; text: "Безопасный DNS"; foreground: root.fg; fontFamily: root.fontFamily }
+      Section {
+        title: "БЕЗОПАСНЫЙ DNS"
+        actions: [
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
+            enabled: root.ready && !root.svc.busy
+            text: "Обновить"
+            tooltipText: "Показать текущие DNS-серверы"
+            onClicked: root.svc.loadDns()
+          },
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
+            enabled: root.ready && !root.svc.busy
+            text: "Очистить кэш"
+            tooltipText: "Сбросить кэш DNS (resolvectl flush-caches)"
+            onClicked: root.svc.flushDns()
+          }
+        ]
         Hint {
           Layout.fillWidth: true
-          text: "DPI видит ваши DNS-запросы. Включите DoH: systemd-resolved с DNSOverTLS, либо DoH в браузере (Firefox: Настройки → Приватность → DNS через HTTPS; Chrome: Настройки → Конфиденциальность → Использовать безопасный DNS)."
+          text: "Включите DoH в браузере или DNSOverTLS в systemd-resolved."
         }
         Hint {
           Layout.fillWidth: true
           text: (typeof Model.dnsStatusText === "function" ? Model.dnsStatusText(root.ready ? root.svc.dnsInfo : {}) : "")
         }
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(8)
-          Button {
-            bordered: true
-            enabled: root.ready && !root.svc.busy
-            text: "Обновить"
-            tooltipText: "Показать текущие DNS-серверы"
-            onClicked: root.svc.loadDns()
-          }
-          // The filled action of this card: flushing is why it exists,
-          // refreshing the server list stays secondary.
-          PrimaryButton {
-            enabled: root.ready && !root.svc.busy
-            text: "Очистить кэш DNS"
-            tooltipText: "Сбросить кэш DNS (resolvectl flush-caches)"
-            onClicked: root.svc.flushDns()
-          }
-        }
       }
 
-      Card {
-        PanelSectionHeader { Layout.fillWidth: true; text: "Горячие клавиши"; foreground: root.fg; fontFamily: root.fontFamily }
+      PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
+
+      Section {
+        title: "ГОРЯЧИЕ КЛАВИШИ"
+        actions: [
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
+            text: "Скопировать"
+            tooltipText: "Скопировать Lua-сниппет в буфер"
+            foreground: root.fg
+            onClicked: root.copyText(hotkeysSnippet.text)
+          }
+        ]
         Hint {
           Layout.fillWidth: true
-          text: "Добавьте в ~/.config/hypr/bindings.lua (подставьте свои клавиши):"
+          text: "Вставьте строки в конец ~/.config/hypr/bindings.lua, заменив KEY (первая — окно, вторая — обход)."
         }
         Editor {
           id: hotkeysSnippet
@@ -2638,26 +2644,6 @@ Item {
           Layout.preferredHeight: Style.space(90)
           placeholderText: ""
           text: 'o.bind("KEY", "Zapret2: Открыть", "omarchy-shell shell toggle krieziey.omarchy-zapret2 \'{}\'")\no.bind("KEY", "Zapret2: Обход", "omarchy-shell krieziey.omarchy-zapret2 toggleBypass")'
-        }
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(8)
-          // A labelled action next to its snippet, not a lone glyph under it.
-          Button {
-            bordered: true
-            text: "Скопировать сниппет"
-            tooltipText: "Скопировать Lua-сниппет в буфер"
-            foreground: root.fg
-            onClicked: root.copyText(hotkeysSnippet.text)
-          }
-          Hint {
-            Layout.fillWidth: true
-            text: "Идентификатор krieziey.omarchy-zapret2 — ваш; вставьте строки в конец bindings.lua."
-          }
-        }
-        Hint {
-          Layout.fillWidth: true
-          text: "Замените KEY на желаемые сочетания (например SUPER+Z, SUPER+SHIFT+Z). Первая команда — окно приложения, вторая — включить/выключить обход."
         }
       }
     }
