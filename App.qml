@@ -632,7 +632,7 @@ bordered: true
     // the content, so it never covers anything and takes no room.
     ScrollBar.vertical: ScrollBar {
       policy: ScrollBar.AsNeeded
-      x: ov.width + Style.space(8)
+      x: ov.width + (Style.space(16) - width) / 2  // centred in the 16px window margin
       y: ov.topPadding
       height: ov.availableHeight
       width: Style.space(4)
@@ -1425,7 +1425,7 @@ bordered: true
       // the content, so it never covers anything and takes no room.
       ScrollBar.vertical: ScrollBar {
         policy: ScrollBar.AsNeeded
-        x: stratScroll.width + Style.space(8)
+        x: stratScroll.width + (Style.space(16) - width) / 2  // centred in the 16px window margin
         y: stratScroll.topPadding
         height: stratScroll.availableHeight
         width: Style.space(4)
@@ -1729,7 +1729,7 @@ bordered: true
     // the content, so it never covers anything and takes no room.
     ScrollBar.vertical: ScrollBar {
       policy: ScrollBar.AsNeeded
-      x: lp.width + Style.space(8)
+      x: lp.width + (Style.space(16) - width) / 2  // centred in the 16px window margin
       y: lp.topPadding
       height: lp.availableHeight
       width: Style.space(4)
@@ -1925,7 +1925,7 @@ bordered: true
     // the content, so it never covers anything and takes no room.
     ScrollBar.vertical: ScrollBar {
       policy: ScrollBar.AsNeeded
-      x: se.width + Style.space(8)
+      x: se.width + (Style.space(16) - width) / 2  // centred in the 16px window margin
       y: se.topPadding
       height: se.availableHeight
       width: Style.space(4)
@@ -2259,7 +2259,7 @@ bordered: true
     // the content, so it never covers anything and takes no room.
     ScrollBar.vertical: ScrollBar {
       policy: ScrollBar.AsNeeded
-      x: ep.width + Style.space(8)
+      x: ep.width + (Style.space(16) - width) / 2  // centred in the 16px window margin
       y: ep.topPadding
       height: ep.availableHeight
       width: Style.space(4)
@@ -2460,7 +2460,7 @@ bordered: true
     // the content, so it never covers anything and takes no room.
     ScrollBar.vertical: ScrollBar {
       policy: ScrollBar.AsNeeded
-      x: stp.width + Style.space(8)
+      x: stp.width + (Style.space(16) - width) / 2  // centred in the 16px window margin
       y: stp.topPadding
       height: stp.availableHeight
       width: Style.space(4)
