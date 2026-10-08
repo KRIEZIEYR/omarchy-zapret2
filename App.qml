@@ -637,7 +637,7 @@ bordered: true
       height: ov.availableHeight
       width: Style.space(4)
       padding: 0
-      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.innerLine }
       background: Item {}
     }
     id: ov
@@ -1430,7 +1430,7 @@ bordered: true
         height: stratScroll.availableHeight
         width: Style.space(4)
         padding: 0
-        contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+        contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.innerLine }
         background: Item {}
       }
       Layout.fillWidth: true
@@ -1734,7 +1734,7 @@ bordered: true
       height: lp.availableHeight
       width: Style.space(4)
       padding: 0
-      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.innerLine }
       background: Item {}
     }
     id: lp
@@ -1930,7 +1930,7 @@ bordered: true
       height: se.availableHeight
       width: Style.space(4)
       padding: 0
-      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.innerLine }
       background: Item {}
     }
     id: se
@@ -2264,7 +2264,7 @@ bordered: true
       height: ep.availableHeight
       width: Style.space(4)
       padding: 0
-      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.innerLine }
       background: Item {}
     }
     id: ep
@@ -2465,7 +2465,7 @@ bordered: true
       height: stp.availableHeight
       width: Style.space(4)
       padding: 0
-      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.dim }
+      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.innerLine }
       background: Item {}
     }
     id: stp
