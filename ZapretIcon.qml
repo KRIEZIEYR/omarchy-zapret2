@@ -3,11 +3,11 @@ import qs.Commons
 import qs.Ui
 
 /*
- * Shield drawn with Canvas primitives (no font, no SVG): outline when off,
- * filled with a cut-out check when on. At bar size (`simple`) the outline is
- * drawn heavier and on/off reads from the button dimming instead of the
- * fill. Errors get a badge dot with a contrasting "!" on a
- * popup-background ring. 24-unit grid.
+ * Breach mark: a brick wall on a ground line with an arched opening, the
+ * sibling of omarchy-xray's tunnel (same 24-unit grid, stroke and ground).
+ * Off: outline. On: a solid wall with the joints and the breach cut out.
+ * At bar size (`simple`) the joints are dropped so the opening stays clear.
+ * Errors get a badge dot with a contrasting "!".
  */
 Item {
   id: root
@@ -41,33 +41,46 @@ Item {
       var ctx = getContext("2d")
       ctx.reset()
       var k = width / 24
-      ctx.lineWidth = Math.max(1.2, (root.simple ? 1.9 : 1.6) * k)
+      ctx.lineWidth = Math.max(1.2, 1.5 * k)
       ctx.lineJoin = "round"
       ctx.lineCap = "round"
       ctx.strokeStyle = root.color
       ctx.fillStyle = root.color
+      ctx.translate(0, -1.1 * k)   // same lift as the xray tunnel
 
-      ctx.beginPath()
-      ctx.moveTo(12 * k, 2.5 * k)
-      ctx.lineTo(20 * k, 5.5 * k)
-      ctx.lineTo(20 * k, 11 * k)
-      ctx.bezierCurveTo(20 * k, 16 * k, 16.5 * k, 19.5 * k, 12 * k, 21.5 * k)
-      ctx.bezierCurveTo(7.5 * k, 19.5 * k, 4 * k, 16 * k, 4 * k, 11 * k)
-      ctx.lineTo(4 * k, 5.5 * k)
-      ctx.closePath()
-      if (root.filled) {
-        ctx.fill()
-        ctx.globalCompositeOperation = "destination-out"
-        ctx.lineWidth = Math.max(1.4, 2 * k)
+      function wall() { ctx.beginPath(); ctx.rect(4.5 * k, 6 * k, 15 * k, 12.5 * k) }
+      function joints() {
         ctx.beginPath()
-        ctx.moveTo(8.5 * k, 12 * k)
-        ctx.lineTo(11 * k, 14.5 * k)
-        ctx.lineTo(15.5 * k, 9.5 * k)
-        ctx.stroke()
+        ctx.moveTo(4.5 * k, 10 * k); ctx.lineTo(19.5 * k, 10 * k)
+        if (root.simple) return
+        ctx.moveTo(4.5 * k, 14 * k); ctx.lineTo(9 * k, 14 * k)
+        ctx.moveTo(15 * k, 14 * k); ctx.lineTo(19.5 * k, 14 * k)
+        ctx.moveTo(9 * k, 6 * k); ctx.lineTo(9 * k, 10 * k)
+        ctx.moveTo(15 * k, 6 * k); ctx.lineTo(15 * k, 10 * k)
+      }
+      function breach() {
+        ctx.beginPath()
+        ctx.moveTo(9 * k, 18.5 * k)
+        ctx.lineTo(9 * k, 14.5 * k)
+        ctx.arc(12 * k, 14.5 * k, 3 * k, Math.PI, 0, false)
+        ctx.lineTo(15 * k, 18.5 * k)
+      }
+
+      if (root.filled) {
+        wall(); ctx.fill()
+        ctx.globalCompositeOperation = "destination-out"
+        joints(); ctx.stroke()
+        breach(); ctx.closePath(); ctx.fill(); ctx.stroke()
         ctx.globalCompositeOperation = "source-over"
       } else {
+        ctx.beginPath()
+        ctx.moveTo(4.5 * k, 18.5 * k); ctx.lineTo(4.5 * k, 6 * k)
+        ctx.lineTo(19.5 * k, 6 * k); ctx.lineTo(19.5 * k, 18.5 * k)
         ctx.stroke()
+        joints(); ctx.stroke()
+        breach(); ctx.stroke()
       }
+      ctx.beginPath(); ctx.moveTo(2 * k, 21 * k); ctx.lineTo(22 * k, 21 * k); ctx.stroke()   // ground
     }
   }
 
