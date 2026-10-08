@@ -1476,6 +1476,7 @@ bordered: true
                       Layout.fillHeight: true
                       Button {
                         anchors.fill: parent
+                        verticalPadding: 0
                         bordered: false
                         fontSize: Style.font.caption
                         visible: !isActive && sp.selectedName === modelData.name
@@ -1486,7 +1487,9 @@ bordered: true
                       }
                       Button {
                         anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        verticalPadding: 0
                         bordered: false
                         fontSize: Style.font.caption
                         visible: isActive && sp.selectedName === modelData.name
