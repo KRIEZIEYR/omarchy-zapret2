@@ -1247,12 +1247,11 @@ Item {
         || editor.area.activeFocus || viewerEditor.area.activeFocus
         || impText.activeFocus || impName.activeFocus)
 
-    Card {
+    Section {
       id: recCard
-      level: "primary"
+      title: "РЕКОМЕНДУЕМАЯ"
       visible: !sp.editing && !sp.showing
       property bool notNeeded: root.ready && root.svc.autopickResult.notNeeded === true
-      PanelSectionHeader { Layout.fillWidth: true; text: recCard.notNeeded ? "Рекомендация" : "Рекомендуемая"; foreground: root.fg; fontFamily: root.fontFamily }
       Label { Layout.fillWidth: true; fixedWidth: true; text: recCard.notNeeded ? "Обход не нужен" : Model.presetTitle(sp.recommendedName()) }
       Hint {
         Layout.fillWidth: true
@@ -1275,23 +1274,38 @@ Item {
         }
       }
     }
+    // Secondary actions live in the list header line, not as bordered
+    // buttons. "Выключить обход" duplicates the Обзор hero (Ctrl+T, bar):
+    // it is not repeated here.
     RowLayout {
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
-      Button { bordered: true; text: "Обновить стратегии из Flowseal"; tooltipText: "Загрузить пресеты Flowseal заново"; onClicked: root.svc.updatePresets() }
-      Button { bordered: true; text: "Новая стратегия"; tooltipText: "Своя стратегия nfqws2: имя и текст пресета"; onClicked: sp.edit("") }
+      spacing: Style.space(8)
+      PanelSectionHeader {
+        Layout.fillWidth: true
+        text: "СТРАТЕГИИ"
+        foreground: root.fg
+        fontFamily: root.fontFamily
+      }
       Button {
-        bordered: true
-        visible: root.ready && root.svc.isOn
-        text: "Выключить обход"
-        tooltipText: "Выключить обход без смены стратегии"
-        onClicked: root.svc.turnOff()
+        bordered: false
+        fontSize: Style.font.caption
+        text: "Обновить из Flowseal"
+        tooltipText: "Загрузить пресеты Flowseal заново"
+        onClicked: root.svc.updatePresets()
+      }
+      Button {
+        bordered: false
+        fontSize: Style.font.caption
+        text: "Новая"
+        tooltipText: "Своя стратегия nfqws2: имя и текст пресета"
+        onClicked: sp.edit("")
       }
     }
-    Card {
+    Section {
+      title: "ИМПОРТ СТРАТЕГИИ"
       visible: !sp.editing && !sp.showing
-      PanelSectionHeader { Layout.fillWidth: true; text: "Импорт стратегии"; foreground: root.fg; fontFamily: root.fontFamily }
-      Hint { Layout.fillWidth: true; text: "Текст стратегии, путь к файлу или ссылка http(s). Проверяется теми же правилами, сохраняется как своя (my-*)." }
+      Hint { Layout.fillWidth: true; text: "Текст стратегии, путь к файлу или ссылка http(s). Сохраняется как своя (my-*)." }
       TextField {
         id: impText
         Layout.fillWidth: true
@@ -1306,7 +1320,8 @@ Item {
           placeholderText: "Имя (необязательно, например home)"
         }
         Button {
-          bordered: true
+          bordered: false
+          fontSize: Style.font.caption
           enabled: root.ready && !root.svc.busy && impText.text.trim() !== ""
           text: "Импортировать"
           tooltipText: "Проверить и сохранить как свою стратегию"
@@ -1325,18 +1340,13 @@ Item {
       text: sp.filter
       onTextChanged: sp.filter = text
     }
-    RowLayout {
+    ToggleRow {
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
-      spacing: Style.space(8)
-      Toggle {
-        Layout.fillWidth: true
-        label: "Скрыть стратегии хуже базы"
-        description: (sp.hiddenWorseCount > 0 ? "Сейчас скрыто " + sp.hiddenWorseCount + ". " : "") + "Плохие стратегии остаются в файле, но не показываются в списке."
-        checked: sp.onlyGood
-        foreground: root.fg
-        onClicked: sp.onlyGood = !sp.onlyGood
-      }
+      label: "Скрыть стратегии хуже базы"
+      note: (sp.hiddenWorseCount > 0 ? "Скрыто " + sp.hiddenWorseCount + " · " : "") + "хуже базы остаются в файле"
+      checked: sp.onlyGood
+      onFlip: sp.onlyGood = !sp.onlyGood
     }
 
     ScrollView {
@@ -1374,19 +1384,21 @@ Item {
                   return !!(br && br.chosen)
                 }
                 property string flowSrc: sp.flowsealSource(modelData.name)
-                property string scoreLine: {
+                // Right-aligned meta: score plus state. The breaks detail is
+                // the dim line below, so the row never changes height on
+                // selection.
+                property string scoreMeta: {
                   var r = sp.pickRow(modelData.name)
-                  if (!r || (r.total | 0) <= 0) return "не проверялась"
+                  if (!r || (r.total | 0) <= 0) return r && r.error !== "" ? r.error : "не проверялась"
                   var s = r.score + "/" + r.total
-                  if (sp.isWorse(modelData.name)) s += " · ⚠ хуже, чем без обхода"
+                  if (sp.isWorse(modelData.name)) s += " · хуже базы"
                   else if (r.chosen && !sp.isTied(modelData.name)) s += " · лучшая"
                   return s
                 }
-                property string tipText: {
-                  var t = Model.presetTitle(modelData.name)
-                  if (flowSrc !== "") t += "\n" + flowSrc
-                  t += "\nEnter применит"
-                  return t
+                property string breaksLine: {
+                  var r2 = sp.pickRow(modelData.name)
+                  var t = (typeof Model.breaksText === "function") ? Model.breaksText(r2) : ""
+                  return t === "не проверялась" ? "" : t
                 }
                 property bool moreActionsOpen: sp.moreOpen[modelData.name] === true
                 foreground: root.fg
@@ -1394,7 +1406,7 @@ Item {
                 current: isActive
                 hasCursor: sp.selectedName === modelData.name
                 Accessible.role: Accessible.Button
-                Accessible.name: Model.presetTitle(modelData.name) + (isActive ? ", активна" : "") + ((isBest && !sp.isTied(modelData.name)) ? ", лучшая" : "")
+                Accessible.name: Model.presetTitle(modelData.name) + ", " + scoreMeta + (isActive ? ", активна" : "") + ((isBest && !sp.isTied(modelData.name)) ? ", лучшая" : "")
                 HoverHandler {
                   id: hover
                   onHoveredChanged: {
@@ -1410,11 +1422,6 @@ Item {
                     if (sp.armDelete !== "" && sp.armDelete !== modelData.name) sp.armDelete = ""
                   }
                 }
-                PanelToolTip {
-                  visible: hover.hovered && tipText !== ""
-                  text: tipText
-                  fontFamily: root.fontFamily
-                }
                 // The surface is not layout-managed, so it may anchor one
                 // column; the rows inside that column must not anchor, or
                 // Qt warns and their height is never measured.
@@ -1423,98 +1430,100 @@ Item {
                   id: rowCol
                   anchors.fill: parent
                   anchors.margins: Style.space(7)
-                  spacing: Style.space(6)
-                  // Main row
+                  spacing: Style.space(2)
+                  // Main flat row: marker, title, dim meta right — xray node style.
                   RowLayout {
-                    id: mainRow
                     Layout.fillWidth: true
-                    spacing: Style.space(6)
-                    ColumnLayout {
+                    spacing: Style.space(8)
+                    Text {
+                      Layout.alignment: Qt.AlignVCenter
+                      textFormat: Text.PlainText
+                      text: isActive ? "●" : "○"
+                      color: isActive ? Color.accent : root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                    Label {
                       Layout.fillWidth: true
-                      spacing: 0
-                      RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Style.space(6)
-                        Label { Layout.fillWidth: true; fixedWidth: true; text: Model.presetTitle(modelData.name); font.bold: true }
-                        BorderSurface {
-                          visible: isActive || isBest
-                          implicitWidth: activeText.implicitWidth + Style.space(10)
-                          implicitHeight: activeText.implicitHeight + Style.space(4)
-                          color: isActive ? Style.selectedFillFor(root.fg, Color.accent) : "transparent"
-                          borderSpec: isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
-                          radius: Style.cornerRadius
-                          Text {
-                            id: activeText
-                            anchors.centerIn: parent
-                            text: isActive && isBest ? "● активна · ★ лучшая" : (isActive ? "● активна" : "★ лучшая")
-                            color: isActive ? Style.selectedStateColor(root.fg, Color.accent) : root.dim
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                          }
+                      fixedWidth: true
+                      text: Model.presetTitle(modelData.name)
+                      font.bold: isActive
+                    }
+                    Hint {
+                      Layout.alignment: Qt.AlignVCenter
+                      color: sp.isWorse(modelData.name) ? root.bad : root.dim
+                      text: scoreMeta
+                    }
+                    // The width is reserved so the row never resizes when the
+                    // text actions appear under the pointer.
+                    Item {
+                      Layout.preferredWidth: Style.space(96)
+                      Layout.fillHeight: true
+                      Button {
+                        anchors.fill: parent
+                        bordered: false
+                        fontSize: Style.font.caption
+                        visible: !isActive && sp.selectedName === modelData.name
+                        enabled: root.ready && !root.svc.busy
+                        text: "Применить"
+                        tooltipText: "Применить " + Model.presetTitle(modelData.name) + " (Enter)"
+                        onClicked: root.svc.setOption("preset", modelData.name)
+                      }
+                      Button {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        bordered: false
+                        fontSize: Style.font.caption
+                        visible: isActive && sp.selectedName === modelData.name
+                        text: "⋯"
+                        tooltipText: moreActionsOpen ? "Скрыть действия" : "Действия"
+                        onClicked: {
+                          var e = Object.assign({}, sp.moreOpen)
+                          e[modelData.name] = !moreActionsOpen
+                          sp.moreOpen = e
                         }
-                      }
-                      Hint {
-                        Layout.fillWidth: true
-                        color: sp.isWorse(modelData.name) ? root.bad : root.dim
-                        text: scoreLine
-                      }
-                      Hint {
-                        Layout.fillWidth: true
-                        visible: (sp.selectedName === modelData.name || isActive) && !moreActionsOpen
-                        color: sp.isWorse(modelData.name) ? root.bad : root.dim
-                        text: sp.rowSubtitle(modelData)
-                      }
-                      Hint {
-                        Layout.fillWidth: true
-                        visible: (sp.selectedName === modelData.name || isActive) && flowSrc !== "" && !moreActionsOpen
-                        color: root.dim
-                        text: flowSrc
-                      }
-                    }
-                    // Apply button (only when not active)
-                    Button {
-                      bordered: true
-                      visible: !isActive && sp.selectedName === modelData.name
-                      enabled: root.ready && !root.svc.busy
-                      text: "Применить"
-                      tooltipText: "Применить " + Model.presetTitle(modelData.name)
-                      onClicked: root.svc.setOption("preset", modelData.name)
-                    }
-                    // Ellipsis button to toggle more actions
-                    Button {
-                      bordered: true
-                      visible: sp.selectedName === modelData.name
-                      text: "⋯"
-                      tooltipText: moreActionsOpen ? "Скрыть действия" : "Действия"
-                      onClicked: {
-                        var e = Object.assign({}, sp.moreOpen)
-                        e[modelData.name] = !moreActionsOpen
-                        sp.moreOpen = e
                       }
                     }
                   }
-                  // Inline action row (shown when moreActionsOpen is true)
-                  RowLayout {
-                    id: actionRow
+                  Hint {
                     Layout.fillWidth: true
+                    Layout.leftMargin: Style.space(20)
+                    visible: text !== ""
+                    color: sp.isWorse(modelData.name) ? root.bad : root.dim
+                    text: breaksLine
+                  }
+                  Hint {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Style.space(20)
+                    visible: flowSrc !== ""
+                    color: root.dim
+                    text: flowSrc
+                  }
+                  // Inline actions: text, not bordered buttons.
+                  RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Style.space(20)
                     visible: moreActionsOpen
-                    spacing: Style.space(6)
+                    spacing: Style.space(12)
                     Button {
-                      bordered: true
+                      bordered: false
+                      fontSize: Style.font.caption
                       text: "Показать"
                       tooltipText: "Показать текст пресета"
                       onClicked: sp.show(modelData.name)
                     }
                     Button {
                       visible: modelData.name.indexOf("my-") === 0
-                      bordered: true
+                      bordered: false
+                      fontSize: Style.font.caption
                       text: "Изменить"
                       tooltipText: "Изменить свою стратегию"
                       onClicked: sp.edit(modelData.name)
                     }
                     Button {
                       visible: modelData.name.indexOf("my-") === 0
-                      bordered: true
+                      bordered: false
+                      fontSize: Style.font.caption
                       enabled: root.ready && !root.svc.busy
                       text: "Дублировать"
                       tooltipText: "Сохранить копию своей стратегии под новым именем"
@@ -1522,7 +1531,8 @@ Item {
                     }
                     Button {
                       visible: modelData.name.indexOf("my-") === 0 && root.svc.preset !== modelData.name
-                      bordered: true
+                      bordered: false
+                      fontSize: Style.font.caption
                       foreground: root.bad
                       text: sp.armDelete === modelData.name ? "Точно удалить?" : "Удалить"
                       tooltipText: sp.armDelete === modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
@@ -1533,7 +1543,8 @@ Item {
                     }
                     Button {
                       visible: sp.armDelete === modelData.name && modelData.name.indexOf("my-") === 0
-                      bordered: true
+                      bordered: false
+                      fontSize: Style.font.caption
                       text: "Отмена"
                       tooltipText: "Оставить стратегию"
                       onClicked: { sp.armDelete = ""; disarmTimer.stop() }
@@ -1554,8 +1565,25 @@ Item {
       spacing: Style.space(8)
       RowLayout {
         Layout.fillWidth: true
+        spacing: Style.space(8)
         PanelSectionHeader { Layout.fillWidth: true; text: Model.presetTitle(sp.shownName); foreground: root.fg; fontFamily: root.fontFamily }
-        Button { bordered: true; text: "Закрыть"; tooltipText: "Закрыть просмотр (Esc)"; onClicked: sp.showing = false }
+        Button {
+          bordered: false
+          fontSize: Style.font.caption
+          visible: root.ready && root.svc.preset !== sp.shownName
+          text: "Применить"
+          tooltipText: "Применить " + Model.presetTitle(sp.shownName)
+          onClicked: root.svc.setOption("preset", sp.shownName)
+        }
+        Button {
+          bordered: false
+          fontSize: Style.font.caption
+          visible: sp.shownText !== ""
+          text: "Скопировать как свою"
+          tooltipText: "Открыть копию в редакторе своих стратегий"
+          onClicked: sp.copyAsOwn()
+        }
+        Button { bordered: false; fontSize: Style.font.caption; text: "Закрыть"; tooltipText: "Закрыть просмотр (Esc)"; onClicked: sp.showing = false }
       }
       Hint {
         Layout.fillWidth: true
@@ -1571,22 +1599,6 @@ Item {
         id: viewerEditor
         readOnly: true
         text: sp.shownText
-      }
-      RowLayout {
-        Button {
-          bordered: true
-          visible: root.ready && root.svc.preset !== sp.shownName
-          text: "Применить"
-          tooltipText: "Применить " + Model.presetTitle(sp.shownName)
-          onClicked: root.svc.setOption("preset", sp.shownName)
-        }
-        Button {
-          bordered: true
-          visible: sp.shownText !== ""
-          text: "Скопировать как свою"
-          tooltipText: "Открыть копию в редакторе своих стратегий"
-          onClicked: sp.copyAsOwn()
-        }
       }
     }
 
@@ -1605,18 +1617,18 @@ Item {
           placeholderText: "например home"
           onTextChanged: sp.editName = text
         }
-        Hint { Layout.fillWidth: true; text: "Разрешены только --lua-desync (функции zapret-antidpi), --payload, --out-range/--in-range; блобы: tls_google, tls_max, quic_google, http_iana, stun, zero, fake_default_*" }
+        Hint { Layout.fillWidth: true; text: "Секции [TCP_*]/[QUIC]; опции --lua-desync, --payload, --out-range. Блобы: tls_google, quic_google, http_iana и др." }
       }
       Editor { id: editor }
       RowLayout {
-        Button {
-          bordered: true
+        spacing: Style.space(12)
+        PrimaryButton {
           text: "Сохранить"
           enabled: sp.editName.trim() !== ""
           tooltipText: "Сохранить свою стратегию"
           onClicked: root.svc.saveCustom(sp.editName.trim(), editor.text, function(r) { if (r.ok) sp.editing = false })
         }
-        Button { bordered: true; text: "Отмена"; onClicked: sp.editing = false }
+        Button { bordered: false; fontSize: Style.font.caption; text: "Отмена"; onClicked: sp.editing = false }
       }
     }
   }

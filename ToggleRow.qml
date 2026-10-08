@@ -31,7 +31,7 @@ ColumnLayout {
 
     Text {
       id: rowLabel
-      Layout.preferredWidth: Style.space(150)
+      Layout.fillWidth: true
       Layout.alignment: Qt.AlignVCenter
       textFormat: Text.PlainText
       text: root.label
@@ -80,7 +80,6 @@ ColumnLayout {
   Text {
     visible: text !== ""
     Layout.fillWidth: true
-    leftPadding: Style.space(150) + Style.space(8)
     textFormat: Text.PlainText
     text: root.note
     color: Model.mixColor(root.foreground, Color.popups.background, 0.34)
