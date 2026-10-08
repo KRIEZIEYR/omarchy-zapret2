@@ -1493,9 +1493,13 @@ bordered: true
                         bordered: false
                         fontSize: Style.font.caption
                         visible: isActive && sp.selectedName === modelData.name
-                        text: "⋯"
-                        tooltipText: moreActionsOpen ? "Скрыть действия" : "Действия"
+                        // Built-in strategies have one action, so the button
+                        // is that action; own strategies (my-*) keep the menu.
+                        readonly property bool own: modelData.name.indexOf("my-") === 0
+                        text: own ? "⋯" : "Открыть"
+                        tooltipText: own ? (moreActionsOpen ? "Скрыть действия" : "Действия") : "Показать текст пресета"
                         onClicked: {
+                          if (!own) { sp.show(modelData.name); return }
                           var e = Object.assign({}, sp.moreOpen)
                           e[modelData.name] = !moreActionsOpen
                           sp.moreOpen = e
