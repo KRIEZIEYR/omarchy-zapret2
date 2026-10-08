@@ -409,14 +409,14 @@ Panel {
             Layout.alignment: Qt.AlignVCenter
             implicitWidth: installBtn.implicitWidth + Style.space(24)
             implicitHeight: Math.max(installBtn.implicitHeight, root.ctlHeight)
-            color: Style.selectedFillFor(root.fg, Color.accent)
-            borderSpec: Border.controlSpec("selected", root.fg, Color.accent)
+            color: "transparent"
+            borderSpec: Border.controlSpec("normal", root.fg, Color.accent)
             radius: Style.cornerRadius
             Button {
               id: installBtn
               anchors.fill: parent
               bordered: false
-              foreground: Style.selectedStateColor(root.fg, Color.accent)
+              foreground: root.fg
               hasCursor: root.cursorRow === "install"
               text: root.ready && root.svc.busy ? "Установка…" : "Установить"
               tooltipText: "Установить движок zapret2 (t)"
@@ -556,15 +556,15 @@ Panel {
             Layout.alignment: Qt.AlignVCenter
             implicitWidth: checkBtn.implicitWidth + Style.space(24)
             implicitHeight: Math.max(checkBtn.implicitHeight, root.ctlHeight)
-            color: Style.selectedFillFor(root.fg, Color.accent)
-            borderSpec: Border.controlSpec("selected", root.fg, Color.accent)
+            color: "transparent"
+            borderSpec: Border.controlSpec("normal", root.fg, Color.accent)
             radius: Style.cornerRadius
             visible: root.ready && root.svc.installed
             Button {
               id: checkBtn
               anchors.fill: parent
               bordered: false
-              foreground: Style.selectedStateColor(root.fg, Color.accent)
+              foreground: root.fg
               hasCursor: root.cursorRow === "check"
               text: "Проверить"
               tooltipText: "Проверить доступность (c)"

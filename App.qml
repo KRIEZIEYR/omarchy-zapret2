@@ -157,14 +157,15 @@ Item {
     signal clicked()
     implicitWidth: primaryBtn.implicitWidth + Style.space(24)
     implicitHeight: Math.max(primaryBtn.implicitHeight, Style.spacing.controlHeight)
-    color: Style.selectedFillFor(primary.fg, Color.accent)
-    borderSpec: Border.controlSpec("selected", primary.fg, Color.accent)
+    // Outlined, never filled: no grey slabs anywhere in the app.
+    color: "transparent"
+    borderSpec: Border.controlSpec("normal", primary.fg, Color.accent)
     radius: Style.cornerRadius
     Button {
       id: primaryBtn
       anchors.fill: parent
       bordered: false
-      foreground: Style.selectedStateColor(primary.fg, Color.accent)
+      foreground: primary.fg
       text: primary.text
       tooltipText: primary.tooltipText
       onClicked: primary.clicked()
