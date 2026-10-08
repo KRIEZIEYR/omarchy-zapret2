@@ -418,30 +418,68 @@ bordered: true
                 required property int index
                 Layout.fillWidth: true
                 spacing: Style.space(6)
-                // Active state uses the selected fill and border; no extra rail
-                // is needed now that every tab has a consistent outline.
+                // Nav item: Nerd Font icon, label, dim shortcut digit. The
+                // active tab gets an accent rail, a soft fill and a bright
+                // outline; the rest are quiet until hovered.
                 BorderSurface {
                   id: tabSurface
                   Layout.fillWidth: true
                   property bool isActive: root.tab === index
-                  implicitHeight: tabBtn.implicitHeight
-                  color: "transparent"
-                  borderSpec: tabSurface.isActive ? Border.controlSpec("selected", root.fg, Color.accent) : Border.controlSpec("normal", root.fg, Color.accent)
+                  property bool isHover: tabMouse.containsMouse
+                  implicitHeight: tabRow.implicitHeight + Style.space(14)
+                  color: isActive ? Style.normalFillFor(root.fg, Color.accent)
+                       : isHover ? Style.hoverFillFor(root.fg, Color.accent) : "transparent"
+                  borderSpec: isActive ? Border.controlSpec("normal", root.fg, Color.accent) : Border.flat(root.innerLine, 1)
                   radius: Style.cornerRadius
-                  Button {
-                    id: tabBtn
+                  Accessible.role: Accessible.PageTab
+                  Accessible.name: modelData + (isActive ? ", выбрана" : "")
+                  Rectangle {
+                    visible: tabSurface.isActive
+                    width: 3
+                    radius: 1
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.topMargin: Style.space(6)
+                    anchors.bottomMargin: Style.space(6)
+                    color: Color.accent
+                  }
+                  RowLayout {
+                    id: tabRow
                     anchors.fill: parent
-                    leftAlign: true
-                    bordered: true
-                    selected: tabSurface.isActive
-                    horizontalPadding: Style.space(12)
-                    verticalPadding: Style.space(7)
-                    foreground: root.fg
-                    text: modelData
-                    tooltipText: "Ctrl+" + (index + 1) + (index === 4 && root.sysUpdate ? " · есть обновление" : "")
+                    anchors.leftMargin: Style.space(12)
+                    anchors.rightMargin: Style.space(10)
+                    spacing: Style.space(10)
+                    Text {
+                      Layout.preferredWidth: Style.space(18)
+                      horizontalAlignment: Text.AlignHCenter
+                      text: String.fromCodePoint([0xF056E, 0xF062E, 0xF0279, 0xF0349, 0xF01FA, 0xF0493][index])
+                      color: tabSurface.isActive ? Color.accent : root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body + 2
+                    }
+                    Text {
+                      Layout.fillWidth: true
+                      text: modelData
+                      elide: Text.ElideRight
+                      color: tabSurface.isActive || tabSurface.isHover ? root.fg : root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      font.bold: tabSurface.isActive
+                    }
+                    Text {
+                      text: String(index + 1)
+                      color: root.dimmer
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+                  }
+                  MouseArea {
+                    id: tabMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.tab = index
-                    Accessible.role: Accessible.Button
-                    Accessible.name: modelData + (tabSurface.isActive ? ", выбрана" : "")
                   }
                 }
                 // A quiet badge, not a chip: the update is a status, and it
