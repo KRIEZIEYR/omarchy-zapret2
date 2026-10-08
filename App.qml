@@ -126,30 +126,6 @@ Item {
     elide: fixedWidth ? Text.ElideRight : Text.ElideNone
   }
 
-  component Card: BorderSurface {
-    id: cardSurface
-    default property alias content: inner.data
-    property alias spacing: inner.spacing
-    property string level: "secondary"
-    property color primaryTextColor: root.fg
-    Layout.fillWidth: true
-    implicitHeight: inner.implicitHeight + Style.space(24)
-    color: cardSurface.level === "primary" ? Style.selectedFillFor(root.fg, Color.accent)
-        : cardSurface.level === "info" ? "transparent" : Style.normalFillFor(root.fg, Color.accent)
-    borderSpec: cardSurface.level === "primary" ? Border.controlSpec("selected", root.fg, Color.accent)
-        : cardSurface.level === "info" ? Border.none() : Border.controlSpec("normal", root.fg, Color.accent)
-    radius: Style.cornerRadius
-    ColumnLayout {
-      id: inner
-      anchors.fill: parent
-      anchors.leftMargin: cardSurface.contentLeftInset + Style.space(12)
-      anchors.rightMargin: cardSurface.contentRightInset + Style.space(12)
-      anchors.topMargin: cardSurface.contentTopInset + Style.space(12)
-      anchors.bottomMargin: cardSurface.contentBottomInset + Style.space(12)
-      spacing: Style.space(8)
-    }
-  }
-
   // The single filled action of a page or card. The kit Button keeps the text,
   // tooltip and keyboard behaviour; this wrapper supplies the accent fill.
   // `selected: true` is deliberately not used: in the kit it means "chosen"
