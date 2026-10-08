@@ -215,7 +215,7 @@ Item {
       Rectangle {
         Layout.fillWidth: true
         Layout.minimumWidth: Style.space(90)
-        visible: showDelta
+        opacity: row && !row.baseline && !row.error ? 1 : 0
         height: Style.space(6)
         radius: height / 2
         color: Style.normalFillFor(root.fg, Color.accent)
@@ -236,7 +236,7 @@ Item {
       Label {
         Layout.preferredWidth: Style.space(38)
         fixedWidth: true
-        visible: showDelta
+        opacity: showDelta ? 1 : 0
         horizontalAlignment: Text.AlignRight
         color: delta < 0 ? root.bad : Color.accent
         font.bold: true
@@ -1800,7 +1800,6 @@ Item {
     id: se
     property bool showFull: false
     property bool onlyImportantBc: true
-    property bool tiesOpen: false
     property bool bcFollow: true
     // The current blockcheck2 phase, raw and localised. The raw form is also
     // used to drop the line from the journal below, so the same sentence never
@@ -1896,17 +1895,8 @@ Item {
             row: se.pickGroup.best || {}
             baseScore: se.pickBase
           }
-          RowLayout {
-            Layout.fillWidth: true
-            visible: se.pickGroup.ties.length > 0
-            Disclosure {
-              caption: "ещё " + se.pickGroup.ties.length + " с тем же результатом"
-              expanded: se.tiesOpen
-              onToggled: se.tiesOpen = !se.tiesOpen
-            }
-          }
           Repeater {
-            model: se.tiesOpen ? se.pickGroup.ties : []
+            model: se.pickGroup.ties
             delegate: PickRow {
               required property var modelData
               row: modelData
