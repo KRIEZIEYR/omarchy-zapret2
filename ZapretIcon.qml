@@ -3,11 +3,9 @@ import qs.Commons
 import qs.Ui
 
 /*
- * Breach mark: a brick wall on a ground line with an arched opening, the
- * sibling of omarchy-xray's tunnel (same 24-unit grid, stroke and ground).
- * Off: outline. On: a solid wall with the joints and the breach cut out.
- * At bar size (`simple`) the joints are dropped so the opening stays clear.
- * Errors get a badge dot with a contrasting "!".
+ * Open padlock: body with a keyhole, shackle swung open. Off: outline.
+ * On: solid body with the keyhole cut out. 24-unit grid, same stroke as the
+ * xray tunnel. Errors get a badge dot with a contrasting "!".
  */
 Item {
   id: root
@@ -41,46 +39,40 @@ Item {
       var ctx = getContext("2d")
       ctx.reset()
       var k = width / 24
-      ctx.lineWidth = Math.max(1.2, 1.5 * k)
+      ctx.lineWidth = Math.max(1.2, (root.simple ? 1.8 : 1.5) * k)
       ctx.lineJoin = "round"
       ctx.lineCap = "round"
       ctx.strokeStyle = root.color
       ctx.fillStyle = root.color
-      ctx.translate(0, -1.1 * k)   // same lift as the xray tunnel
+      ctx.translate(0, -1 * k)   // the drawing sits low; centre it
 
-      function wall() { ctx.beginPath(); ctx.rect(4.5 * k, 6 * k, 15 * k, 12.5 * k) }
-      function joints() {
+      function body() {
+        var x = 5 * k, y = 11 * k, w = 14 * k, h = 10 * k, r = 2 * k
         ctx.beginPath()
-        ctx.moveTo(4.5 * k, 10 * k); ctx.lineTo(19.5 * k, 10 * k)
-        if (root.simple) return
-        ctx.moveTo(4.5 * k, 14 * k); ctx.lineTo(9 * k, 14 * k)
-        ctx.moveTo(15 * k, 14 * k); ctx.lineTo(19.5 * k, 14 * k)
-        ctx.moveTo(9 * k, 6 * k); ctx.lineTo(9 * k, 10 * k)
-        ctx.moveTo(15 * k, 6 * k); ctx.lineTo(15 * k, 10 * k)
+        ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y)
+        ctx.arcTo(x + w, y, x + w, y + r, r); ctx.lineTo(x + w, y + h - r)
+        ctx.arcTo(x + w, y + h, x + w - r, y + h, r); ctx.lineTo(x + r, y + h)
+        ctx.arcTo(x, y + h, x, y + h - r, r); ctx.lineTo(x, y + r)
+        ctx.arcTo(x, y, x + r, y, r); ctx.closePath()
       }
-      function breach() {
-        ctx.beginPath()
-        ctx.moveTo(9 * k, 18.5 * k)
-        ctx.lineTo(9 * k, 14.5 * k)
-        ctx.arc(12 * k, 14.5 * k, 3 * k, Math.PI, 0, false)
-        ctx.lineTo(15 * k, 18.5 * k)
-      }
+      function keyhole() { ctx.beginPath(); ctx.moveTo(12 * k, 15 * k); ctx.lineTo(12 * k, 17 * k) }
+
+      // shackle: up from the right side of the body, over, open on the left
+      ctx.beginPath()
+      ctx.moveTo(16 * k, 11 * k); ctx.lineTo(16 * k, 7 * k)
+      ctx.arc(12 * k, 7 * k, 4 * k, 0, -2.70, true)
+      ctx.stroke()
 
       if (root.filled) {
-        wall(); ctx.fill()
+        body(); ctx.fill()
         ctx.globalCompositeOperation = "destination-out"
-        joints(); ctx.stroke()
-        breach(); ctx.closePath(); ctx.fill(); ctx.stroke()
+        ctx.lineWidth = Math.max(1.4, 2 * k)
+        keyhole(); ctx.stroke()
         ctx.globalCompositeOperation = "source-over"
       } else {
-        ctx.beginPath()
-        ctx.moveTo(4.5 * k, 18.5 * k); ctx.lineTo(4.5 * k, 6 * k)
-        ctx.lineTo(19.5 * k, 6 * k); ctx.lineTo(19.5 * k, 18.5 * k)
-        ctx.stroke()
-        joints(); ctx.stroke()
-        breach(); ctx.stroke()
+        body(); ctx.stroke()
+        keyhole(); ctx.stroke()
       }
-      ctx.beginPath(); ctx.moveTo(2 * k, 21 * k); ctx.lineTo(22 * k, 21 * k); ctx.stroke()   // ground
     }
   }
 
