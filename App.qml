@@ -1714,27 +1714,35 @@ Item {
           text: "не сохранено"
         }
         Hint { Layout.fillWidth: true; text: lp.info }
-        Button { bordered: true; text: "Обновить списки из Flowseal"; tooltipText: "Загрузить списки Flowseal заново"; onClicked: root.svc.updateLists() }
       }
-      Hint {
+      RowLayout {
         Layout.fillWidth: true
-        text: lp.editable ? "Мои — можно править. По одному домену (поддомены включаются сами) или IP/CIDR на строку. Неверные строки отбрасываются."
-                          : "Встроенные (только чтение). Свои записи добавляйте в «Мои …»."
+        spacing: Style.space(8)
+        Hint {
+          Layout.fillWidth: true
+          text: lp.editable ? "Мои — можно править: домен или IP/CIDR на строку."
+                            : "Встроенные — только чтение; свои записи — в «Мои …»."
+        }
+        Button {
+          bordered: false
+          fontSize: Style.font.caption
+          text: "Обновить из Flowseal"
+          tooltipText: "Загрузить списки Flowseal заново"
+          onClicked: root.svc.updateLists()
+        }
       }
-    Card {
-      level: "primary"
-      PanelSectionHeader { Layout.fillWidth: true; text: "Сервисы"; foreground: root.fg; fontFamily: root.fontFamily }
-      Hint { Layout.fillWidth: true; text: "Готовые наборы доменов: добавляются в «Мои: сайты». Поддомены включаются сами." }
+    Section {
+      title: "СЕРВИСЫ"
+      Hint { Layout.fillWidth: true; text: "Готовые наборы доменов в «Мои: сайты»; поддомены включаются сами." }
       Repeater {
         model: root.ready ? root.svc.services : []
-        delegate: Toggle {
+        delegate: ToggleRow {
           required property var modelData
-          Layout.fillWidth: true
           label: Model.serviceTitle(modelData.name)
-          description: modelData.domains.join(", ") + " · " + Model.serviceStateLabel(modelData.active)
+          a11yName: Model.serviceTitle(modelData.name) + ", " + Model.serviceStateLabel(modelData.active)
+          note: modelData.domains.join(", ") + " · " + Model.serviceStateLabel(modelData.active)
           checked: modelData.active === true
-          foreground: root.fg
-          onClicked: modelData.active === true ? root.svc.serviceOff(modelData.name) : root.svc.serviceOn(modelData.name)
+          onFlip: modelData.active === true ? root.svc.serviceOff(modelData.name) : root.svc.serviceOn(modelData.name)
         }
       }
       Component.onCompleted: if (root.ready) root.svc.loadServices()
@@ -1742,21 +1750,18 @@ Item {
 
     // The empty state is a real state, not a three-line placeholder that reads
     // like content.
-    Card {
+    ColumnLayout {
+      Layout.fillWidth: true
       visible: lp.editable && listEditor.text === ""
-      ColumnLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(4)
-        Label { Layout.fillWidth: true; text: "Список пуст — так и должно быть" }
-        Hint { Layout.fillWidth: true; text: "Встроенные списки Flowseal уже покрывают YouTube и Discord. Добавьте свой домен, только если он не открывается." }
-      }
-      RowLayout {
-        Layout.fillWidth: true
-        PrimaryButton {
-          text: "Вставить пример"
-          tooltipText: "Вставить пример записей в редактор"
-          onClicked: listEditor.text += lp.exampleText()
-        }
+      spacing: Style.space(2)
+      Label { Layout.fillWidth: true; text: "Список пуст — так и должно быть" }
+      Hint { Layout.fillWidth: true; text: "Встроенные списки уже покрывают YouTube и Discord. Добавьте свой домен, только если он не открывается." }
+      Button {
+        bordered: false
+        fontSize: Style.font.caption
+        text: "Вставить пример"
+        tooltipText: "Вставить пример записей в редактор"
+        onClicked: listEditor.text += lp.exampleText()
       }
     }
     Editor {
@@ -1783,7 +1788,8 @@ Item {
         onClicked: lp.save()
       }
       Button {
-        bordered: true
+        bordered: false
+        fontSize: Style.font.caption
         foreground: root.bad
         visible: listActions.liveCounts.valid === 0 && lp.loadedText !== "" && listActions.changed
         enabled: listActions.canSave
@@ -1800,14 +1806,12 @@ Item {
         }
       }
     }
-    Toggle {
-      Layout.fillWidth: true
+    ToggleRow {
       visible: lp.editable
       label: "Перезапустить обход после сохранения"
-      description: "Обход перезапускается, чтобы новые списки применились. Займёт несколько секунд."
+      note: "Новые списки применятся после перезапуска"
       checked: lp.restartAfterSave
-      foreground: root.fg
-      onClicked: lp.restartAfterSave = !lp.restartAfterSave
+      onFlip: lp.restartAfterSave = !lp.restartAfterSave
     }
     Hint {
       Layout.fillWidth: true
