@@ -431,12 +431,20 @@ Panel {
         }
 
         // strategy
-        PanelDropdown {
-          id: strategy
+        RowLayout {
           width: parent.width
           visible: root.ready && root.svc.installed
-          // Constant label: the value already starts with the strategy name.
-          label: "Стратегия"
+          spacing: Style.space(8)
+          PanelSectionHeader {
+            text: "СТРАТЕГИЯ"
+            Layout.preferredWidth: Style.space(92)
+            Layout.alignment: Qt.AlignVCenter
+            foreground: root.fg
+            fontFamily: root.fontFamily
+          }
+        PanelDropdown {
+          id: strategy
+          Layout.fillWidth: true
           rowHeight: root.ctlHeight
           popupRowHeight: root.ctlHeight
           foreground: root.fg
@@ -488,6 +496,7 @@ Panel {
           }
           onHovered: function(h) { if (h) root.setCursor("strategy") }
         }
+        }
 
         // last check
         ColumnLayout {
@@ -496,7 +505,7 @@ Panel {
           spacing: Style.space(4)
           RowLayout {
             Layout.fillWidth: true
-            PanelSectionHeader { text: "Доступность"; Layout.fillWidth: true; foreground: root.fg; fontFamily: root.fontFamily }
+            PanelSectionHeader { text: "ДОСТУПНОСТЬ"; Layout.fillWidth: true; foreground: root.fg; fontFamily: root.fontFamily }
             HoverHandler { id: statusHover }
             Text {
               id: statusText
@@ -515,6 +524,23 @@ Panel {
               text: Model.CHECK_EXPLAINER
               fontFamily: root.fontFamily
             }
+            // Text action in the header line, as in omarchy-xray ("Test").
+            Button {
+              id: checkBtn
+              bordered: false
+              fontSize: Style.font.caption
+              implicitHeight: root.ctlHeight
+              foreground: root.fg
+              hasCursor: root.cursorRow === "check"
+              text: root.ready && root.svc.busyLabel === "проверка" ? "Проверка…" : "Проверить"
+              tooltipText: "Проверить доступность (c)"
+              onClicked: root.svc.runCheck()
+              onHovered: function(h) { if (h) root.setCursor("check") }
+              Accessible.role: Accessible.Button
+              Accessible.name: "Проверить доступность"
+              Accessible.focusable: true
+              Accessible.focused: hasCursor
+            }
           }
           Repeater {
             model: root.ready ? Model.categories(root.svc.check) : []
@@ -527,62 +553,44 @@ Panel {
                 color: modelData.good ? root.fg : root.errorColor
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
-                font.bold: !modelData.good
               }
               Text {
                 text: modelData.ok + "/" + modelData.total
                 color: modelData.good ? root.fg : root.errorColor
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
-                font.bold: !modelData.good
               }
             }
           }
           Text {
             visible: root.ready && Model.categories(root.svc.check).length === 0
-            text: "Нажмите «Проверить», чтобы узнать, что открывается"
+            text: "Ещё не проверялось"
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
         }
 
+        // Footer like xray's SUBSCRIPTIONS line: a quiet label and one text
+        // action at the right edge.
+        PanelSeparator { width: parent.width; foreground: root.fg; visible: root.ready && root.svc.installed }
         RowLayout {
           width: parent.width
-          spacing: Style.space(6)
-          // The popup's one filled action.
-          BorderSurface {
+          visible: root.ready && root.svc.installed
+          spacing: Style.space(8)
+          PanelSectionHeader {
             Layout.fillWidth: true
-            Layout.alignment: Qt.AlignVCenter
-            implicitWidth: checkBtn.implicitWidth + Style.space(24)
-            implicitHeight: Math.max(checkBtn.implicitHeight, root.ctlHeight)
-            color: "transparent"
-            borderSpec: Border.controlSpec("normal", root.fg, Color.accent)
-            radius: Style.cornerRadius
-            visible: root.ready && root.svc.installed
-            Button {
-              id: checkBtn
-              anchors.fill: parent
-              bordered: false
-              foreground: root.fg
-              hasCursor: root.cursorRow === "check"
-              text: "Проверить"
-              tooltipText: "Проверить доступность (c)"
-              onClicked: root.svc.runCheck()
-              onHovered: function(h) { if (h) root.setCursor("check") }
-              Accessible.role: Accessible.Button
-              Accessible.name: "Проверить доступность"
-              Accessible.focusable: true
-              Accessible.focused: hasCursor
-            }
+            text: "ПРИЛОЖЕНИЕ"
+            foreground: root.fg
+            fontFamily: root.fontFamily
           }
           Button {
-            Layout.fillWidth: true
             bordered: false
             fontSize: Style.font.caption
             implicitHeight: root.ctlHeight
+            foreground: root.fg
             hasCursor: root.cursorRow === "open"
-            text: "Открыть"
+            text: "Открыть  󰅂"
             tooltipText: "Открыть приложение (o)"
             onClicked: { root.close(); root.svc.openApp() }
             onHovered: function(h) { if (h) root.setCursor("open") }
