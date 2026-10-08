@@ -180,7 +180,7 @@ Item {
     signal picked(string preset)
     // Delta relative to the no-bypass baseline: 0 = база, −N worse, +N better.
     property int delta: (row && !row.baseline && baseScore >= 0 && ((row.total | 0) > 0)) ? ((row.score | 0) - baseScore) : 0
-    property bool showDelta: !!row && !row.baseline && baseScore >= 0 && ((row.total | 0) > 0) && delta !== 0
+    property bool showDelta: !!row && !row.baseline && baseScore >= 0 && ((row.total | 0) > 0)
     // The baseline is already the row's own leading number, so it is not
     // repeated here: repeating it is what pushed the delta into the ellipsis.
     property string summary: {
@@ -189,6 +189,7 @@ Item {
       if (row && !row.baseline && baseScore >= 0 && (row.total | 0) > 0) {
         if ((row.score | 0) < baseScore) s += " · хуже базы"
         else if ((row.score | 0) > baseScore) s += " · лучше базы"
+        else s += " · как база"
       }
       return s
     }
@@ -238,9 +239,9 @@ Item {
         fixedWidth: true
         opacity: showDelta ? 1 : 0
         horizontalAlignment: Text.AlignRight
-        color: delta < 0 ? root.bad : Color.accent
+        color: delta < 0 ? root.bad : delta === 0 ? root.dim : Color.accent
         font.bold: true
-        text: (delta > 0 ? "+" : "−") + Math.abs(delta)
+        text: delta === 0 ? "0" : (delta > 0 ? "+" : "−") + Math.abs(delta)
       }
       Hint {
         Layout.preferredWidth: Style.space(168)
