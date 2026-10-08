@@ -597,7 +597,7 @@ Item {
     }
     clip: true
     ColumnLayout {
-      width: parent.width
+      width: ov.availableWidth
       spacing: Style.space(12)
 
       Section {
@@ -1840,7 +1840,7 @@ Item {
     }
     clip: true
     ColumnLayout {
-      width: parent.width
+      width: se.availableWidth
       spacing: Style.space(12)
 
       Section {
@@ -2142,7 +2142,7 @@ Item {
     readonly property bool uiBlocked: logEditor.area.activeFocus
     Timer { id: armRemoveTimer; interval: 4000; onTriggered: ep.armRemove = false }
     ColumnLayout {
-      width: parent.width
+      width: ep.availableWidth
       spacing: Style.space(12)
       // So the last card can be scrolled fully into view instead of being cut
       // at the viewport edge.
@@ -2324,7 +2324,7 @@ Item {
     Timer { id: hostsTimer; interval: 4000; onTriggered: stp.hostsConfirm = false }
     clip: true
     ColumnLayout {
-      width: parent.width
+      width: stp.availableWidth
       spacing: Style.space(12)
       enabled: root.ready && root.svc.installed
 

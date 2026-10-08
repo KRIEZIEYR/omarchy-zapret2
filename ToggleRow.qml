@@ -73,8 +73,6 @@ ColumnLayout {
       Accessible.focusable: true
       Accessible.focused: root.hasCursor
     }
-
-    Item { Layout.fillWidth: true }
   }
 
   Text {
