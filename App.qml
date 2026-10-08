@@ -2172,37 +2172,35 @@ Item {
       // at the viewport edge.
       Layout.bottomMargin: Style.space(24)
 
-      Card {
+      Section {
         id: engineCard
-        level: "primary"
-        PanelSectionHeader {
-          Layout.fillWidth: true
-          text: "Движок: " + (root.ready && root.svc.st && root.svc.st.engine ? root.svc.st.engine : "не установлен")
-          foreground: root.fg
-          fontFamily: root.fontFamily
-        }
-        Hint { Layout.fillWidth: true; text: "bol-van/zapret2: nfqws2 + Lua. Обновление скачивает последний релиз, сверяет sha256 и спрашивает пароль. Предыдущая версия остаётся рядом." }
-        RowLayout {
-          // The engine update is this page's one filled action. The plugin
-          // update lives in the diagnostics row below, where it is named.
-          PrimaryButton {
-            text: "Обновить движок (zapret2)"
-            tooltipText: "Обновить движок zapret2 до последнего релиза (спросит пароль)"
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            onClicked: root.svc.engineUpdate()
-          }
+        title: "ДВИЖОК: " + (root.ready && root.svc.st && root.svc.st.engine ? root.svc.st.engine : "не установлен")
+        Hint { Layout.fillWidth: true; text: "nfqws2 + Lua. Скачивает релиз, сверяет sha256, спрашивает пароль; прошлая версия остаётся рядом." }
+        // The engine update is this page's one filled action. The plugin
+        // update lives in the diagnostics row below, where it is named.
+        PrimaryButton {
+          text: "Обновить движок (zapret2)"
+          tooltipText: "Обновить движок zapret2 до последнего релиза (спросит пароль)"
+          enabled: root.ready && root.svc.installed && !root.svc.busy
+          onClicked: root.svc.engineUpdate()
         }
       }
 
-      Card {
-        RowLayout {
-          Layout.fillWidth: true
-          PanelSectionHeader { Layout.fillWidth: true; text: "Диагностика"; foreground: root.fg; fontFamily: root.fontFamily }
-          Button { bordered: true; text: "Повторить"; tooltipText: "Повторить диагностику"; onClicked: root.svc.runDoctor() }
+      Section {
+        title: "ДИАГНОСТИКА"
+        actions: [
           Button {
-            bordered: true
+            bordered: false
+            fontSize: Style.font.caption
+            text: "Повторить"
+            tooltipText: "Повторить диагностику"
+            onClicked: root.svc.runDoctor()
+          },
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
             enabled: root.ready && !root.svc.busy
-            text: "Скопировать диагностику"
+            text: "Скопировать"
             tooltipText: "Скопировать краткую диагностику без адресов и доменов"
             onClicked: {
               root.svc.loadDiagnostics(function(r) {
@@ -2210,7 +2208,7 @@ Item {
               })
             }
           }
-        }
+        ]
         Repeater {
           model: root.ready ? root.svc.doctorItems : []
           delegate: CursorSurface {
@@ -2262,10 +2260,10 @@ Item {
                   return d
                 }
               }
-              // Labelled actions: a 20px glyph was not a target, and the fix
-              // for the plugin row is the button, not a copy.
+              // Labelled actions: text, not bordered buttons.
               Button {
-                bordered: true
+                bordered: false
+                fontSize: Style.font.caption
                 visible: !modelData.ok && (String(modelData.name).indexOf("host") !== -1 || String(modelData.name).indexOf("nslookup") !== -1 || String(modelData.detail).indexOf("bind") !== -1)
                 text: "Скопировать"
                 tooltipText: "Скопировать команду: omarchy pkg add bind"
@@ -2273,7 +2271,8 @@ Item {
                 onClicked: root.copyText("omarchy pkg add bind")
               }
               Button {
-                bordered: true
+                bordered: false
+                fontSize: Style.font.caption
                 visible: !modelData.ok && String(modelData.name).indexOf("Plugin and system copy") !== -1
                 text: "Обновить плагин"
                 tooltipText: "Установить обновление системной части плагина (спросит пароль)"
@@ -2286,21 +2285,23 @@ Item {
         }
       }
 
-      Card {
-        level: "info"
-        RowLayout {
-          Layout.fillWidth: true
-          PanelSectionHeader { Layout.fillWidth: true; text: "Журнал службы"; foreground: root.fg; fontFamily: root.fontFamily }
-          Button { bordered: true; text: "Обновить"; tooltipText: "Обновить журнал"; onClicked: root.svc.loadLogs() }
-        }
+      Section {
+        title: "ЖУРНАЛ СЛУЖБЫ"
+        actions: [
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
+            text: "Обновить"
+            tooltipText: "Обновить журнал"
+            onClicked: root.svc.loadLogs()
+          }
+        ]
         Hint { visible: root.ready && root.svc.logNote !== ""; Layout.fillWidth: true; text: root.ready ? root.svc.logNote : "" }
-        Toggle {
-          Layout.fillWidth: true
+        ToggleRow {
           label: "Только важное"
-          description: "Ошибки, предупреждения и перезапуски; информационные строки скрыты."
+          note: "Ошибки, предупреждения и перезапуски"
           checked: ep.onlyImportant
-          foreground: root.fg
-          onClicked: ep.onlyImportant = !ep.onlyImportant
+          onFlip: ep.onlyImportant = !ep.onlyImportant
         }
         Editor {
           id: logEditor
@@ -2320,14 +2321,16 @@ Item {
         }
       }
 
-      Card {
+      Section {
+        title: "УДАЛЕНИЕ"
         visible: root.ready && root.svc.installed
-        PanelSectionHeader { Layout.fillWidth: true; text: "Удаление"; foreground: root.fg; fontFamily: root.fontFamily }
-        Hint { Layout.fillWidth: true; text: "Останавливает обход и удаляет всё, что поставила установка: /opt/omarchy-zapret2, юниты, правило polkit. Ваши списки и стратегии в /var/lib/omarchy-zapret2 остаются, если не выбрать «вместе с данными»." }
+        Hint { Layout.fillWidth: true; text: "Останавливает обход; удаляет /opt, юниты, polkit. Данные остаются." }
         RowLayout {
-          Button { bordered: true; foreground: root.bad; text: ep.armRemove ? "Точно удалить?" : "Удалить"; tooltipText: ep.armRemove ? "Нажмите ещё раз для удаления" : "Удалить движок и настройки плагина"; onClicked: { if (ep.armRemove) { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(false) } else { ep.armRemove = true; armRemoveTimer.restart() } } }
-          Button { visible: ep.armRemove; bordered: true; foreground: root.bad; text: "Вместе с данными"; tooltipText: "Удалить и свои списки и стратегии"; onClicked: { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(true) } }
-          Button { visible: ep.armRemove; bordered: true; text: "Отмена"; tooltipText: "Оставить всё как есть"; onClicked: { ep.armRemove = false; armRemoveTimer.stop() } }
+          Layout.fillWidth: true
+          spacing: Style.space(12)
+          Button { bordered: false; fontSize: Style.font.caption; foreground: root.bad; text: ep.armRemove ? "Точно удалить?" : "Удалить"; tooltipText: ep.armRemove ? "Нажмите ещё раз для удаления" : "Удалить движок и настройки плагина"; onClicked: { if (ep.armRemove) { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(false) } else { ep.armRemove = true; armRemoveTimer.restart() } } }
+          Button { visible: ep.armRemove; bordered: false; fontSize: Style.font.caption; foreground: root.bad; text: "Вместе с данными"; tooltipText: "Удалить и свои списки и стратегии"; onClicked: { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(true) } }
+          Button { visible: ep.armRemove; bordered: false; fontSize: Style.font.caption; text: "Отмена"; tooltipText: "Оставить всё как есть"; onClicked: { ep.armRemove = false; armRemoveTimer.stop() } }
         }
       }
     }
