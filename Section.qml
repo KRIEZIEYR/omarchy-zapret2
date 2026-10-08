@@ -28,6 +28,7 @@ ColumnLayout {
     PanelSectionHeader {
       Layout.fillWidth: true
       text: root.title
+      elide: Text.ElideRight
       foreground: root.foreground
       fontFamily: root.fontFamily
     }

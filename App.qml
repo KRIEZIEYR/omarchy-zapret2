@@ -270,26 +270,22 @@ Item {
         fixedWidth: true
         text: pickRow.summary
       }
-      // The width is reserved so the bar never resizes when "Применить"
+      // The width is reserved so the bar never resizes when the text action
       // appears under the pointer.
       Item {
         Layout.preferredWidth: Style.space(96)
         Layout.fillHeight: true
         Button {
           anchors.fill: parent
-          bordered: true
+          bordered: false
+          fontSize: Style.font.caption
           visible: !!row && !row.baseline && (pickHover.hovered || hasCursor || selected || (row && row.chosen)) && (!root.ready || root.svc.preset !== row.preset)
           enabled: !!row && !row.baseline && root.ready && !root.svc.busy && root.svc.preset !== row.preset
           text: "Применить"
-          tooltipText: "Применить " + ((row && row.title) || (row && row.preset) || "")
+          tooltipText: "Применить " + ((row && row.title) || (row && row.preset) || "") + " (Enter)"
           onClicked: { root.svc.setOption("preset", row.preset) }
         }
       }
-    }
-    PanelToolTip {
-      visible: pickHover.hovered && !!row && !row.baseline
-      text: ((row && row.title) || (row && row.preset) || "") + ((row && row.chosen) ? " · выбрана" : " · нажмите, чтобы применить")
-      fontFamily: root.fontFamily
     }
   }
 
@@ -1871,30 +1867,30 @@ Item {
       width: parent.width
       spacing: Style.space(12)
 
-      Card {
-        RowLayout {
-          Layout.fillWidth: true
-          PanelSectionHeader { Layout.fillWidth: true; text: "Быстрый подбор"; foreground: root.fg; fontFamily: root.fontFamily }
-          // Fast path is the page's filled action; the deep search below is
-          // the power-user fallback and stays secondary.
-          PrimaryButton {
-            visible: !(root.ready && root.svc.busyLabel === "автоподбор")
-            enabled: root.ready && !root.svc.busy
-            text: "Запустить подбор"
-            tooltipText: "Запустить быстрый подбор (1–3 минуты)"
-            onClicked: root.svc.autopick([])
-          }
+      Section {
+        title: "БЫСТРЫЙ ПОДБОР"
+        actions: [
           Button {
-            bordered: true
+            bordered: false
+            fontSize: Style.font.caption
             visible: root.ready && root.svc.busyLabel === "автоподбор"
             text: "Остановить"
             tooltipText: "Остановить подбор"
             onClicked: root.svc.stopLong()
           }
+        ]
+        // Fast path is the page's filled action; the deep search below is
+        // the power-user fallback and stays secondary.
+        PrimaryButton {
+          visible: !(root.ready && root.svc.busyLabel === "автоподбор")
+          enabled: root.ready && !root.svc.busy
+          text: "Запустить подбор"
+          tooltipText: "Запустить быстрый подбор (1–3 минуты)"
+          onClicked: root.svc.autopick([])
         }
         Hint {
           Layout.fillWidth: true
-          text: "Включает стратегии по очереди и проверяет YouTube, Discord, Google и Cloudflare. Останавливается на первой, где открывается всё, иначе оставляет лучшую. Пароль не нужен, занимает 1–3 минуты."
+          text: "Проверяет стратегии по очереди; первая рабочая побеждает. 1–3 минуты, без пароля."
         }
         Label {
           visible: root.ready && root.svc.progressInfo !== null && root.svc.busyLabel === "автоподбор"
@@ -1949,37 +1945,39 @@ Item {
           Hint {
             Layout.fillWidth: true
             visible: root.ready && root.svc.autopickResult.time !== undefined && (root.svc.autopickResult.rows || []).length > 0
-            text: "● — выбрана сейчас · полоса и число рядом с ним: минус — хуже, чем без обхода, плюс — лучше; «база» — результат без обхода"
+            text: "● — выбрана · ±N к базе без обхода"
           }
         }
       }
 
-      Card {
-        level: "primary"
-        PanelSectionHeader { Layout.fillWidth: true; text: "Интеллектуальный circular-конфиг"; foreground: root.fg; fontFamily: root.fontFamily }
-        Hint { Layout.fillWidth: true; text: "Проверит готовые стратегии для целевых сайтов, составит ротацию лучших вариантов; для доменов без результата предложит blockcheck2 quick, затем при необходимости standard (долго)." }
-        RowLayout {
-          Layout.fillWidth: true
-          PrimaryButton {
+      Section {
+        title: "CIRCULAR-КОНФИГ"
+        actions: [
+          Button {
+            bordered: false
+            fontSize: Style.font.caption
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: root.svc.busyLabel === "создание circular-конфига" ? "Проверка пресетов…" : "Построить конфиг"
             tooltipText: "Проверить пресеты для сайтов и построить круговую конфигурацию"
             onClicked: root.svc.circularPlan(level.value)
-          }
+          },
           Button {
-            bordered: true
+            bordered: false
+            fontSize: Style.font.caption
             enabled: root.ready && !root.svc.busy
             text: "Показать план"
+            tooltipText: "Показать число доменов в круговой конфигурации"
             onClicked: root.svc.circularStatus(function(r) {
               if (r.data && r.data.config) root.svc.flash("Circular: " + Object.keys(r.data.config.domains || {}).length + " доменов")
             })
           }
-        }
+        ]
+        Hint { Layout.fillWidth: true; text: "Проверяет пресеты для сайтов и строит ротацию лучших." }
       }
 
-      Card {
+      Section {
         id: blockcheckCard
-        level: "primary"
+        title: "ГЛУБОКИЙ ПОИСК: BLOCKCHECK2"
         function bindMissing() {
           if (!root.ready) return false
           var items = root.svc.doctorItems || []
@@ -1994,13 +1992,12 @@ Item {
             if (items[i].name === "No VPN tunnel" && !items[i].ok) return true
           return false
         }
-        RowLayout {
-          Layout.fillWidth: true
-          PanelSectionHeader { Layout.fillWidth: true; text: "Глубокий поиск: blockcheck2"; foreground: root.fg; fontFamily: root.fontFamily }
+        // Always visible, so the reason is on screen instead of the action
+        // quietly disappearing.
+        actions: [
           Button {
-            bordered: true
-            // Always visible, so the reason is on screen instead of the button
-            // quietly disappearing; it never copies anything behind your back.
+            bordered: false
+            fontSize: Style.font.caption
             enabled: root.ready && (root.svc.blockcheckRunning || (!blockcheckCard.vpnOn() && !blockcheckCard.bindMissing()))
             text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить поиск"
             tooltipText: root.svc.blockcheckRunning ? "Остановить глубокий поиск"
@@ -2013,54 +2010,34 @@ Item {
               root.svc.blockcheckStart(domains.text.split(/[\s,]+/).filter(function(d) { return d !== "" }), level.value)
             }
           }
-        }
-        Label {
+        ]
+        Hint {
           Layout.fillWidth: true
           visible: blockcheckCard.vpnOn() && !root.svc.blockcheckRunning
           color: root.bad
-          font.bold: true
           text: "Выключите VPN-туннель (omarchy-xray TUN): поиск через туннель бессмыслен"
         }
-        // The remedy is one copyable field with one copy action, not three
-        // unrelated fragments sharing a row with the run button.
+        // The remedy is one copyable command with one copy action.
         RowLayout {
           Layout.fillWidth: true
           visible: !root.svc.blockcheckRunning && blockcheckCard.bindMissing() && !blockcheckCard.vpnOn()
           spacing: Style.space(8)
-          Label {
+          Hint {
             Layout.fillWidth: true
-            fixedWidth: true
             color: root.bad
-            font.bold: true
-            text: "Нужен bind для blockcheck2"
-          }
-          BorderSurface {
-            Layout.alignment: Qt.AlignVCenter
-            implicitWidth: bindCmd.implicitWidth + Style.space(16)
-            implicitHeight: bindCmd.implicitHeight + Style.space(8)
-            color: Style.normalFillFor(root.fg, Color.accent)
-            borderSpec: Border.controlSpec("normal", root.fg, Color.accent)
-            radius: Style.cornerRadius
-            Text {
-              id: bindCmd
-              anchors.centerIn: parent
-              text: "omarchy pkg add bind"
-              color: root.fg
-              font.family: root.monoFamily
-              font.pixelSize: Style.font.bodySmall
-              textFormat: Text.PlainText
-            }
+            text: "Нужен bind для blockcheck2: omarchy pkg add bind"
           }
           Button {
-            bordered: true
-            text: "Скопировать команду"
+            bordered: false
+            fontSize: Style.font.caption
+            text: "Скопировать"
             tooltipText: "Скопировать команду установки bind (установка — вручную)"
             onClicked: root.copyText("omarchy pkg add bind")
           }
         }
         Hint {
           Layout.fillWidth: true
-          text: "Официальный перебор стратегий zapret2. Обход на время поиска выключается. quick — минуты, standard и force — до часа и дольше. Найденное можно сохранить как свою стратегию."
+          text: "Официальный перебор zapret2. Обход на время поиска выключается."
         }
         RowLayout {
           Layout.fillWidth: true
@@ -2112,7 +2089,8 @@ Item {
                 Hint { Layout.fillWidth: true; text: modelData.args; font.family: root.monoFamily }
               }
               Button {
-                bordered: true
+                bordered: false
+                fontSize: Style.font.caption
                 text: "Сохранить"
                 tooltipText: "Сохранить найденное как свою стратегию"
                 onClicked: root.svc.blockcheckSave(index)
@@ -2130,23 +2108,19 @@ Item {
             return prefix + bc.lines + " строк журнала"
           }
         }
-        Toggle {
-          Layout.fillWidth: true
+        ToggleRow {
           visible: root.ready && root.svc.blockcheck !== null && root.svc.blockcheck.lines > 0
           label: "Показать весь журнал"
-          description: "Выключите, чтобы оставить только ошибки и найденные стратегии."
+          note: "Когда выключено — только ошибки и найденные стратегии"
           checked: se.showFull
-          foreground: root.fg
-          onClicked: se.showFull = !se.showFull
+          onFlip: se.showFull = !se.showFull
         }
-        Toggle {
-          Layout.fillWidth: true
+        ToggleRow {
           visible: root.ready && root.svc.blockcheck !== null && root.svc.blockcheck.lines > 0 && !se.showFull
           label: "Только важное"
-          description: "Ошибки, найденные стратегии и итог перебора; служебные строки zapret2 скрыты."
+          note: "Ошибки, найденное и итог; служебное скрыто"
           checked: se.onlyImportantBc
-          foreground: root.fg
-          onClicked: se.onlyImportantBc = !se.onlyImportantBc
+          onFlip: se.onlyImportantBc = !se.onlyImportantBc
         }
         Editor {
           id: bcEditor
