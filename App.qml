@@ -2230,7 +2230,7 @@ bordered: true
             property string glyph: severity === "ok" ? "✓ " : severity === "action" ? "! " : severity === "optional" ? "· " : "✗ "
             foreground: root.fg
             Layout.fillWidth: true
-            implicitHeight: docInner.implicitHeight + Style.space(10)
+            implicitHeight: Style.space(30)  // every diagnostics row is one line high
             hasCursor: ep.hoverDoc === index
             Accessible.role: Accessible.StaticText
             Accessible.name: (severity === "ok" ? "в порядке: " : severity === "action" ? "нужно действие: " : severity === "optional" ? "необязательно: " : "ошибка: ") + (typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name)
@@ -2259,11 +2259,15 @@ bordered: true
                 // gets the error colour.
                 color: docRow.severity === "ok" ? root.fg : docRow.severity === "optional" ? root.dim : docRow.severity === "action" ? Color.accent : root.bad
               }
+              // One line like every other row; the full text is in the
+              // accessible description.
               Hint {
                 Layout.fillWidth: true
-                wrapMode: Text.Wrap
-                maximumLineCount: 3
+                wrapMode: Text.NoWrap
+                elide: Text.ElideRight
+                maximumLineCount: 1
                 visible: text !== ""
+                Accessible.description: text
                 text: {
                   var d = Model.doctorDetail(modelData.name, modelData.detail)
                   var dn = typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name
@@ -2273,6 +2277,7 @@ bordered: true
               }
               // Labelled actions: text, not bordered buttons.
               Button {
+                verticalPadding: 0
                 bordered: false
                 fontSize: Style.font.caption
                 visible: !modelData.ok && (String(modelData.name).indexOf("host") !== -1 || String(modelData.name).indexOf("nslookup") !== -1 || String(modelData.detail).indexOf("bind") !== -1)
@@ -2282,6 +2287,7 @@ bordered: true
                 onClicked: root.copyText("omarchy pkg add bind")
               }
               Button {
+                verticalPadding: 0
                 bordered: false
                 fontSize: Style.font.caption
                 visible: !modelData.ok && String(modelData.name).indexOf("Plugin and system copy") !== -1
