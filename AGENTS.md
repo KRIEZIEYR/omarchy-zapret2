@@ -41,8 +41,6 @@ UI copy is Russian. Repo: https://github.com/KRIEZIEYR/omarchy-zapret2, branch
   args, arbitrary Lua, `--blob=@file`, `luaexec`, or paths outside the engine.
 - nftables queue 220, own table `inet omarchy_zapret2`; tunnels skipped via
   `oiftype 65534` (user runs omarchy-xray VPN).
-- Never ask for, store, or pipe a sudo/root password. Privileged steps go
-  through pkexec/polkit and are run by the user.
 
 ## Running and checking
 
