@@ -1084,17 +1084,19 @@ bordered: true
 
     function isSectionFormat(text) { return String(text || "").indexOf("[TCP_") !== -1 }
 
-    function pickRow(name) {
-      var rows = Model.autopickRows(root.svc.autopickResult)
-      for (var i = 0; i < rows.length; i++) if (rows[i].preset === name) return rows[i]
-      return null
+    // Autopick rows by preset name, rebuilt only when the result changes.
+    readonly property var rowIndex: {
+      var m = {}, rows = root.ready ? Model.autopickRows(root.svc.autopickResult) : []
+      for (var i = 0; i < rows.length; i++) {
+        if (!(rows[i].preset in m)) m[rows[i].preset] = rows[i]
+        if (rows[i].baseline && !("\u0000base" in m)) m["\u0000base"] = rows[i].score
+      }
+      return m
     }
 
-    function baseScore() {
-      var rows = Model.autopickRows(root.svc.autopickResult)
-      for (var i = 0; i < rows.length; i++) if (rows[i].baseline) return rows[i].score
-      return -1
-    }
+    function pickRow(name) { return rowIndex[name] || null }
+
+    function baseScore() { var b = rowIndex["\u0000base"]; return b === undefined ? -1 : b }
 
     function isWorse(name) {
       var r = pickRow(name)

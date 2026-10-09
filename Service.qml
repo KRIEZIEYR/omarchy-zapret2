@@ -58,6 +58,7 @@ Item {
 
   property bool _autostartDone: false
   property string _lastState: ""
+  property string _stJson: ""
 
   // Children start with a cleared environment; null inherits that one variable.
   readonly property var baseEnv: ({
@@ -140,7 +141,9 @@ Item {
   function refresh() {
     run(_status, ["status"], function(r) {
       if (r.data && r.data.ok !== false) {
-        st = r.data
+        // Reassign only on change: a new st rebuilds every Repeater bound to it.
+        var json = JSON.stringify(r.data)
+        if (json !== _stJson) { _stJson = json; st = r.data }
         maybeAutostart()
         maybeUpdateCheck()
       }
