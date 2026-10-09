@@ -8,20 +8,6 @@ test("update badge", () => {
   eq(Model.updateBadgeLabel({ checked: 1, lists: true, presets: true }), "Есть обновления: списки, стратегии")
 })
 
-test("redactIps", () => {
-  eq(Model.redactIps("a 1.2.3.4 b"), "a [IP] b")
-  eq(Model.redactIps("x 2001:db8::1 y").indexOf("::1"), -1)
-  eq(Model.redactIps("go https://youtube.com/x y"), "go [URL] y")
-  eq(Model.redactIps("open youtube.com now"), "open [host] now")
-  eq(Model.redactIps("Oct 06 10:00:00 h ok"), "Oct 06 10:00:00 h ok")
-})
-
-test("suggestImportName", () => {
-  eq(Model.suggestImportName("~/my-strategy.txt"), "my-strategy")
-  eq(Model.suggestImportName("https://example.com/General ALT.txt?x=1"), "general-alt")
-  eq(Model.suggestImportName(""), "imported")
-})
-
 test("serviceTitle", () => {
   eq(Model.serviceTitle("telegram"), "Telegram")
   eq(Model.serviceTitle("whatsapp"), "WhatsApp")
@@ -33,4 +19,17 @@ test("firstRunStep", () => {
   eq(Model.firstRunStep({ installed: false }, {}), 1)
   eq(Model.firstRunStep({ installed: true }, {}), 2)
   eq(Model.firstRunStep({ installed: true }, { time: 5 }), 3)
+})
+
+test("updateBadgeLabel", () => {
+  eq(Model.updateBadgeLabel({ engine: true, lists: false, presets: true, latest: "v2" }),
+    "Есть обновления: движок v2, стратегии")
+  eq(Model.updateBadgeLabel({ engine: false, lists: false, presets: false, checked: 1000 }, 1000 + 7200),
+    "Обновлений нет · проверено 2 ч назад")
+  eq(Model.updateBadgeLabel({}), "Проверка обновлений ещё не выполнялась")
+})
+
+test("dnsStatusText", () => {
+  eq(Model.dnsStatusText({ dns: ["1.1.1.1", "8.8.8.8"] }), "DNS: 1.1.1.1, 8.8.8.8")
+  eq(Model.dnsStatusText({}), "DNS-серверы не определены")
 })

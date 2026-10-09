@@ -238,22 +238,10 @@ var NOT_NEEDED_TEXT = "Всё открывается"
 // Strategies so the two tabs cannot drift into contradicting each other.
 var NOT_NEEDED_EXPL = "Сайты открываются и так."
 var CHECK_EXPLAINER = "11 проверок = адреса YouTube, Discord, Google, Cloudflare по TLS. QUIC-пробы не учитываются."
-function failedHosts(check) {
-  var cats = (check && check.categories) || {}
-  var out = []
-  for (var k in cats) {
-    var rs = (cats[k] && cats[k].results) || []
-    for (var i = 0; i < rs.length; i++) if (!rs[i].ok && !rs[i].http3) out.push(rs[i])
-  }
-  return out
-}
 function hasFailing(check) {
   var cats = categories(check)
   for (var i = 0; i < cats.length; i++) if (!cats[i].good) return true
   return false
-}
-function hasError(check) {
-  return hasFailing(check)
 }
 function validHosts(text) {
   var parts = String(text || "").split(/[\s,;]+/)
@@ -324,23 +312,6 @@ function curlError(err) {
   if (s.indexOf("(7)") !== -1 || l.indexOf("refused") !== -1) return "соединение отклонено"
   if (s.indexOf("(56)") !== -1 || l.indexOf("reset") !== -1) return "соединение сброшено"
   return "ошибка"
-}
-
-// Bar popup strategy list: the active one first, then the autopick top 5,
-// deduped. Falls back to the first 5 presets when there are no autopick rows.
-function popupPresets(presets, autopick, active) {
-  var names = ((presets || []).map(function(p) {
-    return typeof p === "string" ? p : (p && p.name)
-  }).filter(function(n) { return !!n }))
-  var top = autopickRows(autopick).filter(function(r) {
-    return !r.baseline && (r.total | 0) > 0
-  }).slice(0, 5).map(function(r) { return r.preset })
-  if (top.length === 0) top = names.slice(0, 5)
-  var out = []
-  function push(n) { if (n && out.indexOf(n) === -1) out.push(n) }
-  push(active)
-  top.forEach(push)
-  return out.slice(0, 6)
 }
 
 // Popup dropdown label: "General · 12/14 · лучшая", plus
@@ -725,16 +696,6 @@ function isValidIPNetwork(s) {
 var MAX_BACKUP_TOTAL = 2 * 1024 * 1024
 var MAX_BACKUP_FILE = 512 * 1024
 
-function isValidBackupSize(size) {
-  var n = Number(size)
-  return n > 0 && n <= MAX_BACKUP_TOTAL
-}
-
-function isValidBackupFileSize(size) {
-  var n = Number(size)
-  return n >= 0 && n <= MAX_BACKUP_FILE
-}
-
 // Strip addresses and hostnames from diagnostics text (no hosts/IPs).
 // Mirrors manager redact_ips: URLs, IPv4, real IPv6 (timestamps like
 // 10:00:00 are kept), bare domains. Home-dir shortening lives in the
@@ -762,26 +723,6 @@ function serviceTitle(name) {
 // Picker row state: "включён" when all its domains are in the user list.
 function serviceStateLabel(active) {
   return active === true ? "включён" : "выключен"
-}
-
-function suggestImportName(source) {
-  var s = String(source || "").split("?", 1)[0]
-  s = s.split("\\").join("/")
-  var tail = s.split("/").pop() || ""
-  tail = tail.replace(/\.[a-z0-9]+$/i, "")
-  var slug = tail.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").substring(0, 32)
-  return slug || "imported"
-}
-
-function redactIps(text) {
-  var s = String(text || "")
-  s = s.replace(/https?:\/\/[^\s]+/gi, "[URL]")
-  s = s.replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "[IP]")
-  s = s.replace(/(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F:.]+/g, function(m) {
-    return (m.indexOf("::") !== -1 || /[a-fA-F]/.test(m)) ? "[IPv6]" : m
-  })
-  s = s.replace(/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/gi, "[host]")
-  return s
 }
 
 // DNS status line for the Secure DNS card. Pure, null-safe.

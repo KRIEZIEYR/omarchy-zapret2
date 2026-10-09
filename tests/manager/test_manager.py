@@ -996,19 +996,6 @@ class StrategyImport(unittest.TestCase):
                 self._strategy(var, ["import", "--name", "evil", src])
             self.assertFalse(os.path.exists(os.path.join(var, "custom", "my-evil.txt")))
 
-    def test_import_url_ok(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            var = self._var(tmp)
-            emitted = {}
-            with mock.patch.object(zm, "require_installed", lambda: None), \
-                 mock.patch.object(zm, "VAR", var), \
-                 mock.patch.object(zm, "fetch_strategy_url", lambda url: MINIMAL), \
-                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-                zm.cmd_strategy(["import", "https://example.com/s.txt", "--name", "fromurl"])
-            self.assertEqual(emitted.get("name"), "my-fromurl")
-            with open(os.path.join(var, "custom", "my-fromurl.txt"), encoding="utf-8") as f:
-                zm.parse_preset(f.read())
-
     def test_import_url_stdin_ok(self):
         # The link arrives on stdin, so a signed URL never appears in argv.
         with tempfile.TemporaryDirectory() as tmp:

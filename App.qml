@@ -1065,12 +1065,6 @@ bordered: true
       editor.text = shownText
     }
 
-    function saveFullAsOwn() {
-      var base = String(shownName || "").replace(/^my-/, "").replace(/^fs-/, "")
-      if (base === "") base = "full"
-      root.svc.saveCustom(base, shownText, function(r) { if (r.ok) showing = false })
-    }
-
     function recommendedName() {
       if (root.ready && root.svc.autopickResult && root.svc.autopickResult.time) {
         var c = String(root.svc.autopickResult.chosen || "")
@@ -1086,11 +1080,6 @@ bordered: true
       if ((r.total | 0) <= 0) return r.error !== "" ? r.error : bt
       var s = r.score + "/" + r.total
       return bt + " · " + s
-    }
-
-    function totalPresets() {
-      if (!root.ready || !root.svc.presets) return 0
-      return root.svc.presets.length
     }
 
     function isSectionFormat(text) { return String(text || "").indexOf("[TCP_") !== -1 }
@@ -1121,15 +1110,6 @@ bordered: true
       return b >= 0 && r.score === b
     }
 
-    function testedCount() {
-      if (!root.ready || !root.svc.presets) return 0
-      var n = 0
-      for (var i = 0; i < root.svc.presets.length; i++) {
-        if (sp.isTested(root.svc.presets[i].name)) n++
-      }
-      return n
-    }
-
     function isTested(name) {
       var r = pickRow(name)
       return !!(r && ((r.total | 0) > 0 || r.error !== ""))
@@ -1142,21 +1122,6 @@ bordered: true
       var dash = rest.indexOf("-")
       if (dash === -1) return rest + ".bat"
       return rest.substring(0, dash) + " (" + rest.substring(dash + 1).split("-").join(" ").toUpperCase() + ").bat"
-    }
-
-    function rowSubtitle(p) {
-      var r = sp.pickRow(p.name)
-      var t = ""
-      if (typeof Model.breaksText === "function") t = Model.breaksText(r)
-      else if (r && (r.total | 0) > 0) t = r.score + "/" + r.total + " в подборе"
-      else if (r && r.error !== "") t = r.error
-      else t = "не проверялась"
-      if ((r && (r.total | 0)) > 0 && t !== "не проверялась" && r.error === "") {
-        var s = r.score + "/" + r.total
-        if (t.indexOf(s) === -1) t += " · " + s
-      }
-      if (sp.isWorse(p.name)) t += " · ⚠ хуже, чем без обхода"
-      return t
     }
 
     function groups() {

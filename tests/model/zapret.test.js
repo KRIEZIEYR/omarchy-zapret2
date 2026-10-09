@@ -80,7 +80,6 @@ test("categories ignore QUIC probes", () => {
   eq(Model.categories(check), [{ key: "youtube", label: "YouTube", ok: 4, total: 4, good: true }])
   eq(Model.checkLine(check), "YouTube 4/4")
   eq(Model.hasFailing(check), false)
-  eq(Model.hasError(check), false)
 })
 
 test("json lines", () => {
@@ -197,17 +196,6 @@ test("curlError", () => {
   eq(Model.curlError(undefined), "ошибка")
 })
 
-test("popupPresets", () => {
-  const presets = [{ name: "general" }, { name: "alt" }, { name: "alt3" }, { name: "alt5" }, { name: "voice" }, { name: "custom-balanced" }, { name: "simple-fake" }]
-  const ap = { time: 1, chosen: "alt5", rows: [{ preset: "alt5", score: 10, total: 10 }, { preset: "alt", score: 9, total: 10 }, { preset: "general", score: 8, total: 10 }, { preset: "voice", score: 7, total: 10 }, { preset: "alt3", score: 6, total: 10 }, { preset: "simple-fake", score: 5, total: 10 }], baseline: { preset: "(off)", score: 2, total: 10 } }
-  eq(Model.popupPresets(presets, ap, "general"), ["general", "alt5", "alt", "voice", "alt3"])
-  // deduped: active already in top5 is not repeated
-  eq(Model.popupPresets(presets, ap, "alt5"), ["alt5", "alt", "general", "voice", "alt3"])
-  // fallback to first 5 when there are no autopick rows
-  eq(Model.popupPresets(presets, null, "voice"), ["voice", "general", "alt", "alt3", "alt5"])
-  eq(Model.popupPresets(presets, {}, null), ["general", "alt", "alt3", "alt5", "voice"])
-  eq(Model.popupPresets(null, null, null), [])
-})
 test("autopick baseline row", () => {
   const rows = Model.autopickRows({ chosen: "alt5", baseline: { preset: "(off)", score: 12, total: 14 }, rows: [{ preset: "alt5", score: 12, total: 14 }, { preset: "general", score: 1, total: 14 }] })
   eq(rows.map(r => r.title), ["ALT 5 · Z2", "Без обхода", "General · Z2"])

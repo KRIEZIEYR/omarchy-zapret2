@@ -31,7 +31,6 @@ Item {
   readonly property var check: st && st.check ? st.check : ({})
   readonly property var updates: st && st.updates ? st.updates : ({})
   readonly property bool updateCheck: settings.updateCheck === true
-  readonly property bool updatesAvailable: updates.engine === true || updates.lists === true || updates.presets === true
   readonly property var autopickResult: st && st.autopick ? st.autopick : ({})
   readonly property bool appCurrent: !st || st.appCurrent !== false
   readonly property string summary: reachable ? Model.summary(st) : "Zapret2 · нет связи с менеджером"
