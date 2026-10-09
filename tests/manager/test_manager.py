@@ -423,6 +423,7 @@ class ExportImport(unittest.TestCase):
     def _export_stdout(self, var):
         emitted = {}
         with mock.patch.object(zm, "VAR", var), \
+             mock.patch.object(zm, "require_installed", lambda: None), \
              mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
             zm.cmd_export(["--stdout"])
         return emitted
