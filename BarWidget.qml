@@ -500,7 +500,7 @@ Panel {
           spacing: Style.space(6)
           RowLayout {
             Layout.fillWidth: true
-            PanelSectionHeader { text: "ДОСТУПНОСТЬ"; Layout.fillWidth: true; foreground: root.fg; fontFamily: root.fontFamily }
+            PanelSectionHeader { text: "Доступность"; Layout.fillWidth: true; foreground: root.fg; fontFamily: root.fontFamily }
           }
           BorderSurface {
             Layout.fillWidth: true
