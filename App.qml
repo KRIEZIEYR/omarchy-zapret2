@@ -2677,7 +2677,7 @@ bordered: true
           note: stp.backupExported !== "" ? stp.backupExported : "Настройки, списки и стратегии — в буфер обмена"
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Экспорт"
+            text: "Скопировать"
             tooltipText: "Скопировать резервную копию в буфер обмена"
             onClicked: {
               stp.backupExported = ""
@@ -2691,22 +2691,19 @@ bordered: true
             }
           }
         }
-        RowLayout {
-          Layout.fillWidth: true
-          // Inset like the ToolRow above, so both buttons share one edge.
-          Layout.leftMargin: Style.space(8)
-          Layout.rightMargin: Style.space(8)
-          spacing: Style.space(12)
+        ToolRow {
+          title: "Импорт"
+          note: "Текст из экспорта"
           TextField {
             id: backupField
-            Layout.fillWidth: true
-            placeholderText: "Вставьте текст резервной копии"
+            Layout.preferredWidth: Style.space(240)
+            placeholderText: "Вставьте текст копии"
             text: stp.backupImport
             onTextChanged: stp.backupImport = text
           }
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy && stp.backupImport.trim() !== ""
-            text: "Импорт"
+            text: "Восстановить"
             tooltipText: "Восстановить из вставленного текста"
             onClicked: {
               var t = stp.backupImport.trim()
