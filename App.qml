@@ -516,6 +516,25 @@ bordered: true
                       font.pixelSize: Style.font.body
                       font.bold: tabSurface.isActive
                     }
+                    // A quiet badge, not a chip: the update is a status, and it
+                    // stays visible on every tab, including Обзор.
+                    BorderSurface {
+                      Layout.alignment: Qt.AlignVCenter
+                      visible: index === 4 && root.ready && root.svc.installed && !root.svc.appCurrent
+                      implicitWidth: pillText.implicitWidth + Style.space(8)
+                      implicitHeight: pillText.implicitHeight + Style.space(2)
+                      color: "transparent"
+                      borderSpec: Border.flat(root.dim, 1)
+                      radius: Style.cornerRadius
+                      Text {
+                        id: pillText
+                        anchors.centerIn: parent
+                        text: root.t("обновление")
+                        color: root.dim
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                      }
+                    }
                     Text {
                       text: String(index + 1)
                       color: root.dimmer
@@ -529,25 +548,6 @@ bordered: true
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.tab = index
-                  }
-                }
-                // A quiet badge, not a chip: the update is a status, and it
-                // stays visible on every tab, including Обзор.
-                BorderSurface {
-                  Layout.alignment: Qt.AlignVCenter
-                  visible: index === 4 && root.ready && root.svc.installed && !root.svc.appCurrent
-                  implicitWidth: pillText.implicitWidth + Style.space(8)
-                  implicitHeight: pillText.implicitHeight + Style.space(2)
-                  color: "transparent"
-                  borderSpec: Border.flat(root.dim, 1)
-                  radius: Style.cornerRadius
-                  Text {
-                    id: pillText
-                    anchors.centerIn: parent
-                    text: root.t("обновление")
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
                   }
                 }
               }
