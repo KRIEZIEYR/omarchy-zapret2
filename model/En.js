@@ -481,5 +481,8 @@ var EN = {
   "● — выбрана · ±N к базе без обхода": "● — selected · ±N vs. no-bypass baseline",
   "⚠ хуже, чем без обхода": "⚠ worse than no bypass",
   "Язык": "Language",
-  "Язык интерфейса": "Interface language"
+  "Язык интерфейса": "Interface language",
+  "Доступно обновление Zapret2": "Zapret2 update available",
+  "СОСТОЯНИЕ": "STATUS",
+  "через пробел или запятую, до 10": "space or comma separated, up to 10"
 }

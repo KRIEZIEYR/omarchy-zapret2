@@ -156,6 +156,8 @@ Item {
     id: tool
     property string title: ""
     property string note: ""
+    property color titleColor: root.fg
+    property color noteColor: root.dim
     default property alias actions: toolActions.data
     Layout.fillWidth: true
     implicitHeight: Math.max(toolText.implicitHeight, toolActions.implicitHeight) + Style.space(16)
@@ -174,7 +176,8 @@ Item {
         Text {
           Layout.fillWidth: true
           text: tool.title
-          color: root.fg
+          color: tool.titleColor
+          wrapMode: Text.WordWrap
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
           textFormat: Text.PlainText
@@ -183,7 +186,7 @@ Item {
           Layout.fillWidth: true
           visible: text !== ""
           text: tool.note
-          color: root.dim
+          color: tool.noteColor
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
           textFormat: Text.PlainText
@@ -764,10 +767,11 @@ bordered: true
 
       // The plugin update has one action and one name: this notice on Обзор
       // and a labelled button on the Движок diagnostics row.
-      Section {
-        title: root.t("ДОСТУПНО ОБНОВЛЕНИЕ ZAPRET2")
+      ToolRow {
         visible: root.sysUpdate
-        Hint { Layout.fillWidth: true; text: root.t("Системная часть плагина; спросит пароль. Настройки, списки и стратегии останутся.") }
+        title: root.t("Доступно обновление Zapret2")
+        titleColor: Color.accent
+        note: root.t("Системная часть плагина; спросит пароль. Настройки, списки и стратегии останутся.")
         ActionButton {
           text: root.t("Открыть Движок")
           tooltipText: root.t("Открыть вкладку Движок: обновление плагина")
@@ -775,10 +779,9 @@ bordered: true
         }
       }
 
-      ColumnLayout {
+      Section {
         id: headCard
-        Layout.fillWidth: true
-        spacing: Style.space(6)
+        title: root.t("СОСТОЯНИЕ")
         // One verdict object drives the whole block: `action === "check"` is the
         // explicit "this check belongs to another configuration" case, so the
         // block never has to guess from Russian substrings.
@@ -827,70 +830,30 @@ bordered: true
             }
           }
         }
-        Label {
-          Layout.fillWidth: true
-          visible: root.ready && root.svc.installed && !headCard.isNeutral
-          fixedWidth: true
-          // The power state is already the hero's title; this line only says
-          // which strategy is loaded.
-          text: {
-            if (!root.ready) return ""
-            return root.t("Стратегия: ") + (Model.presetTitle(root.svc.preset) || "—")
-          }
-        }
-        Text {
-          Layout.fillWidth: true
-          visible: text !== ""
-          wrapMode: Text.Wrap
-          textFormat: Text.PlainText
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.title
-          font.bold: headCard.isNeutral
-          text: {
-            if (!root.ready || !headCard.info) return ""
-            if (headCard.isNeutral) return "✓ " + headCard.info.text
-            return headCard.info.text
-          }
-          color: {
-            if (!root.ready || !headCard.info) return Color.popups.text
-            if (headCard.isNeutral) return Color.accent
-            if (headCard.info.tone === "good") return Color.accent
-            if (headCard.info.tone === "error" || headCard.info.tone === "bad") return root.bad
-            return Color.popups.text
-          }
-        }
-        Hint {
-          Layout.fillWidth: true
-          visible: text !== ""
-          color: headCard.isStaleError ? root.bad : root.dim
-          text: {
-            if (!root.ready || !headCard.info) return ""
-            // The mismatch sentence names both sides; the age is the fallback.
-            if (headCard.isMismatch) return headCard.info.note
-            if (headCard.staleStatus.text !== "") return headCard.staleStatus.text
-            if (headCard.isNeutral) {
-              var n = headCard.info.note || ""
-              return n !== "" ? n + " · " + root.t(Model.NOT_NEEDED_EXPL) : root.t(Model.NOT_NEEDED_EXPL)
-            }
-            return headCard.info.note || ""
-          }
-        }
-        RowLayout {
-          Layout.fillWidth: true
+        // Verdict row: what the last check says, which strategy and when.
+        ToolRow {
           visible: root.ready && root.svc.installed
-          spacing: Style.space(8)
-          // The filled action of this page. Emphasis never depends on data.
-          PrimaryButton {
-            enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: root.ready && root.svc.isOn ? root.t("Выключить обход") : root.t("Включить обход")
-            tooltipText: headCard.isMismatch ? root.t("Включить обход без новой проверки")
-                : headCard.isNeutral ? root.t("Проверка показывает, что обход не нужен — включить принудительно")
-                : root.t("Включить обход (Ctrl+T)")
-            onClicked: {
-              if (root.svc.isOn) root.svc.turnOff()
-              else root.svc.turnOn()
-            }
+          title: {
+            if (!root.ready || !headCard.info) return ""
+            return (headCard.isNeutral ? "✓ " : "") + headCard.info.text
           }
+          titleColor: {
+            if (!root.ready || !headCard.info) return root.fg
+            if (headCard.isNeutral || headCard.info.tone === "good") return Color.accent
+            if (headCard.info.tone === "error" || headCard.info.tone === "bad") return root.bad
+            return root.fg
+          }
+          note: {
+            if (!root.ready || !headCard.info) return ""
+            var parts = [root.t("Стратегия: ") + (Model.presetTitle(root.svc.preset) || "—")]
+            // The mismatch sentence names both sides; the age is the fallback.
+            if (headCard.isMismatch) parts.push(headCard.info.note)
+            else if (headCard.staleStatus.text !== "") parts.push(headCard.staleStatus.text)
+            else if (headCard.isNeutral) parts.push(root.t(Model.NOT_NEEDED_EXPL))
+            else if (headCard.info.note) parts.push(headCard.info.note)
+            return parts.join(" · ")
+          }
+          noteColor: headCard.isStaleError ? root.bad : root.dim
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: root.t("Проверить")
@@ -898,26 +861,25 @@ bordered: true
             onClicked: root.svc.runCheck()
           }
         }
-        RowLayout {
-          Layout.fillWidth: true
+        ToolRow {
           visible: root.ready && root.svc.installed
-          spacing: Style.space(8)
+          title: root.t("Проверить домен")
+          note: root.t("через пробел или запятую, до 10")
           TextField {
             id: domainField
-            Layout.fillWidth: true
-            placeholderText: root.t("Проверить домен…")
+            Layout.preferredWidth: Style.space(240)
+            placeholderText: "example.com"
             onAccepted: root.svc.runCheck(text)
           }
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy && domainField.text.trim() !== ""
-            text: root.t("Проверить домен")
+            text: root.t("Проверить")
             tooltipText: root.t("Проверить свои домены через пробел или запятую (до 10)")
             onClicked: root.svc.runCheck(domainField.text)
           }
         }
       }
 
-      PanelSeparator { Layout.fillWidth: true; foreground: root.fg; visible: root.ready && root.svc.installed }
 
       Section {
         id: availCard
