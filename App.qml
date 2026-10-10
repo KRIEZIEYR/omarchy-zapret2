@@ -2477,7 +2477,7 @@ bordered: true
           }
           ActionButton {
             foreground: root.bad
-            text: ep.armRemove ? "Удалить" : "Удалить…"
+            text: "Удалить"
             tooltipText: ep.armRemove ? "Удалить, данные оставить" : "Удалить движок и настройки плагина"
             onClicked: {
               if (ep.armRemove) { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(false) }
