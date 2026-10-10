@@ -1018,6 +1018,11 @@ bordered: true
     property string armDelete: ""
     property bool onlyGood: true
     property int hiddenWorseCount: 0
+    // "auto" ranks by score once a pick exists and groups by source before;
+    // the header button pins either.
+    property string sortBy: "auto"
+    readonly property bool hasPick: root.ready && !!root.svc.autopickResult && (root.svc.autopickResult.rows || []).length > 0
+    readonly property bool flat: sortBy === "score" || (sortBy === "auto" && hasPick)
     property string pendingPreset: ""
     Timer { id: disarmTimer; interval: 4000; onTriggered: sp.armDelete = "" }
     Timer {
@@ -1137,6 +1142,26 @@ bordered: true
       return rest.substring(0, dash) + " (" + rest.substring(dash + 1).split("-").join(" ").toUpperCase() + ").bat"
     }
 
+    // Tested first, then fewest failing probes, best score, the chosen one,
+    // then by name.
+    function cmpRows(a, b) {
+      var ta = sp.isTested(a.name) ? 0 : 1, tb = sp.isTested(b.name) ? 0 : 1
+      if (ta !== tb) return ta - tb
+      var ra = sp.pickRow(a.name), rb = sp.pickRow(b.name)
+      var fa = ra && (ra.fails !== undefined) ? ra.fails : 999
+      var fb = rb && (rb.fails !== undefined) ? rb.fails : 999
+      if (typeof Model.failCount === "function") {
+        if (ra) fa = Model.failCount(ra)
+        if (rb) fb = Model.failCount(rb)
+      }
+      if (fa !== fb) return fa - fb
+      var sa = ra ? ra.score : -1, sb = rb ? rb.score : -1
+      if (sa !== sb) return sb - sa
+      var ca = (ra && ra.chosen) ? 0 : 1, cb = (rb && rb.chosen) ? 0 : 1
+      if (ca !== cb) return ca - cb
+      return a.name.localeCompare(b.name, undefined, { numeric: true })
+    }
+
     function groups() {
       if (!root.ready) return []
       var order = []
@@ -1158,6 +1183,16 @@ bordered: true
         hiddenWorse = before - list.length
       }
       sp.hiddenWorseCount = hiddenWorse
+      if (sp.flat) {
+        // One ranked list: the source moves into each row.
+        var all = list.slice().sort(sp.cmpRows)
+        var tt = [], uu = []
+        for (var q = 0; q < all.length; q++) {
+          if (sp.isTested(all[q].name)) tt.push(all[q])
+          else uu.push(all[q])
+        }
+        return [{ group: "", tested: tt, untested: uu }]
+      }
       for (var j = 0; j < list.length; j++) {
         var g = list[j].group || ""
         if (order.indexOf(g) === -1) { order.push(g); per[g] = [] }
@@ -1166,23 +1201,7 @@ bordered: true
       var out = []
       for (var k = 0; k < order.length; k++) {
         var items = per[order[k]].slice()
-        items.sort(function(a, b) {
-          var ta = sp.isTested(a.name) ? 0 : 1, tb = sp.isTested(b.name) ? 0 : 1
-          if (ta !== tb) return ta - tb
-          var ra = sp.pickRow(a.name), rb = sp.pickRow(b.name)
-          var fa = ra && (ra.fails !== undefined) ? ra.fails : 999
-          var fb = rb && (rb.fails !== undefined) ? rb.fails : 999
-          if (typeof Model.failCount === "function") {
-            if (ra) fa = Model.failCount(ra)
-            if (rb) fb = Model.failCount(rb)
-          }
-          if (fa !== fb) return fa - fb
-          var sa = ra ? ra.score : -1, sb = rb ? rb.score : -1
-          if (sa !== sb) return sb - sa
-          var ca = (ra && ra.chosen) ? 0 : 1, cb = (rb && rb.chosen) ? 0 : 1
-          if (ca !== cb) return ca - cb
-          return a.name.localeCompare(b.name, undefined, { numeric: true })
-        })
+        items.sort(sp.cmpRows)
         var tested = [], untested = []
         for (var m = 0; m < items.length; m++) {
           if (sp.isTested(items[m].name)) tested.push(items[m])
@@ -1332,6 +1351,13 @@ bordered: true
       Button {
         bordered: false
         fontSize: Style.font.caption
+        text: sp.flat ? root.t("По оценке") : root.t("По источнику")
+        tooltipText: root.t("Переключить порядок списка: по оценке или по источнику")
+        onClicked: sp.sortBy = sp.flat ? "source" : "score"
+      }
+      Button {
+        bordered: false
+        fontSize: Style.font.caption
         text: root.t("Обновить из Flowseal")
         tooltipText: root.t("Загрузить пресеты Flowseal заново")
         onClicked: root.svc.updatePresets()
@@ -1419,6 +1445,12 @@ bordered: true
       ColumnLayout {
         width: stratScroll.availableWidth
         spacing: Style.space(10)
+        // What opens with no bypass at all: the line every score is read against.
+        PickRow {
+          visible: sp.hasPick && !!sp.pickRow("(off)")
+          row: sp.pickRow("(off)") || {}
+          baseScore: sp.baseScore()
+        }
         Repeater {
           id: groupRep
           model: sp.groups()
@@ -1429,11 +1461,12 @@ bordered: true
             spacing: Style.space(4)
             PanelSectionHeader {
               Layout.fillWidth: true
+              visible: modelData.group !== ""
               text: typeof Model.groupTitle === "function" ? Model.groupTitle(modelData.group) : modelData.group
               foreground: root.fg
               fontFamily: root.fontFamily
             }
-            PanelSeparator { Layout.fillWidth: true; foreground: root.fg }
+            PanelSeparator { Layout.fillWidth: true; visible: modelData.group !== ""; foreground: root.fg }
             Repeater {
               id: rowsRep
               model: sp.groupRows(modelData)
@@ -1514,6 +1547,42 @@ bordered: true
                       fixedWidth: true
                       text: Model.presetTitle(modelData.name)
                       font.bold: isActive
+                    }
+                    Hint {
+                      Layout.alignment: Qt.AlignVCenter
+                      visible: sp.flat
+                      text: modelData.group === "flowseal" ? "Flowseal" : modelData.group === "custom" ? root.t("Свои") : "Z2"
+                    }
+                    // Score against the no-bypass baseline, as in the old Pick list.
+                    Rectangle {
+                      Layout.preferredWidth: Style.space(90)
+                      Layout.alignment: Qt.AlignVCenter
+                      opacity: rowDelta.shown ? 1 : 0
+                      height: Style.space(6)
+                      radius: height / 2
+                      color: Style.normalFillFor(root.fg, Color.accent)
+                      Rectangle { width: 2; height: parent.height; x: (parent.width - width) / 2; color: root.dim }
+                      Rectangle {
+                        height: parent.height
+                        radius: parent.radius
+                        color: rowDelta.value < 0 ? root.bad : Color.accent
+                        width: Math.min(parent.width / 2, parent.width / 2 * Math.abs(rowDelta.value) / Math.max(1, rowDelta.total))
+                        x: rowDelta.value < 0 ? parent.width / 2 - width : parent.width / 2
+                      }
+                    }
+                    Label {
+                      id: rowDelta
+                      readonly property var r: sp.pickRow(modelData.name)
+                      readonly property bool shown: !!r && (r.total | 0) > 0 && sp.baseScore() >= 0
+                      readonly property int value: shown ? (r.score | 0) - sp.baseScore() : 0
+                      readonly property int total: shown ? (r.total | 0) : 14
+                      Layout.preferredWidth: Style.space(38)
+                      fixedWidth: true
+                      opacity: shown ? 1 : 0
+                      horizontalAlignment: Text.AlignRight
+                      color: value < 0 ? root.bad : value === 0 ? root.dim : Color.accent
+                      font.bold: true
+                      text: value === 0 ? "0" : (value > 0 ? "+" : "−") + Math.abs(value)
                     }
                     Hint {
                       Layout.alignment: Qt.AlignVCenter
