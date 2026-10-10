@@ -480,5 +480,6 @@ var EN = {
   "экспорт": "export",
   "● — выбрана · ±N к базе без обхода": "● — selected · ±N vs. no-bypass baseline",
   "⚠ хуже, чем без обхода": "⚠ worse than no bypass",
-  "Язык": "Language"
+  "Язык": "Language",
+  "Язык интерфейса": "Interface language"
 }

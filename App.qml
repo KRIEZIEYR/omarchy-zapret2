@@ -165,6 +165,7 @@ Item {
     RowLayout {
       anchors.fill: parent
       anchors.margins: Style.space(8)
+      anchors.leftMargin: Style.space(12)  // text lines up with ToggleRow
       spacing: Style.space(12)
       ColumnLayout {
         id: toolText
@@ -2514,13 +2515,17 @@ bordered: true
 
       Section {
         title: root.t("ОСНОВНОЕ")
-        Dropdown {
-          id: langDrop
-          Layout.fillWidth: true
-          label: "Language · Язык"
-          value: root.lang
-          options: [{ value: "en", label: "English" }, { value: "ru", label: "Русский" }]
-          onChanged: function(v) { root.svc.setOption("lang", v) }
+        ToolRow {
+          title: "Language · Язык"
+          note: root.t("Язык интерфейса")
+          Dropdown {
+            id: langDrop
+            Layout.preferredWidth: root.actionW
+            showLabel: false
+            value: root.lang
+            options: [{ value: "en", label: "English" }, { value: "ru", label: "Русский" }]
+            onChanged: function(v) { root.svc.setOption("lang", v) }
+          }
         }
         ToggleRow {
           label: root.t("Включать при входе")
