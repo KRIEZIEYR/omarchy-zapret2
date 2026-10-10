@@ -265,10 +265,13 @@ test("groupSearchRows", () => {
 })
 
 test("doctorDetail", () => {
+  eq(Model.doctorDetail("nfqws2", "github version v1.0.5.2 (6b6c63e3385fa73f8af3be4a69171e947f5a319d) lua_compat_ver 6"), "v1.0.5.2 · Lua API 6")
+  eq(Model.doctorDetail("pkexec", ""), "запрос пароля через polkit доступен")
+  eq(Model.doctorDetail("Setup", "v1.0.5.2"), "движок v1.0.5.2")
   eq(Model.doctorDetail("Setup", "run setup"), "запустите установку")
   eq(Model.doctorDetail("Plugin and system copy", "the plugin was updated: run setup --app-only (Update system part)"), "плагин обновлён: установите обновление системной части")
   eq(Model.doctorDetail("host/nslookup", "blockcheck2 needs them: omarchy pkg add bind"), "нужны для blockcheck2: omarchy pkg add bind")
-  eq(Model.doctorDetail("host/nslookup", "for blockcheck2"), "для blockcheck2")
+  eq(Model.doctorDetail("host/nslookup", "for blockcheck2"), "установлены, нужны для blockcheck2")
   eq(Model.doctorDetail("System files", "142 files intact"), "142 файлов в порядке")
   eq(Model.doctorDetail("System files", "1 file intact"), "1 файлов в порядке")
   eq(Model.doctorDetail("No VPN tunnel", "omarchy-xray TUN is on: traffic leaves through the tunnel, the bypass does not apply"), "включён TUN omarchy-xray: трафик идёт в туннель, обход не применяется")

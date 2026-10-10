@@ -2346,7 +2346,7 @@ bordered: true
             property string glyph: severity === "ok" ? "✓ " : severity === "action" ? "! " : severity === "optional" ? "· " : "✗ "
             foreground: root.fg
             Layout.fillWidth: true
-            implicitHeight: Style.space(30)  // every diagnostics row is one line high
+            implicitHeight: Math.max(Style.space(30), docInner.implicitHeight + Style.space(10))
             hasCursor: ep.hoverDoc === index
             Accessible.role: Accessible.StaticText
             Accessible.name: (severity === "ok" ? "в порядке: " : severity === "action" ? "нужно действие: " : severity === "optional" ? "необязательно: " : "ошибка: ") + (typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name)
@@ -2379,17 +2379,10 @@ bordered: true
               // accessible description.
               Hint {
                 Layout.fillWidth: true
-                wrapMode: Text.NoWrap
-                elide: Text.ElideRight
-                maximumLineCount: 1
+                wrapMode: Text.WordWrap
                 visible: text !== ""
                 Accessible.description: text
-                text: {
-                  var d = Model.doctorDetail(modelData.name, modelData.detail)
-                  var dn = typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name
-                  if ((modelData.name === "Setup" || dn === "Установка") && root.ready && root.svc.st && root.svc.st.engine && d.indexOf(String(root.svc.st.engine)) !== -1) return ""
-                  return d
-                }
+                text: Model.doctorDetail(modelData.name, modelData.detail, modelData.ok)
               }
               // Labelled actions: text, not bordered buttons.
               Button {

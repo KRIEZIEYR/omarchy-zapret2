@@ -438,9 +438,27 @@ function groupSearchRows(rows) {
 }
 
 // Localise a doctor item detail to Russian; unknown details pass through.
-function doctorDetail(name, detail) {
+// What a passing check looked at, for rows the manager leaves without detail.
+var DOCTOR_CHECKED = {
+  "Setup": "движок установлен",
+  "Plugin and system copy": "системная копия совпадает с плагином",
+  "pkexec": "запрос пароля через polkit доступен",
+  "No other zapret": "zapret из AUR и другие NFQUEUE не запущены",
+  "No VPN tunnel": "TUN omarchy-xray выключен, трафик идёт мимо туннеля",
+  "nft": "nftables установлен",
+  "curl": "curl установлен"
+}
+
+function doctorDetail(name, detail, ok) {
   var s = detail === null || detail === undefined ? "" : String(detail)
-  if (!s) return s
+  if (!s) return ok !== false && DOCTOR_CHECKED.hasOwnProperty(name) ? DOCTOR_CHECKED[name] : ""
+  // nfqws2 --version: keep the version and Lua API level, drop the commit hash.
+  var nf = s.match(/^github version (\S+) \([0-9a-f]+\) lua_compat_ver (\d+)/)
+  if (nf) return nf[1] + " · Lua API " + nf[2]
+  if (name === "Setup" && /^v[\d.]+$/.test(s)) return "движок " + s
+  if (name === "curl") s = s.split("HTTP/3 yes").join("с поддержкой HTTP/3")
+  if (name === "nft" && s === "nftables") return "nftables установлен"
+  if (s === "for blockcheck2") return "установлены, нужны для blockcheck2"
   s = s.split("inactive (dead)").join("остановлена")
   s = s.split("inactive").join("остановлена")
   s = s.split("active (running)").join("работает")
