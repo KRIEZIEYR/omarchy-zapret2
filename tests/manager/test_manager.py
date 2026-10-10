@@ -99,6 +99,9 @@ class Validation(unittest.TestCase):
         self.assertEqual((s["preset"], s["game"], s["ipv6"]), ("my-own", "all", False))
         self.assertEqual(zm.clean_settings({"preset": "my-../x"})["preset"], zm.DEFAULTS["preset"])
         self.assertEqual(zm.clean_settings([1, 2]), zm.DEFAULTS)
+        self.assertEqual(zm.DEFAULTS["lang"], "en")
+        self.assertEqual(zm.clean_settings({"lang": "ru"})["lang"], "ru")
+        self.assertEqual(zm.clean_settings({"lang": "de"})["lang"], "en")
 
 
 class Lists(unittest.TestCase):

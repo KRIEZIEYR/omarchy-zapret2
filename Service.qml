@@ -33,7 +33,7 @@ Item {
   readonly property bool updateCheck: settings.updateCheck === true
   readonly property var autopickResult: st && st.autopick ? st.autopick : ({})
   readonly property bool appCurrent: !st || st.appCurrent !== false
-  readonly property string summary: reachable ? Model.summary(st) : "Zapret2 · нет связи с менеджером"
+  readonly property string summary: reachable ? Model.summary(st) : root.t("Zapret2 · нет связи с менеджером")
 
   property string lastError: ""
   readonly property string errorText: lastError !== "" ? lastError : (st && st.error ? st.error : "")
@@ -53,6 +53,15 @@ Item {
   property bool popupOpen: false
   readonly property bool watched: appOpen || popupOpen
 
+  // UI language; setting Model's copy here, inside the binding, means every
+  // dependent binding already sees the new language when it re-reads.
+  readonly property string lang: {
+    var l = settings.lang === "ru" ? "ru" : "en"
+    Model.setLang(l)
+    return l
+  }
+  function t(s) { return Model.trTo(lang, s) }
+
   readonly property bool busy: _action.running || _long.running
   readonly property string busyLabel: _long.running ? _long._label : _action.running ? _action._label : ""
 
@@ -68,7 +77,7 @@ Item {
 
   onBypassStateChanged: {
     if (_lastState === "on" && bypassState === "error")
-      notify("Обход остановился с ошибкой. Откройте Zapret2 → Движок → Логи", true)
+      notify(root.t("Обход остановился с ошибкой. Откройте Zapret2 → Движок → Логи"), true)
     _lastState = bypassState
   }
 
@@ -95,8 +104,8 @@ Item {
     var resp = { ok: data !== null && data.ok !== false && code === 0, data: data, message: "" }
     if (!resp.ok) {
       resp.message = data && data.error ? String(data.error)
-          : code === 127 || code === 126 ? "Менеджер не запустился: нужен /usr/bin/python3"
-          : "omarchy-zapret2 завершился с кодом " + code
+          : code === 127 || code === 126 ? root.t("Менеджер не запустился: нужен /usr/bin/python3")
+          : root.t("omarchy-zapret2 завершился с кодом ") + code
     }
     if (slot === _status) reachable = data !== null
     if (done) done(resp)
@@ -104,7 +113,7 @@ Item {
   }
 
   function act(args, label, okText, after, input) {
-    if (busy) { flash("Подождите: " + busyLabel); return false }
+    if (busy) { flash(root.t("Подождите: ") + root.t(busyLabel)); return false }
     lastError = ""
     return run(_action, args, function(r) {
       if (!r.ok) lastError = Model.actionErrorText(r.message)
@@ -115,7 +124,7 @@ Item {
   }
 
   function longJob(args, label, okText, after, input) {
-    if (_long.running) { flash("Подождите: " + _long._label); return false }
+    if (_long.running) { flash(root.t("Подождите: ") + root.t(_long._label)); return false }
     lastError = ""
     progressInfo = null
     return run(_long, args, function(r) {
@@ -155,11 +164,11 @@ Item {
     if (_autostartDone || !st) return
     _autostartDone = true
     if (st.installed && st.settings && st.settings.autostart && st.active === "inactive")
-      act(["on"], "включение", "Zapret2 включён при входе")
+      act(["on"], "включение", root.t("Zapret2 включён при входе"))
   }
 
-  function turnOn() { act(["on"], "включение", "Обход включён", function(r) { if (r.ok && installed) runCheck() }) }
-  function turnOff() { act(["off"], "выключение", "Обход выключен", function(r) { if (r.ok && installed) runCheck() }) }
+  function turnOn() { act(["on"], "включение", root.t("Обход включён"), function(r) { if (r.ok && installed) runCheck() }) }
+  function turnOff() { act(["off"], "выключение", root.t("Обход выключен"), function(r) { if (r.ok && installed) runCheck() }) }
   function toggle() {
     if (!installed) { openApp(); return }
     if (isOn) turnOff(); else turnOn()
@@ -174,11 +183,11 @@ Item {
     if (key === "game" && v !== "off" && (settings.ipset || "loaded") === "none") {
       act(["set", "game", v], "настройка", "", function(r) {
         if (!r.ok) return
-        act(["set", "ipset", "loaded"], "настройка", "IP-сети включены для игрового фильтра")
+        act(["set", "ipset", "loaded"], "настройка", root.t("IP-сети включены для игрового фильтра"))
       })
       return
     }
-    var text = key === "preset" ? "Стратегия: " + Model.presetTitle(v) : "Сохранено"
+    var text = key === "preset" ? root.t("Стратегия: ") + Model.presetTitle(v) : root.t("Сохранено")
     act(["set", key, v], "настройка", text, function(r) {
       if (r.ok && key === "preset" && installed) runCheck()
     })
@@ -209,13 +218,13 @@ Item {
       _updateCheckRunning = false
       if (r.ok && r.data && (r.data.engine === true || r.data.lists === true || r.data.presets === true)) {
         var parts = []
-        if (r.data.engine === true) parts.push("движок" + (r.data.latest ? " " + r.data.latest : ""))
-        if (r.data.lists === true) parts.push("списки")
-        if (r.data.presets === true) parts.push("стратегии")
-        notify("Доступны обновления Zapret2: " + parts.join(", "))
+        if (r.data.engine === true) parts.push(root.t("движок") + (r.data.latest ? " " + r.data.latest : ""))
+        if (r.data.lists === true) parts.push(root.t("списки"))
+        if (r.data.presets === true) parts.push(root.t("стратегии"))
+        notify(root.t("Доступны обновления Zapret2: ") + parts.join(", "))
       }
       refresh()
-    }, "проверка обновлений")
+    }, root.t("проверка обновлений"))
   }
 
   function runCheck(domainText) {
@@ -223,29 +232,29 @@ Item {
     var t = domainText === undefined || domainText === null ? "" : String(domainText)
     if (t.trim() !== "") {
       var dd = Model.parseDomains(t)
-      if (dd.invalid.length > 0) { flash("Некорректный домен: " + dd.invalid[0]); return }
-      if (dd.domains.length === 0) { flash("Введите домен"); return }
-      if (dd.domains.length > 10) { flash("Не больше 10 доменов"); return }
+      if (dd.invalid.length > 0) { flash(root.t("Некорректный домен: ") + dd.invalid[0]); return }
+      if (dd.domains.length === 0) { flash(root.t("Введите домен")); return }
+      if (dd.domains.length > 10) { flash(root.t("Не больше 10 доменов")); return }
       args = args.concat(dd.domains)
     }
-    longJob(args, "проверка", function(d) { return d ? Model.checkLine(d) : "Готово" })
+    longJob(args, root.t("проверка"), function(d) { return d ? Model.checkLine(d) : root.t("Готово") })
   }
 
   function autopick(names) {
     var args = ["autopick"]
     if (names && names.length) args.push(names.join(","))
-    longJob(args, "автоподбор", function(d) { return d ? "Выбрана стратегия " + Model.presetTitle(d.chosen) : "Готово" })
+    longJob(args, root.t("автоподбор"), function(d) { return d ? root.t("Выбрана стратегия ") + Model.presetTitle(d.chosen) : root.t("Готово") })
   }
 
   function circularPlan(level) {
     var args = ["circular", "plan"]
     if (level) args.push("--level", String(level))
-    longJob(args, "создание circular-конфига", function(d) {
-      if (d && d.needsBlockcheck) return "Нужно дополнительно проверить домены через blockcheck2"
-      return "Circular-конфиг создан"
+    longJob(args, root.t("создание circular-конфига"), function(d) {
+      if (d && d.needsBlockcheck) return root.t("Нужно дополнительно проверить домены через blockcheck2")
+      return root.t("Circular-конфиг создан")
     }, function(r) {
       if (r.ok && r.data && r.data.needsBlockcheck) {
-        flash(r.data.message || "Для части доменов нужен blockcheck2")
+        flash(r.data.message || root.t("Для части доменов нужен blockcheck2"))
       }
     })
   }
@@ -257,15 +266,15 @@ Item {
   }
 
   function setup() {
-    longJob(["setup"], "установка", function(d) { return "Zapret2 " + (d && d.version ? d.version : "") + " установлен" })
+    longJob(["setup"], "установка", function(d) { return "Zapret2 " + (d && d.version ? d.version : "") + root.t(" установлен") })
   }
-  function updateApp() { longJob(["setup", "--app-only"], "обновление", "Системная часть обновлена") }
-  function engineUpdate() { longJob(["engine", "update"], "обновление движка", function(d) { return "Движок " + (d && d.version ? d.version : "") }) }
+  function updateApp() { longJob(["setup", "--app-only"], "обновление", root.t("Системная часть обновлена")) }
+  function engineUpdate() { longJob(["engine", "update"], "обновление движка", function(d) { return root.t("Движок ") + (d && d.version ? d.version : "") }) }
   function updateLists() {
     longJob(["lists", "update"], "обновление списков", function(d) {
       var n = 0
       if (d && d.updated) for (var k in d.updated) n += d.updated[k]
-      return "Списки обновлены: " + n + " записей"
+      return root.t("Списки обновлены: ") + n + root.t(" записей")
     })
   }
   function updatePresets() {
@@ -273,18 +282,18 @@ Item {
       var n = 0
       if (d && d.updated)
         n = Array.isArray(d.updated) ? d.updated.length : Object.keys(d.updated).length
-      return n > 0 ? "Стратегии обновлены: " + n : "Стратегии обновлены"
+      return n > 0 ? root.t("Стратегии обновлены: ") + n : root.t("Стратегии обновлены")
     })
   }
   function hostsSet(on) {
     longJob(["hosts", on ? "on" : "off"], "hosts", function(d) {
       if (d && d.on && typeof d.lines === "number")
-        return "Hosts включён: " + d.lines + " записей"
-      return on ? "Hosts включён" : "Hosts выключен"
+        return root.t("Hosts включён: ") + d.lines + root.t(" записей")
+      return on ? root.t("Hosts включён") : root.t("Hosts выключен")
     })
   }
   function loadServices() {
-    run(_aux, ["services"], function(r) { if (r.data && r.data.ok) services = r.data.services || [] }, "сервисы")
+    run(_aux, ["services"], function(r) { if (r.data && r.data.ok) services = r.data.services || [] }, root.t("сервисы"))
   }
   function serviceOn(name) {
     act(["service", "on", String(name)], "сервис", "", function() { loadServices() })
@@ -296,35 +305,35 @@ Item {
     run(_aux, ["dns", "status"], function(r) { if (r.data && r.data.ok) dnsInfo = r.data }, "DNS")
   }
   function flushDns() {
-    act(["dns", "flush"], "очистка кэша DNS", "Кэш DNS очищен", function() { loadDns() })
+    act(["dns", "flush"], "очистка кэша DNS", root.t("Кэш DNS очищен"), function() { loadDns() })
   }
   function clearDiscordCache() {
     act(["discord-cache", "clear"], "очистка кэша Discord", "", function(r) {
       if (r.ok) {
         var n = r.data && r.data.cleared ? r.data.cleared.length : 0
-        flash(n > 0 ? "Кэш Discord очищен: " + n : "Кэш Discord очищен")
+        flash(n > 0 ? root.t("Кэш Discord очищен: ") + n : root.t("Кэш Discord очищен"))
       }
     })
   }
   function removeAll(purge) {
-    longJob(purge ? ["remove", "--purge"] : ["remove"], "удаление", "Zapret2 удалён из системы")
+    longJob(purge ? ["remove", "--purge"] : ["remove"], "удаление", root.t("Zapret2 удалён из системы"))
   }
 
   function loadText(args, cb) {
     var p = _aux.running ? _aux2 : _aux
-    run(p, args, function(r) { cb(r) }, "чтение")
+    run(p, args, function(r) { cb(r) }, root.t("чтение"))
   }
   function saveList(name, text, cb, restart) {
     var args = ["list", "save", name]
     if (restart === false) args.push("--no-restart")
-    act(args, "сохранение списка", "", cb, text)
+    act(args, root.t("сохранение списка"), "", cb, text)
   }
-  function saveCustom(name, text, cb) { act(["custom", "save", name], "сохранение стратегии", "Стратегия сохранена", cb, text) }
+  function saveCustom(name, text, cb) { act(["custom", "save", name], "сохранение стратегии", root.t("Стратегия сохранена"), cb, text) }
   function exportBackup(cb) {
     var p = _aux.running ? _aux2 : _aux
-    run(p, ["export", "--stdout"], function(r) { cb(r) }, "экспорт")
+    run(p, ["export", "--stdout"], function(r) { cb(r) }, root.t("экспорт"))
   }
-  function importBackup(data, cb) { act(["import"], "импорт", "Резервная копия восстановлена", cb, data) }
+  function importBackup(data, cb) { act(["import"], "импорт", root.t("Резервная копия восстановлена"), cb, data) }
   function importStrategy(input, name, cb) {
     // Pasted text and links go through stdin, never argv: a signed link's
     // query token must not be visible to other local processes. A file path
@@ -332,55 +341,55 @@ Item {
     var args = ["strategy", "import"]
     var nm = name === undefined || name === null ? "" : String(name).trim()
     if (nm !== "") {
-      if (!Model.strategyNameOk("my-" + nm.replace(/^my-/, ""))) { flash("Имя: латиница, цифры и дефисы"); return false }
+      if (!Model.strategyNameOk("my-" + nm.replace(/^my-/, ""))) { flash(root.t("Имя: латиница, цифры и дефисы")); return false }
       args.push("--name", nm)
     }
     var t = input === undefined || input === null ? "" : String(input).trim()
-    if (t === "") { flash("Вставьте текст, путь или ссылку"); return false }
+    if (t === "") { flash(root.t("Вставьте текст, путь или ссылку")); return false }
     var kind = Model.importSourceKind(t)
-    if (kind === "url" && !Model.isImportableUrl(t)) { flash("Ссылка должна начинаться с http(s)://"); return false }
-    if (kind === "text") return act(args, "импорт стратегии", "Стратегия импортирована", cb, input)
-    if (kind === "url") return longJob(args.concat(["--url-stdin"]), "импорт стратегии", "Стратегия импортирована", cb, t + "\n")
-    return longJob(args.concat([t]), "импорт стратегии", "Стратегия импортирована", cb)
+    if (kind === "url" && !Model.isImportableUrl(t)) { flash(root.t("Ссылка должна начинаться с http(s)://")); return false }
+    if (kind === "text") return act(args, root.t("импорт стратегии"), root.t("Стратегия импортирована"), cb, input)
+    if (kind === "url") return longJob(args.concat(["--url-stdin"]), root.t("импорт стратегии"), root.t("Стратегия импортирована"), cb, t + "\n")
+    return longJob(args.concat([t]), root.t("импорт стратегии"), root.t("Стратегия импортирована"), cb)
   }
   function copyStrategy(src, name, cb) {
     var args = ["strategy", "copy", String(src)]
     if (name !== undefined && name !== null && String(name).trim() !== "") args.push(String(name).trim())
-    act(args, "дублирование стратегии", "", function(r) {
-      if (r.ok && r.data && r.data.name) flash("Дублирована как " + Model.presetTitle(r.data.name))
+    act(args, root.t("дублирование стратегии"), "", function(r) {
+      if (r.ok && r.data && r.data.name) flash(root.t("Дублирована как ") + Model.presetTitle(r.data.name))
       if (cb) cb(r)
     })
   }
-  function removeCustom(name) { act(["custom", "rm", name], "удаление стратегии", "Стратегия удалена") }
+  function removeCustom(name) { act(["custom", "rm", name], "удаление стратегии", root.t("Стратегия удалена")) }
   function presetText(name, cb) {
     var p = _aux.running ? _aux2 : _aux
-    run(p, ["presets", "show", name], function(r) { cb(r) }, "чтение")
+    run(p, ["presets", "show", name], function(r) { cb(r) }, root.t("чтение"))
   }
 
   function runDoctor() {
-    run(_aux, ["doctor"], function(r) { if (r.data) doctorItems = r.data.items || [] }, "диагностика")
+    run(_aux, ["doctor"], function(r) { if (r.data) doctorItems = r.data.items || [] }, root.t("диагностика"))
   }
   function loadDiagnostics(cb) {
-    run(_aux, ["diagnostics"], function(r) { cb(r) }, "диагностика")
+    run(_aux, ["diagnostics"], function(r) { cb(r) }, root.t("диагностика"))
   }
   function loadLogs() {
     run(_aux2, ["logs", "150"], function(r) {
       if (r.data) { logLines = r.data.lines || []; logNote = r.data.note || "" }
-    }, "логи")
+    }, root.t("логи"))
   }
 
   function blockcheckStart(domains, level) {
     var args = ["blockcheck", "start"].concat(domains || [])
     if (level) args = args.concat(["--level", level])
-    act(args, "blockcheck", "blockcheck2 запущен: это может занять долго", function() { refreshBlockcheck() })
+    act(args, "blockcheck", root.t("blockcheck2 запущен: это может занять долго"), function() { refreshBlockcheck() })
   }
-  function blockcheckStop() { act(["blockcheck", "stop"], "остановка blockcheck", "blockcheck2 остановлен", function() { refreshBlockcheck() }) }
+  function blockcheckStop() { act(["blockcheck", "stop"], "остановка blockcheck", root.t("blockcheck2 остановлен"), function() { refreshBlockcheck() }) }
   function refreshBlockcheck() {
     run(_bc, ["blockcheck", "status"], function(r) { if (r.data && r.data.ok) blockcheck = r.data }, "blockcheck")
   }
   function blockcheckSave(index) {
     act(["blockcheck", "save", String(index)], "сохранение находки", "", function(r) {
-      if (r.ok && r.data) flash("Сохранено как " + r.data.name)
+      if (r.ok && r.data) flash(root.t("Сохранено как ") + r.data.name)
     })
   }
 

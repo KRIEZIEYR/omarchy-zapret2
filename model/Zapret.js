@@ -1,4 +1,16 @@
 .pragma library
+.import "En.js" as En
+
+// UI language. Russian strings are the keys; English comes from En.js.
+// Service sets it from settings before any binding re-reads the model.
+var LANG = "en"
+function setLang(l) { LANG = l === "ru" ? "ru" : "en" }
+function trTo(lang, s) {
+  if (lang === "ru" || s === null || s === undefined) return s
+  var e = En.EN[s]
+  return e !== undefined ? e : s
+}
+function tr(s) { return trTo(LANG, s) }
 
 // Pure helpers shared by Service.qml, BarWidget.qml and App.qml; tested in
 // node by tests/run.js (no QML here).
@@ -21,7 +33,7 @@ function niceTitle(stem) {
 function presetTitle(name) {
   var n = String(name || "")
   if (!n) return ""
-  if (n === "(off)") return "Без обхода"
+  if (n === "(off)") return tr("Без обхода")
   if (n === "fs-general") return "General"
   if (n.indexOf("fs-general-") === 0) return niceTitle(n.substring("fs-general-".length))
   if (n.indexOf("fs-") === 0) return niceTitle(n.substring(3))
@@ -34,7 +46,7 @@ function groupTitle(g) {
   var n = String(g || "")
   if (n === "flowseal") return "Flowseal"
   if (n === "next") return "Zapret 2 NEXT"
-  if (n === "custom") return "Свои"
+  if (n === "custom") return tr("Свои")
   return n
 }
 
@@ -45,7 +57,7 @@ var DOCTOR_NAMES = { "Setup": "Установка", "System files": "Систе�
 
 function doctorName(name) {
   var n = String(name || "")
-  return DOCTOR_NAMES.hasOwnProperty(n) ? DOCTOR_NAMES[n] : n
+  return DOCTOR_NAMES.hasOwnProperty(n) ? tr(DOCTOR_NAMES[n]) : n
 }
 
 // "on" | "off" | "starting" | "error" | "setup" | "unknown"
@@ -61,7 +73,7 @@ function stateOf(st) {
 var STATE_TEXT = { on: "Включён", off: "Выключен", starting: "Запуск…", error: "Ошибка",
                    setup: "Не установлен", unknown: "Нет связи" }
 
-function stateText(st) { return STATE_TEXT[stateOf(st)] }
+function stateText(st) { return tr(STATE_TEXT[stateOf(st)]) }
 
 function summary(st) {
   var s = stateOf(st)
@@ -103,7 +115,7 @@ function categories(check) {
 
 function checkLine(check) {
   var cs = categories(check)
-  if (cs.length === 0) return "Проверок ещё не было"
+  if (cs.length === 0) return tr("Проверок ещё не было")
   return cs.map(function(c) { return c.label + " " + c.ok + "/" + c.total }).join(" · ")
 }
 
@@ -111,10 +123,10 @@ function ago(ts, now) {
   var t = Number(ts) || 0
   if (t <= 0) return ""
   var d = Math.max(0, Math.round((now || Date.now() / 1000) - t))
-  if (d < 60) return "только что"
-  if (d < 3600) return Math.round(d / 60) + " мин назад"
-  if (d < 86400) return Math.round(d / 3600) + " ч назад"
-  return Math.round(d / 86400) + " дн назад"
+  if (d < 60) return tr("только что")
+  if (d < 3600) return Math.round(d / 60) + tr(" мин назад")
+  if (d < 86400) return Math.round(d / 3600) + tr(" ч назад")
+  return Math.round(d / 86400) + tr(" дн назад")
 }
 
 // Last JSON object in the text (progress lines come first), or null.
@@ -137,24 +149,24 @@ function parseLine(line) {
 // Map manager error output to actionable Russian text for the user.
 function actionErrorText(message) {
   var s = String(message || "").toLowerCase()
-  if (!s.trim()) return "Неизвестная ошибка"
+  if (!s.trim()) return tr("Неизвестная ошибка")
   if (s.indexOf("python3") !== -1 || s.indexOf("no such file") !== -1 || s.indexOf("enoent") !== -1) {
-    return "Не найден python3 — установите: omarchy pkg add python"
+    return tr("Не найден python3 — установите: omarchy pkg add python")
   }
   if (s.indexOf("not installed") !== -1 || s.indexOf("not set up") !== -1 || s.indexOf("engine not found") !== -1) {
-    return "Сначала установите движок (вкладка Обзор → Установить)"
+    return tr("Сначала установите движок (вкладка Обзор → Установить)")
   }
   if (s.indexOf("not authorized") !== -1 || s.indexOf("cancelled") !== -1 || s.indexOf("auth canceled") !== -1 || s.indexOf("пользователь отменил") !== -1) {
-    return "Отменено: пароль не введён"
+    return tr("Отменено: пароль не введён")
   }
   if (s.indexOf("permission denied") !== -1 || s.indexOf("access denied") !== -1) {
-    return "Нет прав: запустите установку (пароль)"
+    return tr("Нет прав: запустите установку (пароль)")
   }
   // Exit code fallback
   var codeMatch = s.match(/код[^\d]*(\d+)/) || s.match(/exit[^\d]*(\d+)/) || s.match(/code[^\d]*(\d+)/)
-  if (codeMatch) return "Команда не выполнилась (код " + codeMatch[1] + "): откройте Движок → Журнал"
+  if (codeMatch) return tr("Команда не выполнилась (код ") + codeMatch[1] + tr("): откройте Движок → Журнал")
   if (s.indexOf("омархи-запрет") !== -1 || s.indexOf("omarchy-zapret") !== -1) {
-    return "Команда не выполнилась: откройте Движок → Журнал"
+    return tr("Команда не выполнилась: откройте Движок → Журнал")
   }
   return message
 }
@@ -216,7 +228,7 @@ function autopickRows(ap) {
 function checkNote(check, now) {
   if (!check || !check.time) return ""
   var a = ago(check.time, now)
-  return "по проверке " + (a ? a + ", " : "") + "обход был " + (check.active ? "включён" : "выключен")
+  return tr("по проверке ") + (a ? a + ", " : "") + tr("обход был ") + (check.active ? tr("включён") : tr("выключен"))
 }
 
 // Short reason for failing categories: the first non-QUIC curl error;
@@ -229,7 +241,7 @@ function failReason(check, failing) {
     for (var j = 0; j < r.length; j++) if (!r[j].ok && !r[j].http3) failed.push(r[j])
   }
   if (failed.length > 0) return curlError(failed[0].error)
-  return "не открываются"
+  return tr("не открываются")
 }
 
 // Overview verdict: pure, null-safe. Actions: "none" | "on" | "autopick" | "check".
@@ -272,9 +284,9 @@ function verdict(st, check, autopick, now) {
       // Spelled out with both sides, so the warning has a referent instead of
       // an unexplained "для другой стратегии".
       return { text: "", tone: "neutral", action: "check",
-               note: "Последняя проверка была для " + checkedTitle + " (обход "
-                   + (check.active ? "вкл" : "выкл") + ") — сейчас " + curTitle
-                   + " (обход " + (curOn ? "вкл" : "выкл") + ")" }
+               note: tr("Последняя проверка была для ") + checkedTitle + tr(" (обход ")
+                   + (check.active ? tr("вкл") : tr("выкл")) + tr(") — сейчас ") + curTitle
+                   + tr(" (обход ") + (curOn ? tr("вкл") : tr("выкл")) + ")" }
     }
   }
   var s = stateOf(st)
@@ -286,32 +298,32 @@ function verdict(st, check, autopick, now) {
   var failing = cats.filter(function(c) { return !c.good })
   var note = checkNote(check, now)
   if (cats.length === 0) {
-    if (!on && notNeeded) return { text: NOT_NEEDED_TEXT, tone: "neutral", action: "none", note: note }
-    if (!on && !hasPick) return { text: "Запустите автоподбор, чтобы найти рабочую стратегию", tone: "neutral", action: "autopick", note: note }
-    return { text: "Проверок ещё не было", tone: "neutral", action: "none", note: note }
+    if (!on && notNeeded) return { text: tr(NOT_NEEDED_TEXT), tone: "neutral", action: "none", note: note }
+    if (!on && !hasPick) return { text: tr("Запустите автоподбор, чтобы найти рабочую стратегию"), tone: "neutral", action: "autopick", note: note }
+    return { text: tr("Проверок ещё не было"), tone: "neutral", action: "none", note: note }
   }
   if (failing.length === 0) {
-    if (!on) return { text: NOT_NEEDED_TEXT, tone: "neutral", action: "none", note: note }
-    return { text: "Всё открывается", tone: "good", action: "none", note: note }
+    if (!on) return { text: tr(NOT_NEEDED_TEXT), tone: "neutral", action: "none", note: note }
+    return { text: tr("Всё открывается"), tone: "good", action: "none", note: note }
   }
   // Any category below full: the bypass may still help, never "не нужен".
   var names = failing.map(function(c) { return c.label }).join("/")
   var partial = failing.some(function(c) { return c.ok > 0 })
-  return { text: names + (partial ? " частично" : "") + ": " + failReason(check, failing),
+  return { text: names + (partial ? tr(" частично") : "") + ": " + failReason(check, failing),
            tone: "error", action: "autopick", note: note }
 }
 
 // Short human label for a curl probe error line.
 function curlError(err) {
   var s = String(err || "")
-  if (!s.trim()) return "ошибка"
+  if (!s.trim()) return tr("ошибка")
   var l = s.toLowerCase()
-  if (s.indexOf("(28)") !== -1 || l.indexOf("timed out") !== -1 || l.indexOf("timeout") !== -1 || l.indexOf("timed-out") !== -1) return "таймаут"
-  if (s.indexOf("(35)") !== -1 || l.indexOf("tls") !== -1 || l.indexOf("ssl") !== -1) return "ошибка TLS (DPI?)"
-  if (s.indexOf("(6)") !== -1 || l.indexOf("resolve") !== -1) return "DNS не отвечает"
-  if (s.indexOf("(7)") !== -1 || l.indexOf("refused") !== -1) return "соединение отклонено"
-  if (s.indexOf("(56)") !== -1 || l.indexOf("reset") !== -1) return "соединение сброшено"
-  return "ошибка"
+  if (s.indexOf("(28)") !== -1 || l.indexOf("timed out") !== -1 || l.indexOf("timeout") !== -1 || l.indexOf("timed-out") !== -1) return tr("таймаут")
+  if (s.indexOf("(35)") !== -1 || l.indexOf("tls") !== -1 || l.indexOf("ssl") !== -1) return tr("ошибка TLS (DPI?)")
+  if (s.indexOf("(6)") !== -1 || l.indexOf("resolve") !== -1) return tr("DNS не отвечает")
+  if (s.indexOf("(7)") !== -1 || l.indexOf("refused") !== -1) return tr("соединение отклонено")
+  if (s.indexOf("(56)") !== -1 || l.indexOf("reset") !== -1) return tr("соединение сброшено")
+  return tr("ошибка")
 }
 
 // Popup dropdown label: "General · 12/14 · лучшая", plus
@@ -355,8 +367,8 @@ function presetLabel(name, score, total, isBest, worseThanBaseline, tied) {
       && !isNaN(sc) && !isNaN(tt) && tt > 0) {
     parts.push((sc | 0) + "/" + (tt | 0))
   }
-  if (isBest && !tied) parts.push("лучшая")
-  if (worseThanBaseline) parts.push("⚠ хуже, чем без обхода")
+  if (isBest && !tied) parts.push(tr("лучшая"))
+  if (worseThanBaseline) parts.push(tr("⚠ хуже, чем без обхода"))
   return parts.join(" · ")
 }
 
@@ -451,28 +463,28 @@ var DOCTOR_CHECKED = {
 
 function doctorDetail(name, detail, ok) {
   var s = detail === null || detail === undefined ? "" : String(detail)
-  if (!s) return ok !== false && DOCTOR_CHECKED.hasOwnProperty(name) ? DOCTOR_CHECKED[name] : ""
+  if (!s) return ok !== false && DOCTOR_CHECKED.hasOwnProperty(name) ? tr(DOCTOR_CHECKED[name]) : ""
   // nfqws2 --version: keep the version and Lua API level, drop the commit hash.
   var nf = s.match(/^github version (\S+) \([0-9a-f]+\) lua_compat_ver (\d+)/)
   if (nf) return nf[1] + " · Lua API " + nf[2]
-  if (name === "Setup" && /^v[\d.]+$/.test(s)) return "движок " + s
-  if (name === "curl") s = s.split("HTTP/3 yes").join("с поддержкой HTTP/3")
-  if (name === "nft" && s === "nftables") return "nftables установлен"
-  if (s === "for blockcheck2") return "установлены, нужны для blockcheck2"
-  s = s.split("inactive (dead)").join("остановлена")
-  s = s.split("inactive").join("остановлена")
-  s = s.split("active (running)").join("работает")
-  s = s.split("bundled").join("встроенные")
-  s = s.split("presets").join("пресетов")
-  s = s.split("restarts").join("перезапусков")
-  s = s.split("the plugin was updated: run setup --app-only (Update system part)").join("плагин обновлён: установите обновление системной части")
-  s = s.split("blockcheck2 needs them: omarchy pkg add bind").join("нужны для blockcheck2: omarchy pkg add bind")
-  s = s.replace(/^omarchy-xray TUN is on:.*$/, "включён TUN omarchy-xray: трафик идёт в туннель, обход не применяется")
-  s = s.replace(/(\d+)\s*files? intact/g, "$1 файлов в порядке")
-  s = s.split("install nftables/curl/polkit").join("установите nftables/curl/polkit")
-  s = s.replace(/install (.+)/g, "установите $1")
-  s = s.split("for blockcheck2").join("для blockcheck2")
-  s = s.split("run setup").join("запустите установку")
+  if (name === "Setup" && /^v[\d.]+$/.test(s)) return tr("движок ") + s
+  if (name === "curl") s = s.split("HTTP/3 yes").join(tr("с поддержкой HTTP/3"))
+  if (name === "nft" && s === "nftables") return tr("nftables установлен")
+  if (s === "for blockcheck2") return tr("установлены, нужны для blockcheck2")
+  s = s.split("inactive (dead)").join(tr("остановлена"))
+  s = s.split("inactive").join(tr("остановлена"))
+  s = s.split("active (running)").join(tr("работает"))
+  s = s.split("bundled").join(tr("встроенные"))
+  s = s.split("presets").join(tr("пресетов"))
+  s = s.split("restarts").join(tr("перезапусков"))
+  s = s.split("the plugin was updated: run setup --app-only (Update system part)").join(tr("плагин обновлён: установите обновление системной части"))
+  s = s.split("blockcheck2 needs them: omarchy pkg add bind").join(tr("нужны для blockcheck2: omarchy pkg add bind"))
+  s = s.replace(/^omarchy-xray TUN is on:.*$/, tr("включён TUN omarchy-xray: трафик идёт в туннель, обход не применяется"))
+  s = s.replace(/(\d+)\s*files? intact/g, tr("$1 файлов в порядке"))
+  s = s.split("install nftables/curl/polkit").join(tr("установите nftables/curl/polkit"))
+  s = s.replace(/install (.+)/g, tr("установите $1"))
+  s = s.split("for blockcheck2").join(tr("для blockcheck2"))
+  s = s.split("run setup").join(tr("запустите установку"))
   return s
 }
 
@@ -480,12 +492,12 @@ function doctorDetail(name, detail, ok) {
 function blockcheckPhase(line) {
   var s = line === null || line === undefined ? "" : String(line)
   if (!s) return ""
-  if (s === "checking system") return "Проверка системы"
-  if (s === "checking already running DPI bypass processes") return "Проверка других обходов"
-  if (s === "checking privileges") return "Проверка прав"
-  if (s === "checking prerequisites") return "Проверка зависимостей"
-  if (s.indexOf("curl_test") !== -1) return "Перебор стратегий…"
-  if (s.indexOf("SUMMARY") !== -1) return "Готово"
+  if (s === "checking system") return tr("Проверка системы")
+  if (s === "checking already running DPI bypass processes") return tr("Проверка других обходов")
+  if (s === "checking privileges") return tr("Проверка прав")
+  if (s === "checking prerequisites") return tr("Проверка зависимостей")
+  if (s.indexOf("curl_test") !== -1) return tr("Перебор стратегий…")
+  if (s.indexOf("SUMMARY") !== -1) return tr("Готово")
   return s
 }
 
@@ -493,7 +505,7 @@ function blockcheckPhase(line) {
 // When something fails, passing categories are marked with ✓, e.g.
 // "YouTube ✗ · Discord ✓". All-open rows say "всё открывается".
 function breaksText(row) {
-  if (!row) return "не проверялась"
+  if (!row) return tr("не проверялась")
   var cats = row.categories || {}
   var keys = Object.keys(cats)
   var totals = 0
@@ -510,9 +522,9 @@ function breaksText(row) {
   var hasTested = total > 0 || totals > 0
   if (!hasTested) {
     if (row.error) return String(row.error)
-    return "не проверялась"
+    return tr("не проверялась")
   }
-  if (total > 0 && score >= total) return "всё открывается"
+  if (total > 0 && score >= total) return tr("всё открывается")
   var labels = { youtube: "YouTube", discord: "Discord", google: "Google", cloudflare: "Cloudflare" }
   var parts = []
   var hasFail = false
@@ -532,8 +544,8 @@ function breaksText(row) {
     }
   }
   if (hasFail) return parts.join(" · ")
-  if (total > 0 && score < total) return "не проверялась"
-  return "всё открывается"
+  if (total > 0 && score < total) return tr("не проверялась")
+  return tr("всё открывается")
 }
 
 // "2026-10-05T23:09:53+03:00 host proc[1]: msg" -> "23:09:53 msg".
@@ -561,7 +573,7 @@ function staleLabel(check, isStale, now) {
   if (!check || !check.time) return ""
   var a = ago(check.time, now)
   if (!a) return ""
-  return (isStale ? "устарело · " : "") + a
+  return (isStale ? tr("устарело · ") : "") + a
 }
 
 // Age and severity of the last check. The preset/state mismatch is NOT decided
@@ -583,14 +595,14 @@ function updateBadgeLabel(u, now) {
   var d = u || {}
   if (d.engine === true || d.lists === true || d.presets === true) {
     var parts = []
-    if (d.engine === true) parts.push("движок" + (d.latest ? " " + d.latest : ""))
-    if (d.lists === true) parts.push("списки")
-    if (d.presets === true) parts.push("стратегии")
-    return "Есть обновления: " + parts.join(", ")
+    if (d.engine === true) parts.push(tr("движок") + (d.latest ? " " + d.latest : ""))
+    if (d.lists === true) parts.push(tr("списки"))
+    if (d.presets === true) parts.push(tr("стратегии"))
+    return tr("Есть обновления: ") + parts.join(", ")
   }
-  if (!d.checked) return "Проверка обновлений ещё не выполнялась"
+  if (!d.checked) return tr("Проверка обновлений ещё не выполнялась")
   var a = ago(d.checked, now)
-  return "Обновлений нет" + (a ? " · проверено " + a : "")
+  return tr("Обновлений нет") + (a ? tr(" · проверено ") + a : "")
 }
 
 // Severity for a doctor row: "ok" when passing, otherwise
@@ -740,14 +752,14 @@ function serviceTitle(name) {
 
 // Picker row state: "включён" when all its domains are in the user list.
 function serviceStateLabel(active) {
-  return active === true ? "включён" : "выключен"
+  return active === true ? tr("включён") : tr("выключен")
 }
 
 // DNS status line for the Secure DNS card. Pure, null-safe.
 function dnsStatusText(info) {
   var r = info || {}
   var servers = r.dns || []
-  if (servers.length === 0) return "DNS-серверы не определены"
+  if (servers.length === 0) return tr("DNS-серверы не определены")
   return "DNS: " + servers.slice(0, 3).join(", ")
 }
 

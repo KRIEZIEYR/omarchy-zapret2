@@ -29,10 +29,12 @@ Item {
   property bool opened: false
   property bool closingFromHost: false
   property int tab: 0
-  readonly property var tabs: ["Обзор", "Стратегии", "Списки", "Подбор", "Движок", "Настройки"]
+  readonly property var tabs: [root.t("Обзор"), root.t("Стратегии"), root.t("Списки"), root.t("Подбор"), root.t("Движок"), root.t("Настройки")]
 
   readonly property string fontFamily: Style.font.family
   readonly property string monoFamily: "monospace"
+  readonly property string lang: root.ready ? root.svc.lang : "en"
+  function t(s) { return Model.trTo(root.lang, s) }
   readonly property color fg: Color.popups.text
   readonly property color bg: Color.popups.background
   // Secondary text is mixed toward the background, never darkened: Qt.darker
@@ -106,7 +108,7 @@ Item {
     stdinEnabled: false
     onExited: function(code) {
       if (!root.ready) return
-      root.svc.flash(code === 0 ? "Скопировано" : "wl-copy не найден")
+      root.svc.flash(code === 0 ? root.t("Скопировано") : root.t("wl-copy не найден"))
     }
   }
 
@@ -234,7 +236,7 @@ Item {
     text: (disc.expanded ? "▾ " : "▸ ") + disc.caption
     onClicked: disc.toggled()
     Accessible.role: Accessible.Button
-    Accessible.name: disc.caption + (disc.expanded ? ", развёрнуто" : ", свёрнуто")
+    Accessible.name: disc.caption + (disc.expanded ? root.t(", развёрнуто") : root.t(", свёрнуто"))
   }
 
   component PickRow: CursorSurface {
@@ -256,9 +258,9 @@ bordered: true
       if (row && row.error) return String(row.error)
       var s = ((row && row.score) || 0) + "/" + ((row && row.total) || 0)
       if (row && !row.baseline && baseScore >= 0 && (row.total | 0) > 0) {
-        if ((row.score | 0) < baseScore) s += " · хуже базы"
-        else if ((row.score | 0) > baseScore) s += " · лучше базы"
-        else s += " · как база"
+        if ((row.score | 0) < baseScore) s += root.t(" · хуже базы")
+        else if ((row.score | 0) > baseScore) s += root.t(" · лучше базы")
+        else s += root.t(" · как база")
       }
       return s
     }
@@ -268,7 +270,7 @@ bordered: true
     hasCursor: pickHover.hovered || selected
     current: !!(row && row.chosen)
     Accessible.role: Accessible.Button
-    Accessible.name: ((row && row.title) || "") + ((row && row.chosen) ? ", выбрана" : "")
+    Accessible.name: ((row && row.title) || "") + ((row && row.chosen) ? root.t(", выбрана") : "")
     HoverHandler { id: pickHover }
     TapHandler { onTapped: { if (row && !row.baseline && root.ready && !root.svc.busy) root.svc.setOption("preset", row.preset) } }
     RowLayout {
@@ -328,8 +330,8 @@ bordered: true
           fontSize: Style.font.caption
           visible: !!row && !row.baseline && (pickHover.hovered || hasCursor || selected || (row && row.chosen)) && (!root.ready || root.svc.preset !== row.preset)
           enabled: !!row && !row.baseline && root.ready && !root.svc.busy && root.svc.preset !== row.preset
-          text: "Применить"
-          tooltipText: "Применить " + ((row && row.title) || (row && row.preset) || "") + " (Enter)"
+          text: root.t("Применить")
+          tooltipText: root.t("Применить ") + ((row && row.title) || (row && row.preset) || "") + " (Enter)"
           onClicked: { root.svc.setOption("preset", row.preset) }
         }
       }
@@ -454,7 +456,7 @@ bordered: true
                 }
               }
               title: "Zapret2"
-              meta: root.ready ? (root.svc.bypassState === "error" ? Model.stateText(root.svc.st) : (root.svc.isOn ? "Включён" : "Выключен")) : "Загрузка…"
+              meta: root.ready ? (root.svc.bypassState === "error" ? Model.stateText(root.svc.st) : (root.svc.isOn ? root.t("Включён") : root.t("Выключен"))) : root.t("Загрузка…")
             }
 
             Repeater {
@@ -478,7 +480,7 @@ bordered: true
                   borderSpec: isActive ? Border.controlSpec("normal", root.fg, Color.accent) : Border.flat(root.innerLine, 1)
                   radius: Style.cornerRadius
                   Accessible.role: Accessible.PageTab
-                  Accessible.name: modelData + (isActive ? ", выбрана" : "")
+                  Accessible.name: modelData + (isActive ? root.t(", выбрана") : "")
                   Rectangle {
                     visible: tabSurface.isActive
                     width: 3
@@ -541,7 +543,7 @@ bordered: true
                   Text {
                     id: pillText
                     anchors.centerIn: parent
-                    text: "обновление"
+                    text: root.t("обновление")
                     color: root.dim
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
@@ -566,10 +568,10 @@ bordered: true
               Layout.fillWidth: true
               Layout.topMargin: Style.space(4)
               spacing: Style.space(2)
-              property string stateText: !root.ready ? "Загрузка…"
-                  : root.svc.bypassState === "error" ? "Ошибка"
-                  : root.svc.busy ? "Выполняется"
-                  : (root.svc.isOn ? "Включён" : "Выключен")
+              property string stateText: !root.ready ? root.t("Загрузка…")
+                  : root.svc.bypassState === "error" ? root.t("Ошибка")
+                  : root.svc.busy ? root.t("Выполняется")
+                  : (root.svc.isOn ? root.t("Включён") : root.t("Выключен"))
               property color dotColor: !root.ready ? root.dim
                   : root.svc.bypassState === "error" ? root.bad
                   : root.svc.busy ? Color.accent
@@ -585,26 +587,26 @@ bordered: true
                 Layout.fillWidth: true
                 fixedWidth: true
                 visible: text !== ""
-                text: !root.ready ? "" : !root.svc.installed ? "Движок не установлен"
-                    : "Стратегия: " + (Model.presetTitle(root.svc.preset) || "—")
+                text: !root.ready ? "" : !root.svc.installed ? root.t("Движок не установлен")
+                    : root.t("Стратегия: ") + (Model.presetTitle(root.svc.preset) || "—")
               }
               Hint {
                 Layout.fillWidth: true
                 visible: text !== ""
-                text: !root.ready || !root.svc.installed ? "" : "Движок " + (root.svc.st.engine || "?")
+                text: !root.ready || !root.svc.installed ? "" : root.t("Движок ") + (root.svc.st.engine || "?")
               }
               Hint {
                 Layout.fillWidth: true
                 visible: root.ready && root.svc.busy
                 color: Color.accent
-                text: root.ready ? "Выполняется: " + root.svc.busyLabel + "…" : ""
+                text: root.ready ? root.t("Выполняется: ") + root.t(root.svc.busyLabel) + "…" : ""
               }
             }
 
             Hint {
               Layout.fillWidth: true
               Layout.topMargin: Style.space(2)
-              text: "Ctrl+1…6 — вкладки\nCtrl+T — вкл/выкл\n/ — поиск"
+              text: root.t("Ctrl+1…6 — вкладки\nCtrl+T — вкл/выкл\n/ — поиск")
             }
           }
 
@@ -637,20 +639,20 @@ bordered: true
               Button {
                 bordered: true
                 visible: root.ready && root.svc.errorText !== ""
-                text: "Диагностика"
-                tooltipText: "Открыть Движок: диагностика и журнал"
+                text: root.t("Диагностика")
+                tooltipText: root.t("Открыть Движок: диагностика и журнал")
                 onClicked: root.tab = 4
               }
             }
 
             Section {
-              title: "ДВИЖОК ZAPRET2 НЕ УСТАНОВЛЕН"
+              title: root.t("ДВИЖОК ZAPRET2 НЕ УСТАНОВЛЕН")
               visible: root.ready && root.svc.reachable && !root.svc.installed
               Hint {
                 Layout.fillWidth: true
-                text: "Скачивает релиз bol-van/zapret2, сверяет sha256 и кладёт в /opt/omarchy-zapret2. Пароль — один раз."
+                text: root.t("Скачивает релиз bol-van/zapret2, сверяет sha256 и кладёт в /opt/omarchy-zapret2. Пароль — один раз.")
               }
-              PrimaryButton { text: root.ready && root.svc.busy ? "Установка…" : "Установить"; tooltipText: "Установить движок zapret2"; onClicked: root.svc.setup() }
+              PrimaryButton { text: root.ready && root.svc.busy ? root.t("Установка…") : root.t("Установить"); tooltipText: root.t("Установить движок zapret2"); onClicked: root.svc.setup() }
             }
 
             StackLayout {
@@ -724,36 +726,36 @@ bordered: true
 
       Section {
         id: frSec
-        title: "ПЕРВЫЙ ЗАПУСК"
+        title: root.t("ПЕРВЫЙ ЗАПУСК")
         visible: root.ready && frSec.frStep < 3
         property int frStep: (typeof Model.firstRunStep === "function" && root.ready) ? Model.firstRunStep(root.svc.st, root.svc.autopickResult) : 3
         Label {
           Layout.fillWidth: true
-          text: frSec.frStep === 1 ? "Шаг 1 из 3: установите движок zapret2 (один пароль)."
-               : "Шаг 2 из 3: запустите автоподбор стратегии (1–3 минуты)."
+          text: frSec.frStep === 1 ? root.t("Шаг 1 из 3: установите движок zapret2 (один пароль).")
+               : root.t("Шаг 2 из 3: запустите автоподбор стратегии (1–3 минуты).")
         }
-        Hint { Layout.fillWidth: true; text: "Шаг 3 — готово: обход включён или не нужен." }
+        Hint { Layout.fillWidth: true; text: root.t("Шаг 3 — готово: обход включён или не нужен.") }
         RowLayout {
           Layout.fillWidth: true
           spacing: Style.space(8)
           PrimaryButton {
             visible: frSec.frStep === 1
             enabled: root.ready && !root.svc.busy
-            text: root.ready && root.svc.busyLabel === "установка" ? "Установка…" : "Установить"
-            tooltipText: "Установить движок zapret2 (спросит пароль один раз)"
+            text: root.ready && root.svc.busyLabel === "установка" ? root.t("Установка…") : root.t("Установить")
+            tooltipText: root.t("Установить движок zapret2 (спросит пароль один раз)")
             onClicked: root.svc.setup()
           }
           PrimaryButton {
             visible: frSec.frStep === 2
             enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Запустить автоподбор"
-            tooltipText: "Подобрать стратегию для вашей сети"
+            text: root.t("Запустить автоподбор")
+            tooltipText: root.t("Подобрать стратегию для вашей сети")
             onClicked: { root.svc.autopick([]); root.tab = 3 }
           }
           ActionButton {
             visible: frSec.frStep === 2
-            text: "Открыть Подбор"
-            tooltipText: "Открыть вкладку Подбор"
+            text: root.t("Открыть Подбор")
+            tooltipText: root.t("Открыть вкладку Подбор")
             onClicked: root.tab = 3
           }
         }
@@ -762,12 +764,12 @@ bordered: true
       // The plugin update has one action and one name: this notice on Обзор
       // and a labelled button on the Движок diagnostics row.
       Section {
-        title: "ДОСТУПНО ОБНОВЛЕНИЕ ZAPRET2"
+        title: root.t("ДОСТУПНО ОБНОВЛЕНИЕ ZAPRET2")
         visible: root.sysUpdate
-        Hint { Layout.fillWidth: true; text: "Системная часть плагина; спросит пароль. Настройки, списки и стратегии останутся." }
+        Hint { Layout.fillWidth: true; text: root.t("Системная часть плагина; спросит пароль. Настройки, списки и стратегии останутся.") }
         ActionButton {
-          text: "Открыть Движок"
-          tooltipText: "Открыть вкладку Движок: обновление плагина"
+          text: root.t("Открыть Движок")
+          tooltipText: root.t("Открыть вкладку Движок: обновление плагина")
           onClicked: root.tab = 4
         }
       }
@@ -800,9 +802,9 @@ bordered: true
           title: {
             if (!root.ready) return ""
             if (root.svc.bypassState === "error") return Model.stateText(root.svc.st)
-            return root.svc.isOn ? "Включён" : "Выключен"
+            return root.svc.isOn ? root.t("Включён") : root.t("Выключен")
           }
-          meta: !root.ready || !root.svc.installed ? "" : "движок " + (root.svc.st.engine || "?") + (root.svc.st.restarts > 0 ? " · перезапусков " + root.svc.st.restarts : "")
+          meta: !root.ready || !root.svc.installed ? "" : root.t("движок ") + (root.svc.st.engine || "?") + (root.svc.st.restarts > 0 ? root.t(" · перезапусков ") + root.svc.st.restarts : "")
           trailingControl: Component {
             ToggleSwitch {
               id: heroSwitch
@@ -814,11 +816,11 @@ bordered: true
               onHovered: function(h) { if (h) ov.cursorKey = "hero" }
               onToggled: root.svc.toggle()
               Accessible.role: Accessible.CheckBox
-              Accessible.name: "Обход, " + (root.ready && root.svc.isOn ? "включён" : "выключен")
+              Accessible.name: root.t("Обход, ") + (root.ready && root.svc.isOn ? root.t("включён") : root.t("выключен"))
               Accessible.checked: checked
               PanelToolTip {
                 visible: heroSwitch.containsMouse
-                text: root.ready && root.svc.isOn ? "Выключить обход (Ctrl+T)" : "Включить обход (Ctrl+T)"
+                text: root.ready && root.svc.isOn ? root.t("Выключить обход (Ctrl+T)") : root.t("Включить обход (Ctrl+T)")
                 fontFamily: root.fontFamily
               }
             }
@@ -832,7 +834,7 @@ bordered: true
           // which strategy is loaded.
           text: {
             if (!root.ready) return ""
-            return "Стратегия: " + (Model.presetTitle(root.svc.preset) || "—")
+            return root.t("Стратегия: ") + (Model.presetTitle(root.svc.preset) || "—")
           }
         }
         Text {
@@ -867,7 +869,7 @@ bordered: true
             if (headCard.staleStatus.text !== "") return headCard.staleStatus.text
             if (headCard.isNeutral) {
               var n = headCard.info.note || ""
-              return n !== "" ? n + " · " + Model.NOT_NEEDED_EXPL : Model.NOT_NEEDED_EXPL
+              return n !== "" ? n + " · " + root.t(Model.NOT_NEEDED_EXPL) : root.t(Model.NOT_NEEDED_EXPL)
             }
             return headCard.info.note || ""
           }
@@ -879,10 +881,10 @@ bordered: true
           // The filled action of this page. Emphasis never depends on data.
           PrimaryButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: root.ready && root.svc.isOn ? "Выключить обход" : "Включить обход"
-            tooltipText: headCard.isMismatch ? "Включить обход без новой проверки"
-                : headCard.isNeutral ? "Проверка показывает, что обход не нужен — включить принудительно"
-                : "Включить обход (Ctrl+T)"
+            text: root.ready && root.svc.isOn ? root.t("Выключить обход") : root.t("Включить обход")
+            tooltipText: headCard.isMismatch ? root.t("Включить обход без новой проверки")
+                : headCard.isNeutral ? root.t("Проверка показывает, что обход не нужен — включить принудительно")
+                : root.t("Включить обход (Ctrl+T)")
             onClicked: {
               if (root.svc.isOn) root.svc.turnOff()
               else root.svc.turnOn()
@@ -890,8 +892,8 @@ bordered: true
           }
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Проверить"
-            tooltipText: "Проверить доступность с текущей стратегией"
+            text: root.t("Проверить")
+            tooltipText: root.t("Проверить доступность с текущей стратегией")
             onClicked: root.svc.runCheck()
           }
         }
@@ -902,13 +904,13 @@ bordered: true
           TextField {
             id: domainField
             Layout.fillWidth: true
-            placeholderText: "Проверить домен…"
+            placeholderText: root.t("Проверить домен…")
             onAccepted: root.svc.runCheck(text)
           }
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy && domainField.text.trim() !== ""
-            text: "Проверить домен"
-            tooltipText: "Проверить свои домены через пробел или запятую (до 10)"
+            text: root.t("Проверить домен")
+            tooltipText: root.t("Проверить свои домены через пробел или запятую (до 10)")
             onClicked: root.svc.runCheck(domainField.text)
           }
         }
@@ -918,7 +920,7 @@ bordered: true
 
       Section {
         id: availCard
-        title: "ДОСТУПНОСТЬ"
+        title: root.t("ДОСТУПНОСТЬ")
         visible: root.ready && root.svc.installed
         readonly property var staleStatus: root.ready ? Model.staleStatus(root.svc.check) : ({ text: "", severity: "none" })
         property bool staleError: availCard.staleStatus.severity === "error"
@@ -926,7 +928,7 @@ bordered: true
         actions: [
           PanelActionButton {
             iconText: "?"
-            tooltipText: "Что означают проверки"
+            tooltipText: root.t("Что означают проверки")
             foreground: root.fg
             fontFamily: root.fontFamily
             onClicked: availCard.showExplainer = !availCard.showExplainer
@@ -935,7 +937,7 @@ bordered: true
         Hint {
           Layout.fillWidth: true
           visible: availCard.showExplainer
-          text: Model.CHECK_EXPLAINER
+          text: root.t(Model.CHECK_EXPLAINER)
         }
         Hint {
           Layout.fillWidth: true
@@ -960,7 +962,7 @@ bordered: true
               foreground: root.fg
               hasCursor: ov.cursorKey === catKey
               Accessible.role: Accessible.Button
-              Accessible.name: modelData.label + ", " + modelData.ok + " из " + modelData.total
+              Accessible.name: modelData.label + ", " + modelData.ok + root.t(" из ") + modelData.total
               HoverHandler {
                 onHoveredChanged: if (hovered) ov.cursorKey = catKey
               }
@@ -1025,7 +1027,7 @@ bordered: true
                   color: modelData.ok ? root.dim : (modelData.http3 ? root.fg : root.bad)
                 }
                 Hint {
-                  text: modelData.ok ? Math.round(modelData.time * 1000) + " мс" : Model.curlError(modelData.error)
+                  text: modelData.ok ? Math.round(modelData.time * 1000) + root.t(" мс") : Model.curlError(modelData.error)
                   elide: Text.ElideRight
                   wrapMode: Text.NoWrap
                   Layout.maximumWidth: Style.space(260)
@@ -1077,9 +1079,9 @@ bordered: true
       editName = name ? name.replace(/^my-/, "") : ""
       editor.text = ""
       if (name) root.svc.loadText(["custom", "show", name], function(r) { if (r.ok) editor.text = r.data.text })
-      else editor.text = "# Своя стратегия — секции nfqws2: [TCP_HTTP], [TCP_TLS], [TCP_GENERIC], [QUIC]\n"
-          + "# Опции: --lua-desync, --payload, --out-range и др. (см. man nfqws2)\n"
-          + "# Пример:\n"
+      else editor.text = root.t("# Своя стратегия — секции nfqws2: [TCP_HTTP], [TCP_TLS], [TCP_GENERIC], [QUIC]\n")
+          + root.t("# Опции: --lua-desync, --payload, --out-range и др. (см. man nfqws2)\n")
+          + root.t("# Пример:\n")
           + "# [TCP_HTTP]\n"
           + "# --lua-desync=fake:blob=http_iana:tcp_md5:repeats=6\n"
           + "# --lua-desync=multisplit:pos=2,host+1\n"
@@ -1097,7 +1099,7 @@ bordered: true
       showing = true
       shownName = name
       shownText = ""
-      showError = "Загрузка…"
+      showError = root.t("Загрузка…")
       root.svc.presetText(name, function(r) {
         if (r.ok) { shownText = r.data.text; showError = "" }
         else showError = r.message
@@ -1121,8 +1123,8 @@ bordered: true
 
     function recommendedText() {
       var r = sp.pickRow(sp.recommendedName())
-      if (!r) return "не проверялась"
-      var bt = (typeof Model.breaksText === "function") ? Model.breaksText(r) : "не проверялась"
+      if (!r) return root.t("не проверялась")
+      var bt = (typeof Model.breaksText === "function") ? Model.breaksText(r) : root.t("не проверялась")
       if ((r.total | 0) <= 0) return r.error !== "" ? r.error : bt
       var s = r.score + "/" + r.total
       return bt + " · " + s
@@ -1332,19 +1334,19 @@ bordered: true
           font.pixelSize: Style.font.bodySmall
         }
         Label {
-          text: recCard.notNeeded ? "Обход не нужен" : Model.presetTitle(sp.recommendedName())
+          text: recCard.notNeeded ? root.t("Обход не нужен") : Model.presetTitle(sp.recommendedName())
           font.bold: true
         }
         Hint {
           Layout.fillWidth: true
           elide: Text.ElideRight
-          text: recCard.notNeeded ? Model.NOT_NEEDED_EXPL : sp.recommendedText()
+          text: recCard.notNeeded ? root.t(Model.NOT_NEEDED_EXPL) : sp.recommendedText()
         }
         PrimaryButton {
           visible: !recCard.notNeeded
           enabled: root.ready && root.svc.installed && !root.svc.busy
-          text: "Включить"
-          tooltipText: "Включить обход со стратегией " + Model.presetTitle(sp.recommendedName())
+          text: root.t("Включить")
+          tooltipText: root.t("Включить обход со стратегией ") + Model.presetTitle(sp.recommendedName())
           onClicked: {
             var n = sp.recommendedName()
             if (root.svc.preset !== n) root.svc.setOption("preset", n)
@@ -1360,29 +1362,29 @@ bordered: true
       spacing: Style.space(12)
       PanelSectionHeader {
         Layout.fillWidth: true
-        text: "СТРАТЕГИИ"
+        text: root.t("СТРАТЕГИИ")
         foreground: root.fg
         fontFamily: root.fontFamily
       }
       Button {
         bordered: false
         fontSize: Style.font.caption
-        text: "Обновить из Flowseal"
-        tooltipText: "Загрузить пресеты Flowseal заново"
+        text: root.t("Обновить из Flowseal")
+        tooltipText: root.t("Загрузить пресеты Flowseal заново")
         onClicked: root.svc.updatePresets()
       }
       Button {
         bordered: false
         fontSize: Style.font.caption
-        text: sp.importOpen ? "Скрыть импорт" : "Импорт"
-        tooltipText: "Текст стратегии, путь к файлу или ссылка http(s); сохраняется как своя (my-*)"
+        text: sp.importOpen ? root.t("Скрыть импорт") : root.t("Импорт")
+        tooltipText: root.t("Текст стратегии, путь к файлу или ссылка http(s); сохраняется как своя (my-*)")
         onClicked: sp.importOpen = !sp.importOpen
       }
       Button {
         bordered: false
         fontSize: Style.font.caption
-        text: "Новая"
-        tooltipText: "Своя стратегия nfqws2: имя и текст пресета"
+        text: root.t("Новая")
+        tooltipText: root.t("Своя стратегия nfqws2: имя и текст пресета")
         onClicked: sp.edit("")
       }
     }
@@ -1394,17 +1396,17 @@ bordered: true
       TextField {
         id: impText
         Layout.fillWidth: true
-        placeholderText: "Текст, путь к файлу или ссылка http(s)"
+        placeholderText: root.t("Текст, путь к файлу или ссылка http(s)")
       }
       TextField {
         id: impName
         Layout.preferredWidth: Style.space(160)
-        placeholderText: "Имя (необязательно)"
+        placeholderText: root.t("Имя (необязательно)")
       }
       ActionButton {
         enabled: root.ready && !root.svc.busy && impText.text.trim() !== ""
-        text: "Импортировать"
-        tooltipText: "Проверить и сохранить как свою стратегию"
+        text: root.t("Импортировать")
+        tooltipText: root.t("Проверить и сохранить как свою стратегию")
         onClicked: root.svc.importStrategy(impText.text, impName.text.trim(), function(r) {
           if (r.ok) { impText.text = ""; impName.text = ""; sp.importOpen = false }
         })
@@ -1418,15 +1420,15 @@ bordered: true
       TextField {
         id: filterField
         Layout.fillWidth: true
-        placeholderText: "Найти стратегию"
+        placeholderText: root.t("Найти стратегию")
         text: sp.filter
         onTextChanged: sp.filter = text
       }
       ToggleRow {
         Layout.fillWidth: false
         Layout.preferredWidth: Style.space(250)
-        label: "Скрыть хуже базы" + (sp.onlyGood && sp.hiddenWorseCount > 0 ? " · " + sp.hiddenWorseCount : "")
-        a11yName: "Скрыть стратегии хуже базы"
+        label: root.t("Скрыть хуже базы") + (sp.onlyGood && sp.hiddenWorseCount > 0 ? " · " + sp.hiddenWorseCount : "")
+        a11yName: root.t("Скрыть стратегии хуже базы")
         checked: sp.onlyGood
         onFlip: sp.onlyGood = !sp.onlyGood
       }
@@ -1489,10 +1491,10 @@ bordered: true
                 // selection.
                 property string scoreMeta: {
                   var r = sp.pickRow(modelData.name)
-                  if (!r || (r.total | 0) <= 0) return r && r.error !== "" ? r.error : "не проверялась"
+                  if (!r || (r.total | 0) <= 0) return r && r.error !== "" ? r.error : root.t("не проверялась")
                   var s = r.score + "/" + r.total
-                  if (sp.isWorse(modelData.name)) s += " · хуже базы"
-                  else if (r.chosen && !sp.isTied(modelData.name)) s += " · лучшая"
+                  if (sp.isWorse(modelData.name)) s += root.t(" · хуже базы")
+                  else if (r.chosen && !sp.isTied(modelData.name)) s += root.t(" · лучшая")
                   return s
                 }
                 property string breaksLine: {
@@ -1506,7 +1508,7 @@ bordered: true
                 current: isActive
                 hasCursor: sp.selectedName === modelData.name
                 Accessible.role: Accessible.Button
-                Accessible.name: Model.presetTitle(modelData.name) + ", " + scoreMeta + (isActive ? ", активна" : "") + ((isBest && !sp.isTied(modelData.name)) ? ", лучшая" : "")
+                Accessible.name: Model.presetTitle(modelData.name) + ", " + scoreMeta + (isActive ? root.t(", активна") : "") + ((isBest && !sp.isTied(modelData.name)) ? root.t(", лучшая") : "")
                 HoverHandler {
                   id: hover
                   onHoveredChanged: {
@@ -1567,8 +1569,8 @@ bordered: true
                         fontSize: Style.font.caption
                         visible: !isActive && sp.selectedName === modelData.name
                         enabled: root.ready && !root.svc.busy
-                        text: "Применить"
-                        tooltipText: "Применить " + Model.presetTitle(modelData.name) + " (Enter)"
+                        text: root.t("Применить")
+                        tooltipText: root.t("Применить ") + Model.presetTitle(modelData.name) + " (Enter)"
                         onClicked: root.svc.setOption("preset", modelData.name)
                       }
                       Button {
@@ -1582,8 +1584,8 @@ bordered: true
                         // Built-in strategies have one action, so the button
                         // is that action; own strategies (my-*) keep the menu.
                         readonly property bool own: modelData.name.indexOf("my-") === 0
-                        text: own ? "⋯" : "Открыть"
-                        tooltipText: own ? (moreActionsOpen ? "Скрыть действия" : "Действия") : "Показать текст пресета"
+                        text: own ? "⋯" : root.t("Открыть")
+                        tooltipText: own ? (moreActionsOpen ? root.t("Скрыть действия") : root.t("Действия")) : root.t("Показать текст пресета")
                         onClicked: {
                           if (!own) { sp.show(modelData.name); return }
                           var e = Object.assign({}, sp.moreOpen)
@@ -1616,16 +1618,16 @@ bordered: true
                     Button {
                       bordered: false
                       fontSize: Style.font.caption
-                      text: "Показать"
-                      tooltipText: "Показать текст пресета"
+                      text: root.t("Показать")
+                      tooltipText: root.t("Показать текст пресета")
                       onClicked: sp.show(modelData.name)
                     }
                     Button {
                       visible: modelData.name.indexOf("my-") === 0
                       bordered: false
                       fontSize: Style.font.caption
-                      text: "Изменить"
-                      tooltipText: "Изменить свою стратегию"
+                      text: root.t("Изменить")
+                      tooltipText: root.t("Изменить свою стратегию")
                       onClicked: sp.edit(modelData.name)
                     }
                     Button {
@@ -1633,8 +1635,8 @@ bordered: true
                       bordered: false
                       fontSize: Style.font.caption
                       enabled: root.ready && !root.svc.busy
-                      text: "Дублировать"
-                      tooltipText: "Сохранить копию своей стратегии под новым именем"
+                      text: root.t("Дублировать")
+                      tooltipText: root.t("Сохранить копию своей стратегии под новым именем")
                       onClicked: root.svc.copyStrategy(modelData.name, "")
                     }
                     Button {
@@ -1642,8 +1644,8 @@ bordered: true
                       bordered: false
                       fontSize: Style.font.caption
                       foreground: root.bad
-                      text: sp.armDelete === modelData.name ? "Точно удалить?" : "Удалить"
-                      tooltipText: sp.armDelete === modelData.name ? "Нажмите ещё раз для удаления" : "Удалить свою стратегию"
+                      text: sp.armDelete === modelData.name ? root.t("Точно удалить?") : root.t("Удалить")
+                      tooltipText: sp.armDelete === modelData.name ? root.t("Нажмите ещё раз для удаления") : root.t("Удалить свою стратегию")
                       onClicked: {
                         if (sp.armDelete === modelData.name) { sp.armDelete = ""; disarmTimer.stop(); root.svc.removeCustom(modelData.name) }
                         else { sp.armDelete = modelData.name; disarmTimer.restart() }
@@ -1651,8 +1653,8 @@ bordered: true
                     }
                     ActionButton {
                       visible: sp.armDelete === modelData.name && modelData.name.indexOf("my-") === 0
-                      text: "Отмена"
-                      tooltipText: "Оставить стратегию"
+                      text: root.t("Отмена")
+                      tooltipText: root.t("Оставить стратегию")
                       onClicked: { sp.armDelete = ""; disarmTimer.stop() }
                     }
                   }
@@ -1675,19 +1677,19 @@ bordered: true
         PanelSectionHeader { Layout.fillWidth: true; text: Model.presetTitle(sp.shownName); foreground: root.fg; fontFamily: root.fontFamily }
         ActionButton {
           visible: root.ready && root.svc.preset !== sp.shownName
-          text: "Применить"
-          tooltipText: "Применить " + Model.presetTitle(sp.shownName)
+          text: root.t("Применить")
+          tooltipText: root.t("Применить ") + Model.presetTitle(sp.shownName)
           onClicked: root.svc.setOption("preset", sp.shownName)
         }
         Button {
           bordered: false
           fontSize: Style.font.caption
           visible: sp.shownText !== ""
-          text: "Скопировать как свою"
-          tooltipText: "Открыть копию в редакторе своих стратегий"
+          text: root.t("Скопировать как свою")
+          tooltipText: root.t("Открыть копию в редакторе своих стратегий")
           onClicked: sp.copyAsOwn()
         }
-        Button { bordered: false; fontSize: Style.font.caption; text: "Закрыть"; tooltipText: "Закрыть просмотр (Esc)"; onClicked: sp.showing = false }
+        Button { bordered: false; fontSize: Style.font.caption; text: root.t("Закрыть"); tooltipText: root.t("Закрыть просмотр (Esc)"); onClicked: sp.showing = false }
       }
       Hint {
         Layout.fillWidth: true
@@ -1697,7 +1699,7 @@ bordered: true
       Hint {
         Layout.fillWidth: true
         visible: sp.shownText !== "" && !sp.isSectionFormat(sp.shownText)
-        text: "Полный пресет Flowseal: правится через копию как свою."
+        text: root.t("Полный пресет Flowseal: правится через копию как свою.")
       }
       Editor {
         id: viewerEditor
@@ -1713,26 +1715,26 @@ bordered: true
       spacing: Style.space(8)
       RowLayout {
         Layout.fillWidth: true
-        Label { text: "Имя:" }
+        Label { text: root.t("Имя:") }
         TextField {
           id: nameField
           Layout.preferredWidth: Style.space(220)
           text: sp.editName
-          placeholderText: "например home"
+          placeholderText: root.t("например home")
           onTextChanged: sp.editName = text
         }
-        Hint { Layout.fillWidth: true; text: "Секции [TCP_*]/[QUIC]; опции --lua-desync, --payload, --out-range. Блобы: tls_google, quic_google, http_iana и др." }
+        Hint { Layout.fillWidth: true; text: root.t("Секции [TCP_*]/[QUIC]; опции --lua-desync, --payload, --out-range. Блобы: tls_google, quic_google, http_iana и др.") }
       }
       Editor { id: editor }
       RowLayout {
         spacing: Style.space(12)
         PrimaryButton {
-          text: "Сохранить"
+          text: root.t("Сохранить")
           enabled: sp.editName.trim() !== ""
-          tooltipText: "Сохранить свою стратегию"
+          tooltipText: root.t("Сохранить свою стратегию")
           onClicked: root.svc.saveCustom(sp.editName.trim(), editor.text, function(r) { if (r.ok) sp.editing = false })
         }
-        Button { bordered: false; fontSize: Style.font.caption; text: "Отмена"; onClicked: sp.editing = false }
+        Button { bordered: false; fontSize: Style.font.caption; text: root.t("Отмена"); onClicked: sp.editing = false }
       }
     }
   }
@@ -1760,21 +1762,21 @@ bordered: true
     property string saveResult: ""
     property bool restartAfterSave: true
     function exampleText() {
-      if (lp.kind === "ipset") return "# пример:\n# 1.2.3.0/24\n# 2001:db8::/32\n"
-      return "# пример:\nexample.com\n# sub.example.org\n"
+      if (lp.kind === "ipset") return root.t("# пример:\n# 1.2.3.0/24\n# 2001:db8::/32\n")
+      return root.t("# пример:\nexample.com\n# sub.example.org\n")
     }
     readonly property var myNames: [
-      { value: "list-general-user", label: "Мои: сайты (через обход)" },
-      { value: "list-exclude-user", label: "Мои: исключения (без обхода)" },
-      { value: "ipset-all-user", label: "Мои: IP-сети (через обход)" },
-      { value: "ipset-exclude-user", label: "Мои: IP-исключения" }
+      { value: "list-general-user", label: root.t("Мои: сайты (через обход)") },
+      { value: "list-exclude-user", label: root.t("Мои: исключения (без обхода)") },
+      { value: "ipset-all-user", label: root.t("Мои: IP-сети (через обход)") },
+      { value: "ipset-exclude-user", label: root.t("Мои: IP-исключения") }
     ]
     readonly property var builtinNames: [
-      { value: "list-general", label: "Встроенные: общий список" },
-      { value: "list-google", label: "Встроенные: YouTube/Google" },
-      { value: "list-exclude", label: "Встроенные: исключения" },
-      { value: "ipset-all", label: "Встроенные: IP-сети" },
-      { value: "ipset-exclude", label: "Встроенные: IP-исключения" }
+      { value: "list-general", label: root.t("Встроенные: общий список") },
+      { value: "list-google", label: root.t("Встроенные: YouTube/Google") },
+      { value: "list-exclude", label: root.t("Встроенные: исключения") },
+      { value: "ipset-all", label: root.t("Встроенные: IP-сети") },
+      { value: "ipset-exclude", label: root.t("Встроенные: IP-исключения") }
     ]
     readonly property var names: myNames.concat(builtinNames)
 
@@ -1783,16 +1785,16 @@ bordered: true
       listEditor.text = ""
       loadedText = ""
       saveResult = ""
-      info = "Загрузка…"
+      info = root.t("Загрузка…")
       root.svc.loadText(["list", "show", current], function(r) {
         if (!r.ok) { info = r.message; return }
         listEditor.text = r.data.text + (r.data.text ? "\n" : "")
         loadedText = listEditor.text
-        info = "Загружено: " + r.data.count + " строк" + (r.data.truncated ? " (показаны первые 5000)" : "")
+        info = root.t("Загружено: ") + r.data.count + root.t(" строк") + (r.data.truncated ? root.t(" (показаны первые 5000)") : "")
       })
     }
     function savedMessage(count, dropped) {
-      return "Сохранено: " + count + " строк, отброшено " + dropped
+      return root.t("Сохранено: ") + count + root.t(" строк, отброшено ") + dropped
     }
     function save() {
       root.svc.saveList(lp.current, listEditor.text, function(r) {
@@ -1801,7 +1803,7 @@ bordered: true
           root.svc.flash(msg)
           lp.loadedText = listEditor.text
           lp.info = msg
-          lp.saveResult = msg + (r.data.restarted ? " · обход перезапущен" : " · без перезапуска")
+          lp.saveResult = msg + (r.data.restarted ? root.t(" · обход перезапущен") : root.t(" · без перезапуска"))
         }
       }, lp.restartAfterSave)
     }
@@ -1819,7 +1821,7 @@ bordered: true
         Dropdown {
           id: listDrop
           Layout.preferredWidth: Style.space(320)
-          label: "Список"
+          label: root.t("Список")
           value: lp.current
           options: lp.names
           onChanged: function(v) { lp.current = v }
@@ -1827,20 +1829,20 @@ bordered: true
         Hint {
           visible: lp.editable && listEditor.text !== lp.loadedText
           color: root.bad
-          text: "не сохранено"
+          text: root.t("не сохранено")
         }
         Hint { Layout.fillWidth: true; text: lp.info }
       }
 
     Section {
-      title: "ЗАПИСИ"
-      trailing: lp.editable ? "домен или IP/CIDR на строку" : "только чтение"
+      title: root.t("ЗАПИСИ")
+      trailing: lp.editable ? root.t("домен или IP/CIDR на строку") : root.t("только чтение")
       actions: [
         Button {
           bordered: false
           fontSize: Style.font.caption
-          text: "Обновить из Flowseal"
-          tooltipText: "Загрузить списки Flowseal заново"
+          text: root.t("Обновить из Flowseal")
+          tooltipText: root.t("Загрузить списки Flowseal заново")
           onClicked: root.svc.updateLists()
         }
       ]
@@ -1850,11 +1852,11 @@ bordered: true
         Layout.fillWidth: true
         visible: lp.editable && listEditor.text === ""
         spacing: Style.space(2)
-        Label { Layout.fillWidth: true; text: "Список пуст — так и должно быть" }
-        Hint { Layout.fillWidth: true; text: "Встроенные списки уже покрывают YouTube и Discord. Добавьте свой домен, только если он не открывается." }
+        Label { Layout.fillWidth: true; text: root.t("Список пуст — так и должно быть") }
+        Hint { Layout.fillWidth: true; text: root.t("Встроенные списки уже покрывают YouTube и Discord. Добавьте свой домен, только если он не открывается.") }
         ActionButton {
-          text: "Вставить пример"
-          tooltipText: "Вставить пример записей в редактор"
+          text: root.t("Вставить пример")
+          tooltipText: root.t("Вставить пример записей в редактор")
           onClicked: listEditor.text += lp.exampleText()
         }
       }
@@ -1863,7 +1865,7 @@ bordered: true
         Layout.fillHeight: false
         Layout.preferredHeight: Style.space(160)
         readOnly: !lp.editable
-        placeholderText: lp.editable ? "example.com\n203.0.113.0/24" : "Список только для чтения"
+        placeholderText: lp.editable ? "example.com\n203.0.113.0/24" : root.t("Список только для чтения")
       }
       RowLayout {
         id: listActions
@@ -1877,8 +1879,8 @@ bordered: true
         PrimaryButton {
           visible: listActions.liveCounts.valid > 0 || lp.loadedText === ""
           enabled: listActions.canSave
-          text: "Сохранить"
-          tooltipText: "Сохранить список (" + listActions.liveCounts.valid + " строк, отброшено " + listActions.liveCounts.dropped + ")" + (lp.restartAfterSave ? " и перезапустить обход" : " без перезапуска обхода")
+          text: root.t("Сохранить")
+          tooltipText: root.t("Сохранить список (") + listActions.liveCounts.valid + root.t(" строк, отброшено ") + listActions.liveCounts.dropped + ")" + (lp.restartAfterSave ? root.t(" и перезапустить обход") : root.t(" без перезапуска обхода"))
           onClicked: lp.save()
         }
         Button {
@@ -1887,23 +1889,23 @@ bordered: true
           foreground: root.bad
           visible: listActions.liveCounts.valid === 0 && lp.loadedText !== "" && listActions.changed
           enabled: listActions.canSave
-          text: "Очистить и сохранить"
-          tooltipText: "Удалить все записи и сохранить пустой список" + (lp.restartAfterSave ? " с перезапуском обхода" : " без перезапуска обхода")
+          text: root.t("Очистить и сохранить")
+          tooltipText: root.t("Удалить все записи и сохранить пустой список") + (lp.restartAfterSave ? root.t(" с перезапуском обхода") : root.t(" без перезапуска обхода"))
           onClicked: lp.save()
         }
         Hint {
           text: {
             var c = listActions.liveCounts
-            var s = c.valid + " строк"
-            if (c.dropped > 0) s += " · отброшено " + c.dropped
+            var s = c.valid + root.t(" строк")
+            if (c.dropped > 0) s += root.t(" · отброшено ") + c.dropped
             return s
           }
         }
       }
       ToggleRow {
         visible: lp.editable
-        label: "Перезапустить обход после сохранения"
-        note: "Новые списки применятся после перезапуска"
+        label: root.t("Перезапустить обход после сохранения")
+        note: root.t("Новые списки применятся после перезапуска")
         checked: lp.restartAfterSave
         onFlip: lp.restartAfterSave = !lp.restartAfterSave
       }
@@ -1914,8 +1916,8 @@ bordered: true
       }
     }
     Section {
-      title: "СЕРВИСЫ"
-      Hint { Layout.fillWidth: true; text: "Готовые наборы доменов в «Мои: сайты»; поддомены включаются сами." }
+      title: root.t("СЕРВИСЫ")
+      Hint { Layout.fillWidth: true; text: root.t("Готовые наборы доменов в «Мои: сайты»; поддомены включаются сами.") }
           Repeater {
             model: root.ready ? root.svc.services : []
             delegate: ToggleRow {
@@ -1996,14 +1998,14 @@ bordered: true
       spacing: Style.space(12)
 
       Section {
-        title: "БЫСТРЫЙ ПОДБОР"
+        title: root.t("БЫСТРЫЙ ПОДБОР")
         actions: [
           Button {
             bordered: false
             fontSize: Style.font.caption
             visible: root.ready && root.svc.busyLabel === "автоподбор"
-            text: "Остановить"
-            tooltipText: "Остановить подбор"
+            text: root.t("Остановить")
+            tooltipText: root.t("Остановить подбор")
             onClicked: root.svc.stopLong()
           }
         ]
@@ -2012,19 +2014,19 @@ bordered: true
         PrimaryButton {
           visible: !(root.ready && root.svc.busyLabel === "автоподбор")
           enabled: root.ready && !root.svc.busy
-          text: "Запустить подбор"
-          tooltipText: "Запустить быстрый подбор (1–3 минуты)"
+          text: root.t("Запустить подбор")
+          tooltipText: root.t("Запустить быстрый подбор (1–3 минуты)")
           onClicked: root.svc.autopick([])
         }
         Hint {
           Layout.fillWidth: true
-          text: "Проверяет стратегии по очереди; первая рабочая побеждает. 1–3 минуты, без пароля."
+          text: root.t("Проверяет стратегии по очереди; первая рабочая побеждает. 1–3 минуты, без пароля.")
         }
         Label {
           visible: root.ready && root.svc.progressInfo !== null && root.svc.busyLabel === "автоподбор"
           text: !root.ready || !root.svc.progressInfo ? ""
-                : root.svc.progressInfo.step === 0 ? "Замер без обхода…"
-                : "Шаг " + root.svc.progressInfo.step + " из " + root.svc.progressInfo.of + ": " + Model.presetTitle(root.svc.progressInfo.preset)
+                : root.svc.progressInfo.step === 0 ? root.t("Замер без обхода…")
+                : root.t("Шаг ") + root.svc.progressInfo.step + root.t(" из ") + root.svc.progressInfo.of + ": " + Model.presetTitle(root.svc.progressInfo.preset)
         }
         ColumnLayout {
           Layout.fillWidth: true
@@ -2064,39 +2066,39 @@ bordered: true
           Hint {
             Layout.fillWidth: true
             visible: root.ready && root.svc.autopickResult.time !== undefined && (root.svc.autopickResult.rows || []).length > 0
-            text: "● — выбрана · ±N к базе без обхода"
+            text: root.t("● — выбрана · ±N к базе без обхода")
           }
         }
       }
 
       Section {
-        title: "CIRCULAR-КОНФИГ"
+        title: root.t("CIRCULAR-КОНФИГ")
         actions: [
           Button {
             bordered: false
             fontSize: Style.font.caption
             enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: root.svc.busyLabel === "создание circular-конфига" ? "Проверка пресетов…" : "Построить конфиг"
-            tooltipText: "Проверить пресеты для сайтов и построить круговую конфигурацию"
+            text: root.svc.busyLabel === "создание circular-конфига" ? root.t("Проверка пресетов…") : root.t("Построить конфиг")
+            tooltipText: root.t("Проверить пресеты для сайтов и построить круговую конфигурацию")
             onClicked: root.svc.circularPlan(level.value)
           },
           Button {
             bordered: false
             fontSize: Style.font.caption
             enabled: root.ready && !root.svc.busy
-            text: "Показать план"
-            tooltipText: "Показать число доменов в круговой конфигурации"
+            text: root.t("Показать план")
+            tooltipText: root.t("Показать число доменов в круговой конфигурации")
             onClicked: root.svc.circularStatus(function(r) {
-              if (r.data && r.data.config) root.svc.flash("Circular: " + Object.keys(r.data.config.domains || {}).length + " доменов")
+              if (r.data && r.data.config) root.svc.flash("Circular: " + Object.keys(r.data.config.domains || {}).length + root.t(" доменов"))
             })
           }
         ]
-        Hint { Layout.fillWidth: true; text: "Проверяет пресеты для сайтов и строит ротацию лучших." }
+        Hint { Layout.fillWidth: true; text: root.t("Проверяет пресеты для сайтов и строит ротацию лучших.") }
       }
 
       Section {
         id: blockcheckCard
-        title: "ГЛУБОКИЙ ПОИСК: BLOCKCHECK2"
+        title: root.t("ГЛУБОКИЙ ПОИСК: BLOCKCHECK2")
         function bindMissing() {
           if (!root.ready) return false
           var items = root.svc.doctorItems || []
@@ -2118,11 +2120,11 @@ bordered: true
             bordered: false
             fontSize: Style.font.caption
             enabled: root.ready && (root.svc.blockcheckRunning || (!blockcheckCard.vpnOn() && !blockcheckCard.bindMissing()))
-            text: root.ready && root.svc.blockcheckRunning ? "Остановить" : "Запустить поиск"
-            tooltipText: root.svc.blockcheckRunning ? "Остановить глубокий поиск"
-                : blockcheckCard.vpnOn() ? "Выключите VPN-туннель (omarchy-xray TUN) — поиск через туннель бессмыслен"
-                : blockcheckCard.bindMissing() ? "Нужен пакет bind: omarchy pkg add bind"
-                : "Запустить глубокий поиск"
+            text: root.ready && root.svc.blockcheckRunning ? root.t("Остановить") : root.t("Запустить поиск")
+            tooltipText: root.svc.blockcheckRunning ? root.t("Остановить глубокий поиск")
+                : blockcheckCard.vpnOn() ? root.t("Выключите VPN-туннель (omarchy-xray TUN) — поиск через туннель бессмыслен")
+                : blockcheckCard.bindMissing() ? root.t("Нужен пакет bind: omarchy pkg add bind")
+                : root.t("Запустить глубокий поиск")
             onClicked: {
               if (root.svc.blockcheckRunning) { root.svc.blockcheckStop(); return }
               se.bcFollow = true
@@ -2134,7 +2136,7 @@ bordered: true
           Layout.fillWidth: true
           visible: blockcheckCard.vpnOn() && !root.svc.blockcheckRunning
           color: root.bad
-          text: "Выключите VPN-туннель (omarchy-xray TUN): поиск через туннель бессмыслен"
+          text: root.t("Выключите VPN-туннель (omarchy-xray TUN): поиск через туннель бессмыслен")
         }
         // The remedy is one copyable command with one copy action.
         RowLayout {
@@ -2144,11 +2146,11 @@ bordered: true
           Hint {
             Layout.fillWidth: true
             color: root.bad
-            text: "Нужен bind для blockcheck2: omarchy pkg add bind"
+            text: root.t("Нужен bind для blockcheck2: omarchy pkg add bind")
           }
           ActionButton {
-            text: "Скопировать"
-            tooltipText: "Скопировать команду установки bind (установка — вручную)"
+            text: root.t("Скопировать")
+            tooltipText: root.t("Скопировать команду установки bind (установка — вручную)")
             onClicked: root.copyText("omarchy pkg add bind")
           }
         }
@@ -2156,12 +2158,12 @@ bordered: true
         RowLayout {
           Layout.fillWidth: true
           spacing: Style.space(8)
-          TextField { id: domains; Layout.fillWidth: true; text: se.failingHosts; placeholderText: "домены через пробел" }
+          TextField { id: domains; Layout.fillWidth: true; text: se.failingHosts; placeholderText: root.t("домены через пробел") }
           Dropdown {
             id: level
             Layout.preferredWidth: root.actionW
             value: "quick"
-            options: [{ value: "quick", label: "быстрый" }, { value: "standard", label: "обычный" }]
+            options: [{ value: "quick", label: root.t("быстрый") }, { value: "standard", label: root.t("обычный") }]
             onChanged: function(v) { value = v }
           }
         }
@@ -2170,9 +2172,9 @@ bordered: true
           color: level.value === "standard" ? Color.accent : root.dim
           text: {
             var c = Model.validHosts(domains.text)
-            var parts = ["Обход на время поиска выключается"]
-            if ((c.total | 0) > 0) parts.push(c.valid + " из " + c.total + " доменов корректны")
-            parts.push(level.value === "standard" ? "обычный — до часа и дольше" : "быстрый — минуты")
+            var parts = [root.t("Обход на время поиска выключается")]
+            if ((c.total | 0) > 0) parts.push(c.valid + root.t(" из ") + c.total + root.t(" доменов корректны"))
+            parts.push(level.value === "standard" ? root.t("обычный — до часа и дольше") : root.t("быстрый — минуты"))
             return parts.join(" · ")
           }
         }
@@ -2203,8 +2205,8 @@ bordered: true
                 Hint { Layout.fillWidth: true; text: modelData.args; font.family: root.monoFamily }
               }
               ActionButton {
-                text: "Сохранить"
-                tooltipText: "Сохранить найденное как свою стратегию"
+                text: root.t("Сохранить")
+                tooltipText: root.t("Сохранить найденное как свою стратегию")
                 onClicked: root.svc.blockcheckSave(index)
               }
             }
@@ -2219,16 +2221,16 @@ bordered: true
           text: {
             if (!root.ready || !root.svc.blockcheck) return ""
             var bc = root.svc.blockcheck
-            var prefix = bc.done ? "Готово. " : root.svc.blockcheckRunning ? "Идёт поиск… " : ""
+            var prefix = bc.done ? root.t("Готово. ") : root.svc.blockcheckRunning ? root.t("Идёт поиск… ") : ""
             if (se.phaseRaw !== "") return prefix + se.phaseText
-            return prefix + bc.lines + " строк журнала"
+            return prefix + bc.lines + root.t(" строк журнала")
           }
         }
           Button {
             bordered: false
             fontSize: Style.font.caption
-            text: se.showFull ? "Только важное" : "Весь журнал"
-            tooltipText: se.showFull ? "Скрыть служебные строки" : "Показать все строки журнала"
+            text: se.showFull ? root.t("Только важное") : root.t("Весь журнал")
+            tooltipText: se.showFull ? root.t("Скрыть служебные строки") : root.t("Показать все строки журнала")
             onClicked: se.showFull = !se.showFull
           }
         }
@@ -2297,34 +2299,34 @@ bordered: true
 
       Section {
         id: engineCard
-        title: "ДВИЖОК: " + (root.ready && root.svc.st && root.svc.st.engine ? root.svc.st.engine : "не установлен")
-        Hint { Layout.fillWidth: true; text: "nfqws2 + Lua. Скачивает релиз, сверяет sha256, спрашивает пароль; прошлая версия остаётся рядом." }
+        title: root.t("ДВИЖОК: ") + (root.ready && root.svc.st && root.svc.st.engine ? root.svc.st.engine : root.t("не установлен"))
+        Hint { Layout.fillWidth: true; text: root.t("nfqws2 + Lua. Скачивает релиз, сверяет sha256, спрашивает пароль; прошлая версия остаётся рядом.") }
         // The engine update is this page's one filled action. The plugin
         // update lives in the diagnostics row below, where it is named.
         PrimaryButton {
-          text: "Обновить движок (zapret2)"
-          tooltipText: "Обновить движок zapret2 до последнего релиза (спросит пароль)"
+          text: root.t("Обновить движок (zapret2)")
+          tooltipText: root.t("Обновить движок zapret2 до последнего релиза (спросит пароль)")
           enabled: root.ready && root.svc.installed && !root.svc.busy
           onClicked: root.svc.engineUpdate()
         }
       }
 
       Section {
-        title: "ДИАГНОСТИКА"
+        title: root.t("ДИАГНОСТИКА")
         actions: [
           Button {
             bordered: false
             fontSize: Style.font.caption
-            text: "Повторить"
-            tooltipText: "Повторить диагностику"
+            text: root.t("Повторить")
+            tooltipText: root.t("Повторить диагностику")
             onClicked: root.svc.runDoctor()
           },
           Button {
             bordered: false
             fontSize: Style.font.caption
             enabled: root.ready && !root.svc.busy
-            text: "Скопировать"
-            tooltipText: "Скопировать краткую диагностику без адресов и доменов"
+            text: root.t("Скопировать")
+            tooltipText: root.t("Скопировать краткую диагностику без адресов и доменов")
             onClicked: {
               root.svc.loadDiagnostics(function(r) {
                 if (r.ok && r.data && r.data.text) root.copyText(r.data.text)
@@ -2349,7 +2351,7 @@ bordered: true
             implicitHeight: Math.max(Style.space(30), docInner.implicitHeight + Style.space(10))
             hasCursor: ep.hoverDoc === index
             Accessible.role: Accessible.StaticText
-            Accessible.name: (severity === "ok" ? "в порядке: " : severity === "action" ? "нужно действие: " : severity === "optional" ? "необязательно: " : "ошибка: ") + (typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name)
+            Accessible.name: (severity === "ok" ? root.t("в порядке: ") : severity === "action" ? root.t("нужно действие: ") : severity === "optional" ? root.t("необязательно: ") : root.t("ошибка: ")) + (typeof Model.doctorName === "function" ? Model.doctorName(modelData.name) : modelData.name)
             MouseArea {
               anchors.fill: parent
               hoverEnabled: true
@@ -2390,8 +2392,8 @@ bordered: true
                 bordered: false
                 fontSize: Style.font.caption
                 visible: !modelData.ok && (String(modelData.name).indexOf("host") !== -1 || String(modelData.name).indexOf("nslookup") !== -1 || String(modelData.detail).indexOf("bind") !== -1)
-                text: "Скопировать"
-                tooltipText: "Скопировать команду: omarchy pkg add bind"
+                text: root.t("Скопировать")
+                tooltipText: root.t("Скопировать команду: omarchy pkg add bind")
                 foreground: root.fg
                 onClicked: root.copyText("omarchy pkg add bind")
               }
@@ -2400,8 +2402,8 @@ bordered: true
                 bordered: false
                 fontSize: Style.font.caption
                 visible: !modelData.ok && String(modelData.name).indexOf("Plugin and system copy") !== -1
-                text: "Обновить плагин"
-                tooltipText: "Установить обновление системной части плагина (спросит пароль)"
+                text: root.t("Обновить плагин")
+                tooltipText: root.t("Установить обновление системной части плагина (спросит пароль)")
                 foreground: root.fg
                 onClicked: root.svc.updateApp()
               }
@@ -2412,20 +2414,20 @@ bordered: true
       }
 
       Section {
-        title: "ЖУРНАЛ СЛУЖБЫ"
+        title: root.t("ЖУРНАЛ СЛУЖБЫ")
         actions: [
           Button {
             bordered: false
             fontSize: Style.font.caption
-            text: "Обновить"
-            tooltipText: "Обновить журнал"
+            text: root.t("Обновить")
+            tooltipText: root.t("Обновить журнал")
             onClicked: root.svc.loadLogs()
           },
           Button {
             bordered: false
             fontSize: Style.font.caption
-            text: ep.onlyImportant ? "Весь журнал" : "Только важное"
-            tooltipText: ep.onlyImportant ? "Показать все строки" : "Только ошибки, предупреждения и перезапуски"
+            text: ep.onlyImportant ? root.t("Весь журнал") : root.t("Только важное")
+            tooltipText: ep.onlyImportant ? root.t("Показать все строки") : root.t("Только ошибки, предупреждения и перезапуски")
             onClicked: ep.onlyImportant = !ep.onlyImportant
           }
         ]
@@ -2449,29 +2451,29 @@ bordered: true
       }
 
       Section {
-        title: "УДАЛЕНИЕ"
+        title: root.t("УДАЛЕНИЕ")
         visible: root.ready && root.svc.installed
         ToolRow {
-          title: ep.armRemove ? "Точно удалить?" : "Удалить Zapret2"
-          note: ep.armRemove ? "«Вместе с данными» стирает и свои списки и стратегии"
-              : "Останавливает обход; удаляет /opt, юниты, polkit. Данные остаются."
+          title: ep.armRemove ? root.t("Точно удалить?") : root.t("Удалить Zapret2")
+          note: ep.armRemove ? root.t("«Вместе с данными» стирает и свои списки и стратегии")
+              : root.t("Останавливает обход; удаляет /opt, юниты, polkit. Данные остаются.")
           ActionButton {
             visible: ep.armRemove
-            text: "Отмена"
-            tooltipText: "Оставить всё как есть"
+            text: root.t("Отмена")
+            tooltipText: root.t("Оставить всё как есть")
             onClicked: { ep.armRemove = false; armRemoveTimer.stop() }
           }
           ActionButton {
             visible: ep.armRemove
             foreground: root.bad
-            text: "Вместе с данными"
-            tooltipText: "Удалить и свои списки и стратегии"
+            text: root.t("Вместе с данными")
+            tooltipText: root.t("Удалить и свои списки и стратегии")
             onClicked: { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(true) }
           }
           ActionButton {
             foreground: root.bad
-            text: "Удалить"
-            tooltipText: ep.armRemove ? "Удалить, данные оставить" : "Удалить движок и настройки плагина"
+            text: root.t("Удалить")
+            tooltipText: ep.armRemove ? root.t("Удалить, данные оставить") : root.t("Удалить движок и настройки плагина")
             onClicked: {
               if (ep.armRemove) { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(false) }
               else { ep.armRemove = true; armRemoveTimer.restart() }
@@ -2501,7 +2503,7 @@ bordered: true
     property string backupExported: ""
     readonly property bool uiBlocked: gameTcpField.activeFocus || gameUdpField.activeFocus || backupField.activeFocus
         || gameDrop.popupOpen || ipsetDrop.popupOpen || voiceDrop.popupOpen
-        || discordFakeDrop.popupOpen || gameFakeDrop.popupOpen
+        || discordFakeDrop.popupOpen || gameFakeDrop.popupOpen || langDrop.popupOpen
     Timer { id: hostsTimer; interval: 4000; onTriggered: stp.hostsConfirm = false }
     clip: false
     Component.onCompleted: contentItem.clip = true
@@ -2511,22 +2513,30 @@ bordered: true
       enabled: root.ready && root.svc.installed
 
       Section {
-        title: "ОСНОВНОЕ"
+        title: root.t("ОСНОВНОЕ")
+        Dropdown {
+          id: langDrop
+          Layout.fillWidth: true
+          label: "Language · Язык"
+          value: root.lang
+          options: [{ value: "en", label: "English" }, { value: "ru", label: "Русский" }]
+          onChanged: function(v) { root.svc.setOption("lang", v) }
+        }
         ToggleRow {
-          label: "Включать при входе"
-          note: "Шелл включает обход после входа в систему"
+          label: root.t("Включать при входе")
+          note: root.t("Шелл включает обход после входа в систему")
           checked: root.ready && root.svc.settings.autostart === true
           onFlip: root.svc.toggleAutostart()
         }
         ToggleRow {
           label: "IPv6"
-          note: "Обход и для IPv6-соединений"
+          note: root.t("Обход и для IPv6-соединений")
           checked: root.ready && root.svc.settings.ipv6 !== false
           onFlip: root.svc.toggleIpv6()
         }
         ToggleRow {
-          label: "Проверять обновления ежедневно"
-          note: "Движок, списки и стратегии — раз в сутки, в фоне"
+          label: root.t("Проверять обновления ежедневно")
+          note: root.t("Движок, списки и стратегии — раз в сутки, в фоне")
           checked: root.ready && root.svc.updateCheck === true
           onFlip: root.svc.toggleUpdateCheck()
         }
@@ -2539,41 +2549,41 @@ bordered: true
 
 
       Section {
-        title: "СЕТЬ И DNS"
+        title: root.t("СЕТЬ И DNS")
         Dropdown {
           id: gameDrop
           Layout.fillWidth: true
-          label: "Игровой фильтр"
+          label: root.t("Игровой фильтр")
           value: root.ready ? (root.svc.settings.game || "off") : "off"
-          options: [{ value: "off", label: "Выключен" }, { value: "tcp", label: "TCP 1024–65535" },
-                    { value: "udp", label: "UDP 1024–65535" }, { value: "all", label: "TCP и UDP" }]
+          options: [{ value: "off", label: root.t("Выключен") }, { value: "tcp", label: "TCP 1024–65535" },
+                    { value: "udp", label: "UDP 1024–65535" }, { value: "all", label: root.t("TCP и UDP") }]
           onChanged: function(v) { root.svc.setOption("game", v) }
         }
-        Hint { Layout.fillWidth: true; text: "Если игра не подключается; нагружает сильнее." }
+        Hint { Layout.fillWidth: true; text: root.t("Если игра не подключается; нагружает сильнее.") }
         RowLayout {
           Layout.fillWidth: true
           visible: root.ready && (root.svc.settings.game || "off") !== "off"
           ColumnLayout {
             Layout.fillWidth: true
             spacing: Style.space(2)
-            Label { text: "Порты TCP" }
+            Label { text: root.t("Порты TCP") }
             TextField {
               id: gameTcpField
               Layout.fillWidth: true
               text: root.ready ? (root.svc.settings.gameTcp || "") : ""
-              placeholderText: "например 1024-65535"
+              placeholderText: root.t("например 1024-65535")
               onEditingFinished: root.svc.setOption("gametcp", text)
             }
           }
           ColumnLayout {
             Layout.fillWidth: true
             spacing: Style.space(2)
-            Label { text: "Порты UDP" }
+            Label { text: root.t("Порты UDP") }
             TextField {
               id: gameUdpField
               Layout.fillWidth: true
               text: root.ready ? (root.svc.settings.gameUdp || "") : ""
-              placeholderText: "например 1024-65535"
+              placeholderText: root.t("например 1024-65535")
               onEditingFinished: root.svc.setOption("gameudp", text)
             }
           }
@@ -2581,49 +2591,49 @@ bordered: true
         Dropdown {
           id: ipsetDrop
           Layout.fillWidth: true
-          label: "IP-сети (ipset)"
+          label: root.t("IP-сети (ipset)")
           value: root.ready ? (root.svc.settings.ipset || "loaded") : "loaded"
-          options: [{ value: "loaded", label: "По списку" }, { value: "none", label: "Не использовать" }, { value: "any", label: "Любой IP" }]
+          options: [{ value: "loaded", label: root.t("По списку") }, { value: "none", label: root.t("Не использовать") }, { value: "any", label: root.t("Любой IP") }]
           onChanged: function(v) { root.svc.setOption("ipset", v) }
         }
         Dropdown {
           id: voiceDrop
           Layout.fillWidth: true
-          label: "Голос Discord"
+          label: root.t("Голос Discord")
           value: root.ready ? (root.svc.settings.voice || "compatible") : "compatible"
-          options: [{ value: "compatible", label: "Совместимый" }, { value: "standard", label: "Стандартный" }, { value: "off", label: "Выключен" }]
+          options: [{ value: "compatible", label: root.t("Совместимый") }, { value: "standard", label: root.t("Стандартный") }, { value: "off", label: root.t("Выключен") }]
           onChanged: function(v) { root.svc.setOption("voice", v) }
         }
         Hint {
           Layout.fillWidth: true
           text: {
             var v = root.ready ? (root.svc.settings.voice || "compatible") : "compatible"
-            if (v === "standard") return "Стандартный — подмена нулями, звонки могут не работать"
-            if (v === "off") return "Выключен — голосовой трафик идёт без подмены"
-            return "Совместимый — мягкая подмена для звонков Discord"
+            if (v === "standard") return root.t("Стандартный — подмена нулями, звонки могут не работать")
+            if (v === "off") return root.t("Выключен — голосовой трафик идёт без подмены")
+            return root.t("Совместимый — мягкая подмена для звонков Discord")
           }
         }
       }
 
       Section {
-        title: "ФЕЙКИ"
+        title: root.t("ФЕЙКИ")
         Dropdown {
           id: discordFakeDrop
           Layout.fillWidth: true
-          label: "Фейк для голоса Discord"
+          label: root.t("Фейк для голоса Discord")
           value: root.ready ? (root.svc.settings.discordFake || "default") : "default"
           options: (root.ready && root.svc.fakeChoices ? root.svc.fakeChoices : ["default"]).map(function(n) {
-            return { value: n, label: n === "default" ? "По умолчанию" : String(n).replace(/^fs_/, "").replace(/_/g, " ") }
+            return { value: n, label: n === "default" ? root.t("По умолчанию") : String(n).replace(/^fs_/, "").replace(/_/g, " ") }
           })
           onChanged: function(v) { root.svc.setOption("discordfake", v) }
         }
         Dropdown {
           id: gameFakeDrop
           Layout.fillWidth: true
-          label: "Фейк для игр"
+          label: root.t("Фейк для игр")
           value: root.ready ? (root.svc.settings.gameFake || "default") : "default"
           options: (root.ready && root.svc.fakeChoices ? root.svc.fakeChoices : ["default"]).map(function(n) {
-            return { value: n, label: n === "default" ? "По умолчанию" : String(n).replace(/^fs_/, "").replace(/_/g, " ") }
+            return { value: n, label: n === "default" ? root.t("По умолчанию") : String(n).replace(/^fs_/, "").replace(/_/g, " ") }
           })
           onChanged: function(v) { root.svc.setOption("gamefake", v) }
         }
@@ -2631,94 +2641,94 @@ bordered: true
 
 
       Section {
-        title: "ИНСТРУМЕНТЫ"
+        title: root.t("ИНСТРУМЕНТЫ")
         ToolRow {
-          title: "Hosts Flowseal" + (root.ready && root.svc.hostsOn === true ? " · включён" : "")
-          note: stp.hostsConfirm && !(root.ready && root.svc.hostsOn) ? "Изменит /etc/hosts, нужен пароль"
-              : "Адреса Discord-серверов в /etc/hosts · нужен пароль"
+          title: "Hosts Flowseal" + (root.ready && root.svc.hostsOn === true ? root.t(" · включён") : "")
+          note: stp.hostsConfirm && !(root.ready && root.svc.hostsOn) ? root.t("Изменит /etc/hosts, нужен пароль")
+              : root.t("Адреса Discord-серверов в /etc/hosts · нужен пароль")
           ActionButton {
             visible: root.ready && root.svc.hostsOn === true
             enabled: root.ready && !root.svc.busy
-            text: "Выключить"
-            tooltipText: "Убрать записи из /etc/hosts (спросит пароль)"
+            text: root.t("Выключить")
+            tooltipText: root.t("Убрать записи из /etc/hosts (спросит пароль)")
             onClicked: root.svc.hostsSet(false)
           }
           ActionButton {
             visible: !(root.ready && root.svc.hostsOn === true) && !stp.hostsConfirm
-            text: "Включить"
-            tooltipText: "Добавить адреса Discord-серверов из Flowseal в /etc/hosts (спросит пароль)"
+            text: root.t("Включить")
+            tooltipText: root.t("Добавить адреса Discord-серверов из Flowseal в /etc/hosts (спросит пароль)")
             onClicked: { stp.hostsConfirm = true; hostsTimer.restart() }
           }
           ActionButton {
             visible: stp.hostsConfirm && !(root.ready && root.svc.hostsOn)
-            text: "Отмена"
-            tooltipText: "Оставить /etc/hosts как есть"
+            text: root.t("Отмена")
+            tooltipText: root.t("Оставить /etc/hosts как есть")
             onClicked: { stp.hostsConfirm = false; hostsTimer.stop() }
           }
           ActionButton {
             visible: stp.hostsConfirm && !(root.ready && root.svc.hostsOn)
-            text: "Подтвердить"
-            tooltipText: "Изменить /etc/hosts (спросит пароль)"
+            text: root.t("Подтвердить")
+            tooltipText: root.t("Изменить /etc/hosts (спросит пароль)")
             onClicked: { stp.hostsConfirm = false; hostsTimer.stop(); root.svc.hostsSet(true) }
           }
         }
         ToolRow {
-          title: "Кэш Discord"
-          note: "Если Discord не грузится; закройте его перед очисткой"
+          title: root.t("Кэш Discord")
+          note: root.t("Если Discord не грузится; закройте его перед очисткой")
           ActionButton {
-            text: "Очистить"
-            tooltipText: "Удалить кэш Discord"
+            text: root.t("Очистить")
+            tooltipText: root.t("Удалить кэш Discord")
             onClicked: root.svc.clearDiscordCache()
           }
         }
         ToolRow {
           title: "DNS"
           note: (typeof Model.dnsStatusText === "function" ? Model.dnsStatusText(root.ready ? root.svc.dnsInfo : {}) : "")
-              + " · DoH в браузере или DNSOverTLS в systemd-resolved"
+              + root.t(" · DoH в браузере или DNSOverTLS в systemd-resolved")
           ActionButton {
             enabled: root.ready && !root.svc.busy
-            text: "Очистить кэш"
-            tooltipText: "Сбросить кэш DNS (resolvectl flush-caches)"
+            text: root.t("Очистить кэш")
+            tooltipText: root.t("Сбросить кэш DNS (resolvectl flush-caches)")
             onClicked: root.svc.flushDns()
           }
         }
       }
 
       Section {
-        title: "РЕЗЕРВНАЯ КОПИЯ"
+        title: root.t("РЕЗЕРВНАЯ КОПИЯ")
         ToolRow {
-          title: "Экспорт"
-          note: stp.backupExported !== "" ? stp.backupExported : "Настройки, списки и стратегии — в буфер обмена"
+          title: root.t("Экспорт")
+          note: stp.backupExported !== "" ? stp.backupExported : root.t("Настройки, списки и стратегии — в буфер обмена")
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: "Скопировать"
-            tooltipText: "Скопировать резервную копию в буфер обмена"
+            text: root.t("Скопировать")
+            tooltipText: root.t("Скопировать резервную копию в буфер обмена")
             onClicked: {
               stp.backupExported = ""
               root.svc.exportBackup(function(r) {
                 if (r.ok && r.data && r.data.data) {
                   root.copyText(r.data.data)
                   var n = r.data.files ? r.data.files.length : 0
-                  stp.backupExported = "Скопировано файлов: " + n
+                  stp.backupExported = root.t("Скопировано файлов: ") + n
                 }
               })
             }
           }
         }
         ToolRow {
-          title: "Импорт"
-          note: "Текст из экспорта"
+          title: root.t("Импорт")
+          note: root.t("Текст из экспорта")
           TextField {
             id: backupField
             Layout.preferredWidth: Style.space(240)
-            placeholderText: "Вставьте текст копии"
+            placeholderText: root.t("Вставьте текст копии")
             text: stp.backupImport
             onTextChanged: stp.backupImport = text
           }
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy && stp.backupImport.trim() !== ""
-            text: "Восстановить"
-            tooltipText: "Восстановить из вставленного текста"
+            text: root.t("Восстановить")
+            tooltipText: root.t("Восстановить из вставленного текста")
             onClicked: {
               var t = stp.backupImport.trim()
               stp.backupImport = ""
@@ -2730,13 +2740,13 @@ bordered: true
       }
 
       Section {
-        title: "ГОРЯЧИЕ КЛАВИШИ"
+        title: root.t("ГОРЯЧИЕ КЛАВИШИ")
         ToolRow {
-          title: "Сниппет для bindings.lua"
-          note: "Вставьте в конец ~/.config/hypr/bindings.lua, заменив KEY (первая — окно, вторая — обход)"
+          title: root.t("Сниппет для bindings.lua")
+          note: root.t("Вставьте в конец ~/.config/hypr/bindings.lua, заменив KEY (первая — окно, вторая — обход)")
           ActionButton {
-            text: "Скопировать"
-            tooltipText: "Скопировать Lua-сниппет в буфер"
+            text: root.t("Скопировать")
+            tooltipText: root.t("Скопировать Lua-сниппет в буфер")
             onClicked: root.copyText(hotkeysSnippet.text)
           }
         }
@@ -2746,7 +2756,7 @@ bordered: true
           Layout.fillWidth: true
           Layout.preferredHeight: Style.space(90)
           placeholderText: ""
-          text: 'o.bind("KEY", "Zapret2: Открыть", "omarchy-shell shell toggle krieziey.omarchy-zapret2 \'{}\'")\no.bind("KEY", "Zapret2: Обход", "omarchy-shell krieziey.omarchy-zapret2 toggleBypass")'
+          text: 'o.bind("KEY", root.t("Zapret2: Открыть"), "omarchy-shell shell toggle krieziey.omarchy-zapret2 \'{}\'")\no.bind("KEY", root.t("Zapret2: Обход"), "omarchy-shell krieziey.omarchy-zapret2 toggleBypass")'
         }
       }
     }

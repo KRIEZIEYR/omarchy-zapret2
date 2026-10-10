@@ -23,7 +23,7 @@ allowlist of nfqws2 options and Lua desync functions.
   on | off | restart           the bypass service
   set <key> <value>            preset, game (off|tcp|udp|all), ipset (loaded|none|any),
                                voice (compatible|standard|off), ipv6 (on|off), autostart (on|off),
-                               update_check (on|off), gametcp|gameudp <ports>, discordfake|gamefake <default|blob>
+                               update_check (on|off), lang (en|ru), gametcp|gameudp <ports>, discordfake|gamefake <default|blob>
   presets                      built-in and custom strategies
   presets update               fetch fresh Flowseal strategies
   hosts on|off|status          Flowseal hosts block in /etc/hosts
@@ -106,9 +106,9 @@ MAX_BACKUP_TOTAL = 2 * 1024 * 1024
 # that are not blocked at all.
 DEFAULTS = {"preset": "fs-general", "game": "off", "ipset": "none", "voice": "compatible",
             "ipv6": True, "autostart": False, "updateCheck": False, "gameTcp": "1024-65535", "gameUdp": "1024-65535",
-            "discordFake": "default", "gameFake": "default"}
+            "discordFake": "default", "gameFake": "default", "lang": "en"}
 ENUMS = {"game": ("off", "tcp", "udp", "all"), "ipset": ("loaded", "none", "any"),
-         "voice": ("compatible", "standard", "off")}
+         "voice": ("compatible", "standard", "off"), "lang": ("en", "ru")}
 GAME_PORT_DEFAULT = "1024-65535"
 GAME_PORT_MAX_ITEMS = 16
 
@@ -1250,7 +1250,7 @@ def cmd_set(key, value):
     else:
         raise Fail("unknown setting: %s" % key)
     save_settings(s)
-    restarted = key.lower().replace("_", "") not in ("autostart", "updatecheck") and restart_if_active()
+    restarted = key.lower().replace("_", "") not in ("autostart", "updatecheck", "lang") and restart_if_active()
     out({"ok": True, "settings": load_settings(), "restarted": restarted})
 
 

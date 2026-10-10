@@ -8,7 +8,9 @@ PRODUCT.md, before touching anything.
 An Omarchy shell plugin `krieziey.omarchy-zapret2` that manages the zapret2 DPI
 bypass engine (bol-van/zapret2, `nfqws2` + Lua desync) on Arch/Omarchy. UI is
 Quickshell/QML inside the Omarchy shell; logic lives in a Python manager.
-UI copy is Russian. Repo: https://github.com/KRIEZIEYR/omarchy-zapret2, branch
+UI copy: English by default, Russian via Settings → Language. Russian source
+strings are wrapped in `root.t()` (QML) / `tr()` (model) and translated by
+`model/En.js`; add every new Russian string there. Repo: https://github.com/KRIEZIEYR/omarchy-zapret2, branch
 `master`.
 
 ## Layout
@@ -94,6 +96,6 @@ fake blob choice (discordFake/gameFake), circular per-host plan (zapret-auto).
 Open, low value until someone asks: per-list enable/disable (root-side render),
 recheck on network change.
 Rejected: free-form nfqws args/Lua editor, VPN subscriptions, LAN proxy
-sharing, Telegram ratings, language switch.
+sharing, Telegram ratings.
 Note: the youtubediscord "Zapret 2 GUI" (git.zapret.moe) was reported on
 Habr for malware-like behaviour — take ideas only, never its code.

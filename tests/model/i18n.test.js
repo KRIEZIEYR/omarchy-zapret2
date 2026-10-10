@@ -1,0 +1,11 @@
+test("i18n", () => {
+  Model.setLang("en")
+  eq(Model.stateText({ installed: true, active: "inactive" }), "Off")
+  eq(Model.doctorName("Setup"), "Setup")
+  eq(Model.doctorDetail("pkexec", ""), "password prompt via polkit available")
+  eq(Model.tr("не в словаре"), "не в словаре")
+  eq(Model.trTo("ru", "Обзор"), "Обзор")
+  eq(Model.trTo("en", "Обзор"), "Overview")
+  Model.setLang("ru")
+  eq(Model.stateText({ installed: true, active: "inactive" }), "Выключен")
+})

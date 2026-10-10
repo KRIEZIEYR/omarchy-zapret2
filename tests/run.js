@@ -3,9 +3,10 @@ const fs = require("fs")
 const path = require("path")
 const vm = require("vm")
 
-const src = fs.readFileSync(path.join(__dirname, "..", "model", "Zapret.js"), "utf8").replace(/^\.pragma library\s*/, "")
+const strip = f => fs.readFileSync(path.join(__dirname, "..", "model", f), "utf8").replace(/^\.pragma library\s*/, "").replace(/^\.import .*$/m, "")
+const src = "var En = (function() {" + strip("En.js") + "\nreturn { EN: EN } })()\n" + strip("Zapret.js") + "\nsetLang(\"ru\")"
 const Model = {}
-vm.runInNewContext(src + "\nObject.assign(Model, { presetTitle, groupTitle, doctorName, stateOf, stateText, summary, categories, checkLine, ago, lastJson, parseLine, autopickRows, failCount, verdict, failReason, checkNote, curlError, presetLabel, findingTitle, countLines, validLines, staleLabel, staleStatus, luminance, contrastRatio, pickBad, mixColor, groupSearchRows, doctorDetail, shortLog, breaksText, blockcheckPhase, doctorSeverity, importantLog, hasFailing, validHosts, updateBadgeLabel, dnsStatusText, serviceTitle, serviceStateLabel, firstRunStep, parseDomains, isImportableUrl, importSourceKind, strategyNameOk, CHECK_EXPLAINER, NOT_NEEDED_EXPL, actionErrorText })", { Model })
+vm.runInNewContext(src + "\nObject.assign(Model, { setLang, tr, trTo, presetTitle, groupTitle, doctorName, stateOf, stateText, summary, categories, checkLine, ago, lastJson, parseLine, autopickRows, failCount, verdict, failReason, checkNote, curlError, presetLabel, findingTitle, countLines, validLines, staleLabel, staleStatus, luminance, contrastRatio, pickBad, mixColor, groupSearchRows, doctorDetail, shortLog, breaksText, blockcheckPhase, doctorSeverity, importantLog, hasFailing, validHosts, updateBadgeLabel, dnsStatusText, serviceTitle, serviceStateLabel, firstRunStep, parseDomains, isImportableUrl, importSourceKind, strategyNameOk, CHECK_EXPLAINER, NOT_NEEDED_EXPL, actionErrorText })", { Model })
 
 let failed = 0, passed = 0
 global.test = (name, fn) => {
