@@ -2064,6 +2064,47 @@ def circular_strategy(scores, limit=4):
     return "\n".join(out_lines) + "\n", names
 
 
+def measure_preset(name):
+    """Run the checks once with one strategy, then put the service back as it
+    was. Returns (row, loaded): loaded is False when the root side did not
+    load the strategy (an outdated system copy falls back to the default one,
+    and its result must not be credited to `name`)."""
+    before = load_settings()
+    was_active = unit_state(UNIT).get("ActiveState") == "active"
+    row, loaded = None, True
+    try:
+        save_settings(dict(before, preset=name))
+        systemctl("restart", UNIT)
+        wait_active()
+        conf = read_nofollow(os.path.join(RUN, "nfqws2.conf"), MAX_SMALL * 8) or ""
+        loaded = "zapret-auto.lua" in conf
+        if loaded:
+            res = run_checks()
+            row = {"preset": name, "score": res["score"], "total": res["total"],
+                   "categories": {k: [v["ok"], v["total"]] for k, v in res["categories"].items()}}
+    except Fail as e:
+        row = {"preset": name, "score": -1, "total": 0, "error": str(e), "categories": {}}
+    finally:
+        save_settings(before)
+        if was_active:
+            systemctl("restart", UNIT)
+            wait_active()
+        else:
+            systemctl("stop", UNIT)
+    return row, loaded
+
+
+def merge_autopick_row(row):
+    """Show a measured strategy in the Pick list. Needs an earlier pick: its
+    baseline is what the other rows are compared against."""
+    st = load_state("autopick.json", {})
+    if not isinstance(st, dict) or not isinstance(st.get("rows"), list) or not st.get("baseline"):
+        return False
+    st["rows"] = [r for r in st["rows"] if r.get("preset") != row["preset"]] + [row]
+    save_state("autopick.json", st)
+    return True
+
+
 def circular_blockcheck(domains, level, timeout):
     """Run the official blockcheck2 unit and return validated findings."""
     progress(stage="blockcheck", level=level, domains=domains[:8])
@@ -2211,6 +2252,16 @@ def cmd_circular(args):
         config["strategy"] = "my-circular"
         config["members"] = members
         progress(stage="save", strategy="my-circular")
+        progress(stage="measure", strategy="my-circular")
+        row, loaded = measure_preset("my-circular")
+        if not loaded:
+            config["loaded"] = False
+            progress(stage="measure-skip", strategy="my-circular")
+        elif row and row["total"] > 0:
+            shown = merge_autopick_row(row)
+            progress(stage="measured", strategy="my-circular", ok=row["score"], total=row["total"], shown=shown)
+        elif row:
+            progress(stage="measured", strategy="my-circular", error=row.get("error", ""))
     atomic_write(path, json.dumps(config, ensure_ascii=False, indent=1) + "\n", mode=0o600)
     progress(stage="plan")
     out({"ok": True, "config": config, "needsBlockcheck": bool(unresolved),

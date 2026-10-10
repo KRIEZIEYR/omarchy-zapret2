@@ -504,6 +504,9 @@ var EN = {
   "Собираем из лучших: ": "Combining the best: ",
   "Сохранена своя стратегия ": "Saved own strategy ",
   "План записан": "Plan written",
+  "Замеряем ": "Measuring ",
+  " · сначала запустите быстрый подбор, чтобы сравнить": " · run Quick pick first to compare",
+  "Не замерена: обновите системную часть (Движок)": "Not measured: update the system part (Engine)",
   "Готово: создана стратегия ": "Done: created strategy ",
   "Включить созданную стратегию вместо текущей": "Switch to the created strategy",
   "Ротация: ": "Rotation: "

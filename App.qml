@@ -2048,6 +2048,11 @@ bordered: true
             return o.skipped ? root.t("Мало подходящих пресетов для ротации (нужно 2+)")
                              : root.t("Собираем из лучших: ") + (o.members || []).join(", ")
           if (o.stage === "save") return root.t("Сохранена своя стратегия ") + o.strategy
+          if (o.stage === "measure") return root.t("Замеряем ") + o.strategy + "…"
+          if (o.stage === "measured")
+            return o.error ? o.strategy + ": " + o.error
+                : o.strategy + ": " + o.ok + "/" + o.total + (o.shown ? "" : root.t(" · сначала запустите быстрый подбор, чтобы сравнить"))
+          if (o.stage === "measure-skip") return root.t("Не замерена: обновите системную часть (Движок)")
           if (o.stage === "plan") return root.t("План записан")
           if (o.stage === "blockcheck")
             return "blockcheck2 (" + o.level + "): " + (o.domains || []).join(", ")

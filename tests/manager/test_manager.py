@@ -1299,6 +1299,21 @@ class CircularStrategy(unittest.TestCase):
         zm.check_desync("circular:fails=3:time=60")
         zm.check_desync("fake:blob=tls_google:strategy=2")
 
+    def test_measured_row_joins_the_pick_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = {}
+            row = {"preset": "my-circular", "score": 9, "total": 14, "categories": {}}
+            with mock.patch.object(zm, "load_state", lambda n, d: state.get(n, d)), \
+                 mock.patch.object(zm, "save_state", lambda n, o: state.__setitem__(n, o)):
+                self.assertFalse(zm.merge_autopick_row(row))          # no earlier pick: nothing to compare against
+                state["autopick.json"] = {"rows": [{"preset": "alt", "score": 5, "total": 14},
+                                                   {"preset": "my-circular", "score": 1, "total": 14}],
+                                          "baseline": {"preset": "(off)", "score": 4, "total": 14}, "chosen": "alt"}
+                self.assertTrue(zm.merge_autopick_row(row))
+            rows = state["autopick.json"]["rows"]
+            self.assertEqual([r["preset"] for r in rows], ["alt", "my-circular"])
+            self.assertEqual(rows[-1]["score"], 9)                    # replaced, not duplicated
+
     def test_zapret_auto_helpers_stay_out(self):
         # zapret-auto.lua is loaded whenever a strategy uses circular, so its
         # other functions must stay unreachable by name.
