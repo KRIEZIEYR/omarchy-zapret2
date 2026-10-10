@@ -234,36 +234,6 @@ test("luminance and contrast", () => {
   eq(Model.pickBad("#777777", "#888888", "#123456"), "#123456")
 })
 
-test("groupSearchRows", () => {
-  eq(Model.groupSearchRows([]), { baseline: null, best: null, ties: [], rest: [] })
-  eq(Model.groupSearchRows(null), { baseline: null, best: null, ties: [], rest: [] })
-  eq(Model.groupSearchRows(undefined), { baseline: null, best: null, ties: [], rest: [] })
-  const rows = [
-    { preset: "(off)", score: 2, total: 10, baseline: true },
-    { preset: "general", score: 8, total: 10 },
-    { preset: "alt", score: 10, total: 10 },
-    { preset: "voice", score: 10, total: 10 },
-    { preset: "alt3", score: 5, total: 10 },
-  ]
-  const g = Model.groupSearchRows(rows)
-  eq(g.baseline.preset, "(off)")
-  eq(g.best.preset, "alt")
-  eq(g.ties.map(r => r.preset), ["voice"])
-  eq(g.rest.map(r => r.preset), ["general", "alt3"])
-  const flagged = Model.groupSearchRows([{ preset: "a", score: 1, isBaseline: true }, { preset: "b", score: 5 }, { preset: "c", score: 3 }])
-  eq(flagged.baseline.preset, "a")
-  eq(flagged.best.preset, "b")
-  eq(flagged.rest.map(r => r.preset), ["c"])
-  const noFlag = Model.groupSearchRows([{ preset: "a", score: 1 }, { preset: "b", score: 2 }])
-  eq(noFlag.baseline.preset, "a")
-  eq(noFlag.best.preset, "b")
-  eq(noFlag.ties, [])
-  eq(noFlag.rest, [])
-  const onlyBase = Model.groupSearchRows([{ preset: "(off)", score: 2, baseline: true }])
-  eq(onlyBase.baseline.preset, "(off)")
-  eq(onlyBase.best, null)
-})
-
 test("doctorDetail", () => {
   eq(Model.doctorDetail("nfqws2", "github version v1.0.5.2 (6b6c63e3385fa73f8af3be4a69171e947f5a319d) lua_compat_ver 6"), "v1.0.5.2 · Lua API 6")
   eq(Model.doctorDetail("pkexec", ""), "запрос пароля через polkit доступен")

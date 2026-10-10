@@ -424,31 +424,6 @@ function mixColor(a, b, t) {
   return "#" + hex(ch("r")) + hex(ch("g")) + hex(ch("b"))
 }
 
-// Split search rows into the no-bypass baseline and the ranked rest:
-// baseline (flagged baseline/isBaseline/"(off)", else the first row),
-// best (single max-score row, first on tie), ties (same score as best),
-// rest (everything else). Empty input gives nulls and empty lists.
-function groupSearchRows(rows) {
-  var list = Array.isArray(rows) ? rows.slice() : []
-  if (list.length === 0) return { baseline: null, best: null, ties: [], rest: [] }
-  var bi = -1, i
-  for (i = 0; i < list.length; i++) {
-    var fl = list[i] || {}
-    if (fl.baseline || fl.isBaseline || fl.preset === "(off)") { bi = i; break }
-  }
-  var baseline = bi !== -1 ? list.splice(bi, 1)[0] : list.shift()
-  if (list.length === 0) return { baseline: baseline, best: null, ties: [], rest: [] }
-  function scoreOf(r) { var n = Number(r && r.score); return isNaN(n) ? 0 : n }
-  var max = scoreOf(list[0])
-  for (i = 1; i < list.length; i++) if (scoreOf(list[i]) > max) max = scoreOf(list[i])
-  var best = null, ties = [], rest = []
-  for (i = 0; i < list.length; i++) {
-    if (scoreOf(list[i]) !== max) { rest.push(list[i]); continue }
-    if (best === null) best = list[i]; else ties.push(list[i])
-  }
-  return { baseline: baseline, best: best, ties: ties, rest: rest }
-}
-
 // Localise a doctor item detail to Russian; unknown details pass through.
 // What a passing check looked at, for rows the manager leaves without detail.
 var DOCTOR_CHECKED = {

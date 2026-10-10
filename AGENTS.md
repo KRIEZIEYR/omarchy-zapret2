@@ -18,7 +18,8 @@ strings are wrapped in `root.t()` (QML) / `tr()` (model) and translated by
 - `manifest.json` — kinds service + panel + bar-widget.
 - `Service.qml` — shared state; polls the manager, runs actions (`act`).
 - `App.qml` — the app: a normal Hyprland `FloatingWindow` (not an overlay)
-  with 6 tabs: Обзор, Стратегии, Списки, Подбор, Движок, Настройки.
+  with 5 tabs: Overview, Strategies (ranked list, quick pick, circular config and
+  blockcheck2 under "Advanced search"), Lists, Engine, Settings.
 - `BarWidget.qml` — bar icon + popup (toggle, strategy, check, open app).
 - `ZapretIcon.qml` — shield drawn on Canvas.
 - `model/Zapret.js` — pure logic (titles, verdicts, colors, parsing). Every
@@ -52,7 +53,7 @@ strings are wrapped in `root.t()` (QML) / `tr()` (model) and translated by
   to this repo, but the shell does NOT hot-reload QML through it: run
   `omarchy restart shell` after QML edits.
 - Open a tab: `omarchy-shell shell summon krieziey.omarchy-zapret2 '{"tab":N}'`
-  (N = 0..5). Window title is `Zapret2`; screenshot with
+  (N = 0..4; also `"advanced":true`, `"scroll":0..1`). Window title is `Zapret2`; screenshot with
   `grim -g "<x>,<y> <w>x<h>"` using geometry from `hyprctl clients -j`.
 - Runtime QML errors: `journalctl --user --since "-1min" | grep App.qml`.
 - Root-side changes (manager code run as root, unit, nft rendering) only take

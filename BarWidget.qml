@@ -375,7 +375,7 @@ Panel {
             fontSize: Style.font.caption
             text: root.t("Журнал")
             tooltipText: root.t("Открыть диагностику и журнал (вкладка Движок)")
-            onClicked: { root.close(); root.svc.openApp(4) }
+            onClicked: { root.close(); root.svc.openApp(3) }
           }
         }
 

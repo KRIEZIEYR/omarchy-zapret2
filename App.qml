@@ -29,7 +29,7 @@ Item {
   property bool opened: false
   property bool closingFromHost: false
   property int tab: 0
-  readonly property var tabs: [root.t("Обзор"), root.t("Стратегии"), root.t("Списки"), root.t("Подбор"), root.t("Движок"), root.t("Настройки")]
+  readonly property var tabs: [root.t("Обзор"), root.t("Стратегии"), root.t("Списки"), root.t("Движок"), root.t("Настройки")]
 
   readonly property string fontFamily: Style.font.family
   readonly property string monoFamily: "monospace"
@@ -54,13 +54,15 @@ Item {
     var p = {}
     try { p = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
     if (p.tab !== undefined) tab = Math.max(0, Math.min(tabs.length - 1, p.tab | 0))
+    // {"advanced": true} opens the Strategies page's advanced search.
+    if (p.advanced !== undefined) spPg.advOpen = !!p.advanced
     opened = true
     closingFromHost = false
     window.visible = true
     if (ready) { svc.appOpen = true; svc.refresh() }
     // {"scroll": 0..1} jumps the page to that fraction (screenshots, links).
     if (p.scroll !== undefined) Qt.callLater(function() {
-      var pg = [ovPg, null, lpPg, sePg, epPg, stpPg][tab]
+      var pg = [ovPg, spPg.scroller, lpPg, epPg, stpPg][tab]
       if (!pg) return
       var f = pg.contentItem
       f.contentY = Math.max(0, (f.contentHeight - f.height) * Math.max(0, Math.min(1, Number(p.scroll) || 0)))
@@ -81,8 +83,8 @@ Item {
       if (spPg.editing) { spPg.editing = false; return }
       if (spPg.selectedName !== "") { spPg.selectedName = ""; return }
     }
-    if (tab === 5 && stpPg.hostsConfirm) { stpPg.hostsConfirm = false; return }
-    if (tab === 4 && epPg.armRemove) { epPg.armRemove = false; return }
+    if (tab === 4 && stpPg.hostsConfirm) { stpPg.hostsConfirm = false; return }
+    if (tab === 3 && epPg.armRemove) { epPg.armRemove = false; return }
     if (tab === 0 && ovPg.cursorKey !== "") { ovPg.cursorKey = ""; return }
     root.dismiss()
   }
@@ -97,9 +99,8 @@ Item {
 
   onTabChanged: {
     if (!ready) return
-    if (tab === 4) { svc.runDoctor(); svc.loadLogs() }
-    if (tab === 3) { svc.refreshBlockcheck(); if (svc.doctorItems.length === 0) svc.runDoctor() }
-    if (tab === 5) svc.loadDns()
+    if (tab === 3) { svc.runDoctor(); svc.loadLogs() }
+    if (tab === 4) svc.loadDns()
     if (tab === 2) svc.loadServices()
   }
 
@@ -388,7 +389,7 @@ bordered: true
       id: keyCtrl
       anchors.fill: parent
       Keys.onPressed: function(e) {
-        if ((e.modifiers & Qt.ControlModifier) && e.key >= Qt.Key_1 && e.key <= Qt.Key_6) {
+        if ((e.modifiers & Qt.ControlModifier) && e.key >= Qt.Key_1 && e.key <= Qt.Key_5) {
           root.tab = e.key - Qt.Key_1
           e.accepted = true
         } else if ((e.modifiers & Qt.ControlModifier) && e.key === Qt.Key_T && root.ready) {
@@ -401,8 +402,7 @@ bordered: true
         id: appKeys
         anchors.fill: parent
         blocked: (root.tab === 1 && spPg.uiBlocked) || (root.tab === 2 && lpPg.uiBlocked)
-            || (root.tab === 3 && sePg.uiBlocked) || (root.tab === 4 && epPg.uiBlocked)
-            || (root.tab === 5 && stpPg.uiBlocked)
+            || (root.tab === 3 && epPg.uiBlocked) || (root.tab === 4 && stpPg.uiBlocked)
         onMoveRequested: function(dx, dy) {
           if (dy === 0) return
           if (root.tab === 0) ovPg.moveCursor(dy)
@@ -418,7 +418,6 @@ bordered: true
           var code = t.charCodeAt(0)
           if (code < 32 || code === 127) return
           if (t === "/" && root.tab === 1) spPg.focusFilter()
-          else if (t === "/" && root.tab === 3) sePg.focusDomains()
         }
 
       Rectangle {
@@ -505,7 +504,7 @@ bordered: true
                     Text {
                       Layout.preferredWidth: Style.space(18)
                       horizontalAlignment: Text.AlignHCenter
-                      text: String.fromCodePoint([0xF056E, 0xF062E, 0xF0279, 0xF0349, 0xF01FA, 0xF0493][index])
+                      text: String.fromCodePoint([0xF056E, 0xF062E, 0xF0279, 0xF01FA, 0xF0493][index])
                       color: tabSurface.isActive ? Color.accent : root.dim
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.body + 2
@@ -523,7 +522,7 @@ bordered: true
                     // stays visible on every tab, including Обзор.
                     BorderSurface {
                       Layout.alignment: Qt.AlignVCenter
-                      visible: index === 4 && root.ready && root.svc.installed && !root.svc.appCurrent
+                      visible: index === 3 && root.ready && root.svc.installed && !root.svc.appCurrent
                       implicitWidth: pillText.implicitWidth + Style.space(8)
                       implicitHeight: pillText.implicitHeight + Style.space(2)
                       color: "transparent"
@@ -610,7 +609,7 @@ bordered: true
             Hint {
               Layout.fillWidth: true
               Layout.topMargin: Style.space(2)
-              text: root.t("Ctrl+1…6 — вкладки\nCtrl+T — вкл/выкл\n/ — поиск")
+              text: root.t("Ctrl+1…5 — вкладки\nCtrl+T — вкл/выкл\n/ — поиск")
             }
           }
 
@@ -645,7 +644,7 @@ bordered: true
                 visible: root.ready && root.svc.errorText !== ""
                 text: root.t("Диагностика")
                 tooltipText: root.t("Открыть Движок: диагностика и журнал")
-                onClicked: root.tab = 4
+                onClicked: root.tab = 3
               }
             }
 
@@ -667,7 +666,6 @@ bordered: true
               OverviewPage { id: ovPg }
               StrategiesPage { id: spPg }
               ListsPage { id: lpPg }
-              SearchPage { id: sePg }
               EnginePage { id: epPg }
               SettingsPage { id: stpPg }
             }
@@ -754,13 +752,7 @@ bordered: true
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: root.t("Запустить автоподбор")
             tooltipText: root.t("Подобрать стратегию для вашей сети")
-            onClicked: { root.svc.autopick([]); root.tab = 3 }
-          }
-          ActionButton {
-            visible: frSec.frStep === 2
-            text: root.t("Открыть Подбор")
-            tooltipText: root.t("Открыть вкладку Подбор")
-            onClicked: root.tab = 3
+            onClicked: { root.svc.autopick([]); root.tab = 1 }
           }
         }
       }
@@ -775,7 +767,7 @@ bordered: true
         ActionButton {
           text: root.t("Открыть Движок")
           tooltipText: root.t("Открыть вкладку Движок: обновление плагина")
-          onClicked: root.tab = 4
+          onClicked: root.tab = 3
         }
       }
 
@@ -1024,6 +1016,12 @@ bordered: true
     readonly property bool hasPick: root.ready && !!root.svc.autopickResult && (root.svc.autopickResult.rows || []).length > 0
     readonly property bool flat: sortBy === "score" || (sortBy === "auto" && hasPick)
     property string pendingPreset: ""
+    property bool advOpen: false
+    property alias scroller: stratScroll
+    onAdvOpenChanged: if (advOpen && root.ready) {
+      root.svc.refreshBlockcheck()
+      if (root.svc.doctorItems.length === 0) root.svc.runDoctor()
+    }
     Timer { id: disarmTimer; interval: 4000; onTriggered: sp.armDelete = "" }
     Timer {
       id: pendingTimer
@@ -1287,7 +1285,7 @@ bordered: true
     property bool importOpen: false
     readonly property bool uiBlocked: (filterField.activeFocus || nameField.activeFocus
         || editor.area.activeFocus || viewerEditor.area.activeFocus
-        || impText.activeFocus || impName.activeFocus)
+        || impText.activeFocus || impName.activeFocus || adv.uiBlocked)
 
     // Recommendation: one quiet line, not a card. Title, score, and the one
     // action that matters.
@@ -1335,6 +1333,35 @@ bordered: true
             sp.pendingPreset = n
           }
         }
+      }
+    }
+    // The quick pick runs from here and its results land in the list below.
+    ToolRow {
+      id: pickRowTool
+      visible: !sp.editing && !sp.showing
+      readonly property bool running: root.ready && root.svc.busyLabel === "автоподбор"
+      title: root.t("Проверка стратегий")
+      note: {
+        if (!root.ready) return ""
+        var pi = root.svc.progressInfo
+        if (running) return !pi || pi.step === 0 ? root.t("Замер без обхода…")
+            : root.t("Шаг ") + pi.step + root.t(" из ") + pi.of + ": " + Model.presetTitle(pi.preset)
+        if (sp.hasPick && root.svc.autopickResult.time)
+          return root.t("Последний подбор: ") + Model.ago(root.svc.autopickResult.time)
+        return root.t("Проверяет стратегии по очереди; первая рабочая побеждает. 1–3 минуты, без пароля.")
+      }
+      ActionButton {
+        visible: pickRowTool.running
+        text: root.t("Остановить")
+        tooltipText: root.t("Остановить подбор")
+        onClicked: root.svc.stopLong()
+      }
+      ActionButton {
+        visible: !pickRowTool.running
+        enabled: root.ready && !root.svc.busy
+        text: root.t("Запустить подбор")
+        tooltipText: root.t("Запустить быстрый подбор (1–3 минуты)")
+        onClicked: root.svc.autopick([])
       }
     }
     // Secondary actions live in the list header line as text links.
@@ -1695,6 +1722,16 @@ bordered: true
             }
           }
         }
+        Disclosure {
+          caption: root.t("Расширенный поиск")
+          expanded: sp.advOpen
+          onToggled: sp.advOpen = !sp.advOpen
+        }
+        AdvancedSearch {
+          id: adv
+          Layout.fillWidth: true
+          visible: sp.advOpen
+        }
       }
     }
 
@@ -1967,19 +2004,9 @@ bordered: true
     }
   }
 
-  component SearchPage: ScrollView {
-    // Square, thin scrollbar pressed into the window's right margin, outside
-    // the content, so it never covers anything and takes no room.
-    ScrollBar.vertical: ScrollBar {
-      policy: ScrollBar.AsNeeded
-      x: se.width + (Style.space(16) - width) / 2  // centred in the 16px window margin
-      y: se.topPadding
-      height: se.availableHeight
-      width: Style.space(4)
-      padding: 0
-      contentItem: Rectangle { implicitWidth: Style.space(4); radius: 0; color: root.innerLine }
-      background: Item {}
-    }
+  // Circular config and the blockcheck2 deep search; shown inside Strategies.
+  component AdvancedSearch: ColumnLayout {
+    spacing: Style.space(12)
     id: se
     property bool showFull: false
     property bool onlyImportantBc: true
@@ -2006,8 +2033,6 @@ bordered: true
     }
     function focusDomains() { domains.forceActiveFocus() }
     readonly property bool uiBlocked: domains.activeFocus || level.popupOpen || bcEditor.area.activeFocus
-    property var pickGroup: Model.groupSearchRows(Model.autopickRows(root.ready ? root.svc.autopickResult : null))
-    property int pickBase: pickGroup && pickGroup.baseline ? (Number(pickGroup.baseline.score) || 0) : -1
     property string failingHosts: {
       if (!root.ready) return "youtube.com discord.com"
       var cats = (root.svc.check && root.svc.check.categories) ? root.svc.check.categories : {}
@@ -2023,85 +2048,6 @@ bordered: true
       }
       return out.length > 0 ? out.join(" ") : "youtube.com discord.com"
     }
-    clip: false
-    Component.onCompleted: contentItem.clip = true
-    ColumnLayout {
-      width: se.availableWidth
-      spacing: Style.space(12)
-
-      Section {
-        title: root.t("БЫСТРЫЙ ПОДБОР")
-        actions: [
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
-            visible: root.ready && root.svc.busyLabel === "автоподбор"
-            text: root.t("Остановить")
-            tooltipText: root.t("Остановить подбор")
-            onClicked: root.svc.stopLong()
-          }
-        ]
-        // Fast path is the page's filled action; the deep search below is
-        // the power-user fallback and stays secondary.
-        PrimaryButton {
-          visible: !(root.ready && root.svc.busyLabel === "автоподбор")
-          enabled: root.ready && !root.svc.busy
-          text: root.t("Запустить подбор")
-          tooltipText: root.t("Запустить быстрый подбор (1–3 минуты)")
-          onClicked: root.svc.autopick([])
-        }
-        Hint {
-          Layout.fillWidth: true
-          text: root.t("Проверяет стратегии по очереди; первая рабочая побеждает. 1–3 минуты, без пароля.")
-        }
-        Label {
-          visible: root.ready && root.svc.progressInfo !== null && root.svc.busyLabel === "автоподбор"
-          text: !root.ready || !root.svc.progressInfo ? ""
-                : root.svc.progressInfo.step === 0 ? root.t("Замер без обхода…")
-                : root.t("Шаг ") + root.svc.progressInfo.step + root.t(" из ") + root.svc.progressInfo.of + ": " + Model.presetTitle(root.svc.progressInfo.preset)
-        }
-        ColumnLayout {
-          Layout.fillWidth: true
-          visible: root.ready && se.pickGroup.baseline !== null
-          spacing: Style.space(4)
-          PickRow {
-            visible: se.pickGroup.baseline !== null
-            row: se.pickGroup.baseline || {}
-            baseScore: se.pickBase
-          }
-          PanelSeparator {
-            Layout.fillWidth: true
-            foreground: root.fg
-            visible: se.pickGroup.best !== null
-          }
-          PickRow {
-            visible: se.pickGroup.best !== null
-            row: se.pickGroup.best || {}
-            baseScore: se.pickBase
-          }
-          Repeater {
-            model: se.pickGroup.ties
-            delegate: PickRow {
-              required property var modelData
-              row: modelData
-              baseScore: se.pickBase
-            }
-          }
-          Repeater {
-            model: se.pickGroup.rest
-            delegate: PickRow {
-              required property var modelData
-              row: modelData
-              baseScore: se.pickBase
-            }
-          }
-          Hint {
-            Layout.fillWidth: true
-            visible: root.ready && root.svc.autopickResult.time !== undefined && (root.svc.autopickResult.rows || []).length > 0
-            text: root.t("● — выбрана · ±N к базе без обхода")
-          }
-        }
-      }
 
       Section {
         id: circCard
@@ -2377,7 +2323,6 @@ bordered: true
           }
         }
       }
-    }
   }
 
   component EnginePage: ScrollView {
