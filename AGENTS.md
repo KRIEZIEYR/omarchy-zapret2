@@ -92,7 +92,11 @@ strings are wrapped in `root.t()` (QML) / `tr()` (model) and translated by
 
 Done: backup/restore, single-domain check, opt-in update check, DNS helper,
 redacted diagnostics, strategy import/copy, per-service hosts, first-run flow,
-fake blob choice (discordFake/gameFake), circular per-host plan (zapret-auto).
+fake blob choice (discordFake/gameFake). `circular plan` tests every preset and
+writes the own strategy `my-circular` (zapret2 `circular` orchestrator over the
+best plain section presets, allowlisted with numeric fails/time only; root side
+loads zapret-auto.lua when a section uses it). Its syntax passes
+`nfqws2 --dry-run`; real rotation on a DPI-filtered network is NOT tested.
 Open, low value until someone asks: per-list enable/disable (root-side render),
 recheck on network change.
 Rejected: free-form nfqws args/Lua editor, VPN subscriptions, LAN proxy

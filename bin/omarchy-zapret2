@@ -143,13 +143,16 @@ SECTIONS = ("TCP_HTTP", "TCP_TLS", "TCP_GENERIC", "QUIC", "GOOGLE_TLS", "DISCORD
             "DISCORD_WEB_TLS", "IPSET_TCP_PORTS", "VOICE_COMPATIBLE")
 REQUIRED = ("TCP_HTTP", "TCP_TLS", "TCP_GENERIC", "QUIC")
 
-# Desync functions a strategy may call: zapret-antidpi.lua only. Never the
-# helpers in zapret-lib/zapret-auto (luaexec runs Lua source; condition and
-# friends call other functions by name).
+# Desync functions a strategy may call: zapret-antidpi.lua plus `circular`
+# from zapret-auto.lua, with numeric fails/time only. Never the other helpers
+# in zapret-lib/zapret-auto (luaexec runs Lua source; condition and friends
+# call other functions by name; circular's *_detector and hostkey arguments
+# name Lua functions too).
 LUA_FUNCS = frozenset((
     "drop send pktmod http_domcase http_hostcase http_methodeol http_unixeol synack_split synack "
     "wsize wssize tls_client_hello_clone syndata rst fake multisplit multidisorder multidisorder_legacy "
-    "hostfakesplit fakedsplit fakeddisorder tcpseg oob udplen dht_dn").split())
+    "hostfakesplit fakedsplit fakeddisorder tcpseg oob udplen dht_dn circular").split())
+CIRCULAR_KEYS = ("fails", "time")
 PAYLOADS = frozenset((
     "all unknown empty known ipv4 ipv6 icmp http_req http_reply tls_client_hello tls_server_hello "
     "dtls_client_hello dtls_server_hello quic_initial wireguard_initiation wireguard_response "
@@ -368,6 +371,10 @@ def check_desync(spec):
             raise Fail("unknown blob: %s" % v)
         if k in FUNC_KEYS and v not in FUNC_KEYS[k]:
             raise Fail("parameter not allowed: %s" % k)
+        if parts[0] == "circular" and (k not in CIRCULAR_KEYS or not re.match(r"^\d{1,4}$", v)):
+            raise Fail("circular takes only fails=N and time=N")
+        if k == "strategy" and not re.match(r"^[1-9]$", v):
+            raise Fail("strategy takes a number from 1 to 9")
 
 
 def check_line(line, section):
@@ -867,6 +874,8 @@ def render_args(preset, sections, settings, engine, lists, fake_dirs, counts):
     args = ["--qnum=%d" % QNUM, "--user=nobody", "--fwmark=0x%x" % MARK, "--ctrack-disable=0",
             "--ipcache-lifetime=8400", "--ipcache-hostname=1",
             "--lua-init=@%s/lua/zapret-lib.lua" % engine, "--lua-init=@%s/lua/zapret-antidpi.lua" % engine]
+    if any(l.startswith("--lua-desync=circular") for lines in sections.values() for l in lines):
+        args.append("--lua-init=@%s/lua/zapret-auto.lua" % engine)
     args += ["--blob=%s:@%s" % (name, blob_path(f)) for name, f in sorted(BLOB_FILES.items())]
 
     def sect(name, fallback="TCP_TLS"):
@@ -2016,6 +2025,42 @@ def circular_config(scores, unresolved=None, level="quick", valid_names=None):
             "next": "blockcheck-" + level if unresolved else "ready"}
 
 
+def circular_strategy(scores, limit=4):
+    """Combine the best section presets into one strategy that rotates between
+    them per host (zapret2's circular orchestrator). Returns (text, names), or
+    (None, names) when fewer than two presets can be combined. Only presets
+    without their own --payload/--in-range/--out-range lines qualify: those
+    options carry over to the next instance inside a profile."""
+    totals = {}
+    for candidates in scores.values():
+        for name, v in candidates.items():
+            t = totals.setdefault(name, [0, 0])
+            t[0] += int(v.get("ok", 0))
+            t[1] += int(v.get("total", 0))
+    members = []
+    for name in PRESETS:
+        ok, total = totals.get(name, (0, 0))
+        if total <= 0 or ok <= 0:
+            continue
+        with open(os.path.join(DATA, "presets", name + ".txt"), encoding="utf-8") as f:
+            sections = parse_preset(f.read())
+        if any(l.startswith(("--payload", "--out-range", "--in-range")) for sec in REQUIRED for l in sections[sec]):
+            continue
+        members.append((ok / total, ok, name, sections))
+    members.sort(key=lambda m: (-m[0], -m[1], m[2]))
+    members = members[:limit]
+    names = [m[2] for m in members]
+    if len(members) < 2:
+        return None, names
+    out_lines = ["# Rotates between %s when a host keeps failing (zapret2 circular orchestrator)." % ", ".join(names),
+                 "# Built by the circular planner; rebuilt every time it runs."]
+    for sec in REQUIRED:
+        out_lines += ["[%s]" % sec, "--in-range=-s34228", "--lua-desync=circular:fails=3:time=60"]
+        for n, (_, _, _, sections) in enumerate(members, 1):
+            out_lines += ["%s:strategy=%d" % (line, n) for line in sections[sec]]
+    return "\n".join(out_lines) + "\n", names
+
+
 def circular_blockcheck(domains, level, timeout):
     """Run the official blockcheck2 unit and return validated findings."""
     progress(stage="blockcheck", level=level, domains=domains[:8])
@@ -2129,7 +2174,10 @@ def cmd_circular(args):
             systemctl("stop", UNIT)
     rotation = circular_rank(scores, 5, valid_names)
     unresolved = [d for d in domains if not rotation.get(d)]
+    progress(stage="rank", presets=len(names), hosts=len(domains), unresolved=len(unresolved))
     blockcheck = {"quick": {}, "standard": {}}
+    if not unresolved:
+        progress(stage="blockcheck-skip")
     if unresolved:
         blockcheck["quick"] = save_circular_findings(circular_blockcheck(unresolved, "quick", 600))
         if not blockcheck["quick"]:
@@ -2150,7 +2198,18 @@ def cmd_circular(args):
     config["domains"].update(rotation)
     config["blockcheck"] = blockcheck
     config["standardWarning"] = bool(blockcheck["standard"])
+    text, members = circular_strategy(scores)
+    if text is None:
+        progress(stage="build", skipped=True, members=members)
+    else:
+        progress(stage="build", members=members)
+        parse_preset(text)  # same validation the root side applies
+        atomic_write(var_path("custom", "my-circular.txt"), text)
+        config["strategy"] = "my-circular"
+        config["members"] = members
+        progress(stage="save", strategy="my-circular")
     atomic_write(path, json.dumps(config, ensure_ascii=False, indent=1) + "\n", mode=0o600)
+    progress(stage="plan")
     out({"ok": True, "config": config, "needsBlockcheck": bool(unresolved),
          "message": ("Нужен blockcheck2: " + ", ".join(unresolved)) if unresolved else "Готово"})
 

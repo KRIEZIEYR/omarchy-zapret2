@@ -1269,3 +1269,40 @@ class CircularPlan(unittest.TestCase):
             self.assertTrue(emitted.get("ok"))
             self.assertFalse(emitted.get("needsBlockcheck"))
             self.assertEqual(emitted["config"]["blockcheck"], {"quick": {}, "standard": {}})
+
+
+class CircularStrategy(unittest.TestCase):
+    SCORES = {"a.example": {"alt": {"ok": 3, "total": 3}, "alt3": {"ok": 2, "total": 3},
+                            "general": {"ok": 1, "total": 3}, "fs-general": {"ok": 3, "total": 3},
+                            "alt5": {"ok": 3, "total": 3}, "simple-fake": {"ok": 0, "total": 3}}}
+
+    def test_builds_a_rotation_from_plain_presets(self):
+        text, names = zm.circular_strategy(self.SCORES)
+        # alt5 has its own --payload lines, fs-* are full presets, simple-fake scored 0
+        self.assertEqual(names, ["alt", "alt3", "general"])
+        sections = zm.parse_preset(text)  # passes the same validation the root side applies
+        for sec in zm.REQUIRED:
+            lines = sections[sec]
+            self.assertEqual(lines[0], "--in-range=-s34228")
+            self.assertEqual(lines[1], "--lua-desync=circular:fails=3:time=60")
+            tags = sorted({l.rsplit(":strategy=", 1)[1] for l in lines[2:]})
+            self.assertEqual(tags, ["1", "2", "3"])
+
+    def test_needs_two_presets(self):
+        self.assertIsNone(zm.circular_strategy({"a.example": {"alt": {"ok": 3, "total": 3}}})[0])
+
+    def test_circular_arguments_stay_numeric(self):
+        for bad in ("circular:success_detector=luaexec", "circular:fails=x", "circular:hostkey=f",
+                    "fake:strategy=x", "fake:strategy=10"):
+            with self.assertRaises(zm.Fail):
+                zm.check_desync(bad)
+        zm.check_desync("circular:fails=3:time=60")
+        zm.check_desync("fake:blob=tls_google:strategy=2")
+
+    def test_render_loads_zapret_auto_only_for_circular(self):
+        text, _ = zm.circular_strategy(self.SCORES)
+        settings = dict(zm.DEFAULTS)
+        counts = {n: 1 for n in zm.BASE_LISTS}
+        for body, expected in ((text, True), (open(os.path.join(zm.DATA, "presets", "alt.txt")).read(), False)):
+            args = zm.render_args("my-x", zm.parse_preset(body), settings, "/E", "/L", ["/F"], counts)
+            self.assertEqual("--lua-init=@/E/lua/zapret-auto.lua" in args, expected)

@@ -2040,6 +2040,15 @@ bordered: true
         readonly property bool running: root.ready && root.svc.busyLabel === "создание circular-конфига"
         readonly property var log: root.ready && root.svc.jobLogLabel === "создание circular-конфига" ? root.svc.jobLog : []
         function line(o) {
+          if (o.stage === "rank")
+            return root.t("Итог перебора: ") + o.presets + root.t(" пресетов × ") + o.hosts + root.t(" хостов")
+              + (o.unresolved > 0 ? root.t(", без результата: ") + o.unresolved : "")
+          if (o.stage === "blockcheck-skip") return root.t("blockcheck2 не нужен: пресеты закрыли все хосты")
+          if (o.stage === "build")
+            return o.skipped ? root.t("Мало подходящих пресетов для ротации (нужно 2+)")
+                             : root.t("Собираем из лучших: ") + (o.members || []).join(", ")
+          if (o.stage === "save") return root.t("Сохранена своя стратегия ") + o.strategy
+          if (o.stage === "plan") return root.t("План записан")
           if (o.stage === "blockcheck")
             return "blockcheck2 (" + o.level + "): " + (o.domains || []).join(", ")
           if (o.done)
@@ -2051,12 +2060,21 @@ bordered: true
           title: root.t("Круговой конфиг")
           note: circCard.running && root.svc.progressInfo && root.svc.progressInfo.step
               ? root.t("Пресет ") + root.svc.progressInfo.step + "/" + root.svc.progressInfo.of + " · " + root.t("обход на время проверки выключается")
-              : root.t("Проверяет каждый пресет на сайтах из проверки и строит ротацию лучших. 3–5 минут.")
+              : root.t("Собирает my-circular: переключается между лучшими пресетами для каждого хоста. 3–5 минут.")
           ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: circCard.running ? root.t("Проверка…") : root.t("Построить")
             tooltipText: root.t("Проверить пресеты для сайтов и построить круговую конфигурацию")
             onClicked: root.svc.circularPlan("quick")
+          }
+          ActionButton {
+            visible: root.ready && root.svc.circularResult !== null && root.svc.circularResult.ok
+                && !!root.svc.circularResult.data.config && !!root.svc.circularResult.data.config.strategy
+                && root.svc.preset !== root.svc.circularResult.data.config.strategy
+            enabled: root.ready && !root.svc.busy
+            text: root.t("Применить")
+            tooltipText: root.t("Включить созданную стратегию вместо текущей")
+            onClicked: root.svc.setOption("preset", root.svc.circularResult.data.config.strategy)
           }
           ActionButton {
             enabled: root.ready && !root.svc.busy
@@ -2065,7 +2083,8 @@ bordered: true
             onClicked: root.svc.circularStatus(function(r) {
               var c = r.data && r.data.config ? r.data.config : {}
               var n = Object.keys(c.domains || {}).length
-              root.svc.flash(n > 0 ? root.t("В ротации доменов: ") + n : root.t("План ещё не построен"))
+              root.svc.flash(c.members ? root.t("Ротация: ") + c.members.join(", ")
+                  : n > 0 ? root.t("В ротации доменов: ") + n : root.t("План ещё не построен"))
             })
           }
         }
@@ -2078,6 +2097,8 @@ bordered: true
             if (!r) return ""
             if (!r.ok) return root.t("Ошибка: ") + r.message
             var n = Object.keys((r.data.config && r.data.config.domains) || {}).length
+            var c = r.data.config || {}
+            if (c.strategy) return root.t("Готово: создана стратегия ") + c.strategy + " (" + (c.members || []).join(", ") + ")"
             return r.data.needsBlockcheck ? root.t(r.data.message) : root.t("Готово: доменов в ротации ") + n
           }
         }
