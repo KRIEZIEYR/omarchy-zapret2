@@ -2035,28 +2035,81 @@ bordered: true
       }
 
       Section {
+        id: circCard
         title: root.t("CIRCULAR-КОНФИГ")
-        actions: [
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+        readonly property bool running: root.ready && root.svc.busyLabel === "создание circular-конфига"
+        readonly property var log: root.ready && root.svc.jobLogLabel === "создание circular-конфига" ? root.svc.jobLog : []
+        function line(o) {
+          if (o.stage === "blockcheck")
+            return "blockcheck2 (" + o.level + "): " + (o.domains || []).join(", ")
+          if (o.done)
+            return "  " + Model.presetTitle(o.preset) + " — " + (o.failed ? root.t("не запустилась") : o.ok + "/" + o.total)
+          if (o.step) return root.t("Пресет ") + o.step + "/" + o.of + ": " + Model.presetTitle(o.preset) + "…"
+          return ""
+        }
+        ToolRow {
+          title: root.t("Круговой конфиг")
+          note: circCard.running && root.svc.progressInfo && root.svc.progressInfo.step
+              ? root.t("Пресет ") + root.svc.progressInfo.step + "/" + root.svc.progressInfo.of + " · " + root.t("обход на время проверки выключается")
+              : root.t("Проверяет каждый пресет на сайтах из проверки и строит ротацию лучших. 3–5 минут.")
+          ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
-            text: root.svc.busyLabel === "создание circular-конфига" ? root.t("Проверка пресетов…") : root.t("Построить конфиг")
+            text: circCard.running ? root.t("Проверка…") : root.t("Построить")
             tooltipText: root.t("Проверить пресеты для сайтов и построить круговую конфигурацию")
-            onClicked: root.svc.circularPlan(level.value)
-          },
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+            onClicked: root.svc.circularPlan("quick")
+          }
+          ActionButton {
             enabled: root.ready && !root.svc.busy
             text: root.t("Показать план")
             tooltipText: root.t("Показать число доменов в круговой конфигурации")
             onClicked: root.svc.circularStatus(function(r) {
-              if (r.data && r.data.config) root.svc.flash("Circular: " + Object.keys(r.data.config.domains || {}).length + root.t(" доменов"))
+              var c = r.data && r.data.config ? r.data.config : {}
+              var n = Object.keys(c.domains || {}).length
+              root.svc.flash(n > 0 ? root.t("В ротации доменов: ") + n : root.t("План ещё не построен"))
             })
           }
-        ]
-        Hint { Layout.fillWidth: true; text: root.t("Проверяет пресеты для сайтов и строит ротацию лучших.") }
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: !circCard.running && root.ready && root.svc.circularResult !== null
+          color: root.ready && root.svc.circularResult && !root.svc.circularResult.ok ? root.bad : root.dim
+          text: {
+            var r = root.ready ? root.svc.circularResult : null
+            if (!r) return ""
+            if (!r.ok) return root.t("Ошибка: ") + r.message
+            var n = Object.keys((r.data.config && r.data.config.domains) || {}).length
+            return r.data.needsBlockcheck ? root.t(r.data.message) : root.t("Готово: доменов в ротации ") + n
+          }
+        }
+        // What the planner is doing right now, newest line last.
+        BorderSurface {
+          Layout.fillWidth: true
+          visible: circCard.log.length > 0
+          implicitHeight: circLogCol.implicitHeight + Style.space(16)
+          color: "transparent"
+          borderSpec: Border.flat(root.innerLine, 1)
+          radius: Style.cornerRadius
+          ColumnLayout {
+            id: circLogCol
+            anchors.fill: parent
+            anchors.margins: Style.space(8)
+            anchors.leftMargin: Style.space(12)
+            spacing: Style.space(2)
+            Repeater {
+              model: circCard.log.slice(-12).map(function(o) { return circCard.line(o) }).filter(function(t) { return t !== "" })
+              delegate: Text {
+                required property var modelData
+                Layout.fillWidth: true
+                text: modelData
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                color: root.dim
+                font.family: root.monoFamily
+                font.pixelSize: Style.font.caption
+              }
+            }
+          }
+        }
       }
 
       Section {

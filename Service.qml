@@ -39,6 +39,9 @@ Item {
   readonly property string errorText: lastError !== "" ? lastError : (st && st.error ? st.error : "")
   property string flashText: ""
   property var progressInfo: null          // latest progress line of a long job
+  property var jobLog: []                  // progress lines of the current or last long job
+  property string jobLogLabel: ""          // which job jobLog belongs to
+  property var circularResult: null        // last `circular plan` reply
   property var blockcheck: null            // last `blockcheck status`
   readonly property bool blockcheckRunning: blockcheck !== null
       ? (blockcheck.active === "active" || blockcheck.active === "activating")
@@ -127,6 +130,8 @@ Item {
     if (_long.running) { flash(root.t("Подождите: ") + root.t(_long._label)); return false }
     lastError = ""
     progressInfo = null
+    jobLog = []
+    jobLogLabel = label
     return run(_long, args, function(r) {
       progressInfo = null
       if (!r.ok) lastError = Model.actionErrorText(r.message)
@@ -237,22 +242,24 @@ Item {
       if (dd.domains.length > 10) { flash(root.t("Не больше 10 доменов")); return }
       args = args.concat(dd.domains)
     }
-    longJob(args, root.t("проверка"), function(d) { return d ? Model.checkLine(d) : root.t("Готово") })
+    longJob(args, "проверка", function(d) { return d ? Model.checkLine(d) : root.t("Готово") })
   }
 
   function autopick(names) {
     var args = ["autopick"]
     if (names && names.length) args.push(names.join(","))
-    longJob(args, root.t("автоподбор"), function(d) { return d ? root.t("Выбрана стратегия ") + Model.presetTitle(d.chosen) : root.t("Готово") })
+    longJob(args, "автоподбор", function(d) { return d ? root.t("Выбрана стратегия ") + Model.presetTitle(d.chosen) : root.t("Готово") })
   }
 
   function circularPlan(level) {
     var args = ["circular", "plan"]
     if (level) args.push("--level", String(level))
-    longJob(args, root.t("создание circular-конфига"), function(d) {
+    circularResult = null
+    longJob(args, "создание circular-конфига", function(d) {
       if (d && d.needsBlockcheck) return root.t("Нужно дополнительно проверить домены через blockcheck2")
       return root.t("Circular-конфиг создан")
     }, function(r) {
+      circularResult = r
       if (r.ok && r.data && r.data.needsBlockcheck) {
         flash(r.data.message || root.t("Для части доменов нужен blockcheck2"))
       }
@@ -326,7 +333,7 @@ Item {
   function saveList(name, text, cb, restart) {
     var args = ["list", "save", name]
     if (restart === false) args.push("--no-restart")
-    act(args, root.t("сохранение списка"), "", cb, text)
+    act(args, "сохранение списка", "", cb, text)
   }
   function saveCustom(name, text, cb) { act(["custom", "save", name], "сохранение стратегии", root.t("Стратегия сохранена"), cb, text) }
   function exportBackup(cb) {
@@ -348,14 +355,14 @@ Item {
     if (t === "") { flash(root.t("Вставьте текст, путь или ссылку")); return false }
     var kind = Model.importSourceKind(t)
     if (kind === "url" && !Model.isImportableUrl(t)) { flash(root.t("Ссылка должна начинаться с http(s)://")); return false }
-    if (kind === "text") return act(args, root.t("импорт стратегии"), root.t("Стратегия импортирована"), cb, input)
-    if (kind === "url") return longJob(args.concat(["--url-stdin"]), root.t("импорт стратегии"), root.t("Стратегия импортирована"), cb, t + "\n")
-    return longJob(args.concat([t]), root.t("импорт стратегии"), root.t("Стратегия импортирована"), cb)
+    if (kind === "text") return act(args, "импорт стратегии", root.t("Стратегия импортирована"), cb, input)
+    if (kind === "url") return longJob(args.concat(["--url-stdin"]), "импорт стратегии", root.t("Стратегия импортирована"), cb, t + "\n")
+    return longJob(args.concat([t]), "импорт стратегии", root.t("Стратегия импортирована"), cb)
   }
   function copyStrategy(src, name, cb) {
     var args = ["strategy", "copy", String(src)]
     if (name !== undefined && name !== null && String(name).trim() !== "") args.push(String(name).trim())
-    act(args, root.t("дублирование стратегии"), "", function(r) {
+    act(args, "дублирование стратегии", "", function(r) {
       if (r.ok && r.data && r.data.name) flash(root.t("Дублирована как ") + Model.presetTitle(r.data.name))
       if (cb) cb(r)
     })
@@ -421,7 +428,10 @@ Item {
         proc._lines.push(line)
         if (proc._lines.length > 4000) proc._lines.shift()
         var o = Model.parseLine(line)
-        if (o && o.progress && proc.reportProgress) proc.owner.progressInfo = o
+        if (o && o.progress && proc.reportProgress) {
+          proc.owner.progressInfo = o
+          proc.owner.jobLog = proc.owner.jobLog.slice(-199).concat([o])
+        }
       }
     }
     onStarted: if (_input !== "") { write(_input); stdinEnabled = false }

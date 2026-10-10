@@ -484,5 +484,15 @@ var EN = {
   "Язык интерфейса": "Interface language",
   "Доступно обновление Zapret2": "Zapret2 update available",
   "СОСТОЯНИЕ": "STATUS",
-  "через пробел или запятую, до 10": "space or comma separated, up to 10"
+  "через пробел или запятую, до 10": "space or comma separated, up to 10",
+  "не запустилась": "did not start",
+  "Пресет ": "Preset ",
+  "Круговой конфиг": "Circular config",
+  "обход на время проверки выключается": "the bypass is off while checking",
+  "Проверяет каждый пресет на сайтах из проверки и строит ротацию лучших. 3–5 минут.": "Tests every preset against the check sites and builds a rotation of the best. 3–5 minutes.",
+  "Построить": "Build",
+  "В ротации доменов: ": "Domains in rotation: ",
+  "План ещё не построен": "No plan built yet",
+  "Готово: доменов в ротации ": "Done: domains in rotation ",
+  "Нужен blockcheck2: ": "blockcheck2 needed: "
 }

@@ -2018,6 +2018,7 @@ def circular_config(scores, unresolved=None, level="quick", valid_names=None):
 
 def circular_blockcheck(domains, level, timeout):
     """Run the official blockcheck2 unit and return validated findings."""
+    progress(stage="blockcheck", level=level, domains=domains[:8])
     resume = unit_state(UNIT).get("ActiveState") == "active"
     req = {"domains": domains[:8], "level": level, "ipv6": load_settings()["ipv6"], "resume": resume}
     atomic_write(var_path("blockcheck.json"), json.dumps(req) + "\n")
@@ -2102,7 +2103,9 @@ def cmd_circular(args):
                 settings["preset"] = original_preset
                 save_settings(settings)
             if not result:
+                progress(preset=name, done=True, failed=True)
                 continue
+            got = [0, 0]
             for category in result.get("categories", {}).values():
                 for probe in category.get("results", []):
                     host = urllib.parse.urlsplit(probe.get("url", "")).hostname
@@ -2112,6 +2115,9 @@ def cmd_circular(args):
                     entry = scores[host].setdefault(name, {"ok": 0, "total": 0})
                     entry["total"] += 1
                     entry["ok"] += 1 if probe.get("ok") else 0
+                    got[0] += 1 if probe.get("ok") else 0
+                    got[1] += 1
+            progress(preset=name, done=True, ok=got[0], total=got[1])
     finally:
         settings = load_settings()
         settings["preset"] = original_preset
@@ -2123,7 +2129,7 @@ def cmd_circular(args):
             systemctl("stop", UNIT)
     rotation = circular_rank(scores, 5, valid_names)
     unresolved = [d for d in domains if not rotation.get(d)]
-    blockcheck = {"quick": [], "standard": []}
+    blockcheck = {"quick": {}, "standard": {}}
     if unresolved:
         blockcheck["quick"] = save_circular_findings(circular_blockcheck(unresolved, "quick", 600))
         if not blockcheck["quick"]:

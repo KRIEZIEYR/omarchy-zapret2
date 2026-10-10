@@ -1246,3 +1246,26 @@ class FirstRun(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CircularPlan(unittest.TestCase):
+    def test_plan_when_every_domain_resolves(self):
+        # Regression: with nothing left for blockcheck2, the plan crashed on
+        # list.values() instead of writing the config.
+        with tempfile.TemporaryDirectory() as tmp:
+            emitted = {}
+            ok = {"categories": {"web": {"results": [{"url": "https://a.example/", "ok": True}]}}}
+            with mock.patch.object(zm, "require_installed", lambda: None), \
+                 mock.patch.object(zm, "VAR", tmp), \
+                 mock.patch.object(zm, "all_presets", lambda: [{"name": "alt", "group": "flowseal"}]), \
+                 mock.patch.object(zm, "circular_domains", lambda: ["a.example"]), \
+                 mock.patch.object(zm, "unit_state", lambda u: {"ActiveState": "inactive"}), \
+                 mock.patch.object(zm, "systemctl", lambda verb, unit: None), \
+                 mock.patch.object(zm, "wait_active", lambda *a, **k: None), \
+                 mock.patch.object(zm, "run_checks", lambda *a, **k: ok), \
+                 mock.patch.object(zm, "progress", lambda **k: None), \
+                 mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
+                zm.cmd_circular(["plan"])
+            self.assertTrue(emitted.get("ok"))
+            self.assertFalse(emitted.get("needsBlockcheck"))
+            self.assertEqual(emitted["config"]["blockcheck"], {"quick": {}, "standard": {}})
