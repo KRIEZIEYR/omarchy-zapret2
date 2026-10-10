@@ -2458,12 +2458,33 @@ bordered: true
       Section {
         title: "УДАЛЕНИЕ"
         visible: root.ready && root.svc.installed
-        actions: [
-          Button { bordered: false; fontSize: Style.font.caption; foreground: root.bad; text: ep.armRemove ? "Точно удалить?" : "Удалить"; tooltipText: ep.armRemove ? "Нажмите ещё раз для удаления" : "Удалить движок и настройки плагина"; onClicked: { if (ep.armRemove) { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(false) } else { ep.armRemove = true; armRemoveTimer.restart() } } },
-          Button { visible: ep.armRemove; bordered: false; fontSize: Style.font.caption; foreground: root.bad; text: "Вместе с данными"; tooltipText: "Удалить и свои списки и стратегии"; onClicked: { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(true) } },
-          Button { visible: ep.armRemove; bordered: false; fontSize: Style.font.caption; text: "Отмена"; tooltipText: "Оставить всё как есть"; onClicked: { ep.armRemove = false; armRemoveTimer.stop() } }
-        ]
-        Hint { Layout.fillWidth: true; text: "Останавливает обход; удаляет /opt, юниты, polkit. Данные остаются." }
+        ToolRow {
+          title: ep.armRemove ? "Точно удалить?" : "Удалить Zapret2"
+          note: ep.armRemove ? "«Вместе с данными» стирает и свои списки и стратегии"
+              : "Останавливает обход; удаляет /opt, юниты, polkit. Данные остаются."
+          ActionButton {
+            visible: ep.armRemove
+            text: "Отмена"
+            tooltipText: "Оставить всё как есть"
+            onClicked: { ep.armRemove = false; armRemoveTimer.stop() }
+          }
+          ActionButton {
+            visible: ep.armRemove
+            foreground: root.bad
+            text: "Вместе с данными"
+            tooltipText: "Удалить и свои списки и стратегии"
+            onClicked: { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(true) }
+          }
+          ActionButton {
+            foreground: root.bad
+            text: ep.armRemove ? "Удалить" : "Удалить…"
+            tooltipText: ep.armRemove ? "Удалить, данные оставить" : "Удалить движок и настройки плагина"
+            onClicked: {
+              if (ep.armRemove) { ep.armRemove = false; armRemoveTimer.stop(); root.svc.removeAll(false) }
+              else { ep.armRemove = true; armRemoveTimer.restart() }
+            }
+          }
+        }
       }
     }
   }
