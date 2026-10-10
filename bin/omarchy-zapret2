@@ -359,10 +359,13 @@ def check_ports(text):
             raise Fail("bad port range: %s" % part)
 
 
-def check_desync(spec):
+def check_desync(spec, section=None):
     parts = spec.split(":")
     if parts[0] not in LUA_FUNCS:
         raise Fail("desync function not allowed: %s" % parts[0])
+    if parts[0] == "circular" and section == "FULL":
+        # render_args loads zapret-auto.lua for [SECTION] strategies only
+        raise Fail("circular works in [SECTION] strategies only")
     for p in parts[1:]:
         k, eq, v = p.partition("=")
         if not RE_KEY.match(k) or not RE_TOKEN.match(v):
@@ -384,7 +387,7 @@ def check_line(line, section):
     if not eq:
         raise Fail("not an option: %s" % line)
     if opt == "--lua-desync":
-        check_desync(val)
+        check_desync(val, section)
     elif opt == "--payload":
         bad = [v for v in val.split(",") if v not in PAYLOADS]
         if bad:

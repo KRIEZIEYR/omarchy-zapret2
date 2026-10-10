@@ -1299,6 +1299,20 @@ class CircularStrategy(unittest.TestCase):
         zm.check_desync("circular:fails=3:time=60")
         zm.check_desync("fake:blob=tls_google:strategy=2")
 
+    def test_zapret_auto_helpers_stay_out(self):
+        # zapret-auto.lua is loaded whenever a strategy uses circular, so its
+        # other functions must stay unreachable by name.
+        for fn in ("luaexec", "condition", "per_instance_condition", "stopif", "cond_lua",
+                   "argdebug", "standard_hostkey", "standard_failure_detector"):
+            with self.assertRaises(zm.Fail):
+                zm.check_desync(fn)
+
+    def test_circular_only_in_section_strategies(self):
+        # the full-profile renderer does not load zapret-auto.lua
+        with self.assertRaises(zm.Fail):
+            zm.check_line("--lua-desync=circular:fails=3", "FULL")
+        zm.check_line("--lua-desync=circular:fails=3", "TCP_TLS")
+
     def test_render_loads_zapret_auto_only_for_circular(self):
         text, _ = zm.circular_strategy(self.SCORES)
         settings = dict(zm.DEFAULTS)
