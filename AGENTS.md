@@ -86,21 +86,13 @@ UI copy is Russian. Repo: https://github.com/KRIEZIEYR/omarchy-zapret2, branch
   ties with the no-bypass baseline there; efficacy can't be tested locally.
 - One primary (filled) button per card; others bordered.
 
-## Planned next (awaiting go-ahead from the owner)
+## Roadmap
 
-User-space (no password needed):
-1. Backup/restore: `export` / `import` (zip, size caps, same validators).
-2. Single-domain check: `check <domain…>` + field on Обзор.
-3. Opt-in daily update check (engine, lists, presets) in Service.qml.
-4. Secure DNS (DoH) guidance + DNS cache flush helper.
-5. One "copy diagnostics" button, redacted (no hosts/IPs).
-6. Strategy import from file/link + copy own strategy (validated as data).
-7. Per-service hosts picker (Telegram, WhatsApp, ...).
-8. First-run flow: install -> autopick -> done.
-Root-side (need `setup --app-only` by the user to take effect):
-9. Per-list enable/disable. 10. Replace fake blob in a strategy (allowlist).
-11. Recheck on network change. 12. Live auto-switch per host using zapret2's
-own `zapret-auto.lua` circular orchestrator.
+Done: backup/restore, single-domain check, opt-in update check, DNS helper,
+redacted diagnostics, strategy import/copy, per-service hosts, first-run flow,
+fake blob choice (discordFake/gameFake), circular per-host plan (zapret-auto).
+Open, low value until someone asks: per-list enable/disable (root-side render),
+recheck on network change.
 Rejected: free-form nfqws args/Lua editor, VPN subscriptions, LAN proxy
 sharing, Telegram ratings, language switch.
 Note: the youtubediscord "Zapret 2 GUI" (git.zapret.moe) was reported on

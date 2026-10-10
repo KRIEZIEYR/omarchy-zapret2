@@ -100,7 +100,6 @@ MAX_SMALL = 64 * 1024
 # Backup/restore caps (mirrored by model/Zapret.js isValidBackupSize/FileSize).
 MAX_BACKUP_FILE = 512 * 1024
 MAX_BACKUP_TOTAL = 2 * 1024 * 1024
-MAX_BACKUP_ZIP = 4 * 1024 * 1024
 
 # ipset "none" like Flowseal's shipped default: the strategy touches only
 # hostlist domains; "loaded" applies it to ~33k networks and can break sites
@@ -253,25 +252,6 @@ def read_nofollow(path, cap, owner=None):
     if len(data) > cap:
         raise Fail("%s is larger than %d bytes" % (path, cap))
     return data.decode("utf-8", "replace")
-
-
-def read_nofollow_bytes(path, cap, owner=None):
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-    except FileNotFoundError:
-        return None
-    except OSError:
-        raise Fail("%s is not a regular file" % path)
-    with os.fdopen(fd, "rb") as f:
-        st = os.fstat(f.fileno())
-        if not (st.st_mode & 0o170000 == 0o100000):
-            raise Fail("%s is not a regular file" % path)
-        if owner is not None and st.st_uid != owner:
-            raise Fail("%s has a foreign owner" % path)
-        data = f.read(cap + 1)
-    if len(data) > cap:
-        raise Fail("%s is larger than %d bytes" % (path, cap))
-    return data
 
 
 def atomic_write(path, data, mode=0o644):
@@ -552,8 +532,6 @@ def hosts_state(hosts_path=HOSTS_FILE):
 # of the [SECTION] blocks above. Lines: `@tcp=`/`@udp=` (ports for nftables), and
 # nfqws2 options with {{LISTS}}, {{GAME_TCP}}, {{GAME_UDP}} placeholders.
 LIST_NAMES = BASE_LISTS + USER_LISTS
-FULL_FILTERS = ("--filter-tcp", "--filter-udp", "--filter-l7", "--filter-l3", "--hostlist", "--hostlist-exclude",
-                "--ipset", "--ipset-exclude", "--hostlist-domains", "--hostlist-exclude-domains")
 GAME = ("{{GAME_TCP}}", "{{GAME_UDP}}")
 
 
@@ -1481,175 +1459,6 @@ def cmd_list(args):
     atomic_write(path, "\n".join(lines) + ("\n" if lines else ""))
     restarted = False if no_restart else restart_if_active()
     out({"ok": True, "name": name, "count": len(lines), "dropped": len(raw) - len(lines), "restarted": restarted})
-
-
-# --------------------------------------------------------------- backup / restore
-
-def backup_name_ok(name):
-    """Allowlist for backup members: settings, user lists, own strategies.
-
-    Anything else (absolute paths, zip-slip "..", unknown names, folders)
-    is rejected before a single byte is written."""
-    if name == "settings.json":
-        return True
-    if name.startswith("lists/") and name.endswith(".txt") and name.count("/") == 1:
-        return name[6:-4] in USER_LISTS
-    if name.startswith("custom/") and name.endswith(".txt") and name.count("/") == 1:
-        stem = name[7:-4]
-        return stem.startswith("my-") and RE_NAME.match(stem) is not None
-    return False
-
-
-def export_zip_bytes():
-    """settings.json + user lists + own strategies as a zip (bytes)."""
-    files = {"settings.json": json.dumps(clean_settings(load_settings()), indent=1) + "\n"}
-    for n in custom_names():
-        txt = read_nofollow(var_path("custom", n + ".txt"), MAX_BACKUP_FILE)
-        if txt is None:
-            continue
-        files["custom/%s.txt" % n] = txt
-    for n in USER_LISTS:
-        txt = read_nofollow(var_path("lists", n + ".txt"), MAX_BACKUP_FILE)
-        files["lists/%s.txt" % n] = txt or ""
-    if sum(len(v.encode("utf-8")) for v in files.values()) > MAX_BACKUP_TOTAL:
-        raise Fail("backup is larger than %d bytes" % MAX_BACKUP_TOTAL)
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name in sorted(files):
-            zf.writestr(name, files[name].encode("utf-8"))
-    data = buf.getvalue()
-    if len(data) > MAX_BACKUP_ZIP:
-        raise Fail("backup is larger than %d bytes" % MAX_BACKUP_ZIP)
-    return data, sorted(files)
-
-
-def backup_default_path():
-    return os.path.join(os.path.expanduser("~"), "zapret2-backup-%s.zip" % time.strftime("%Y%m%d-%H%M%S"))
-
-
-def check_backup_path(path):
-    """A --file target for `export`: inside the user's home, a plain .zip name."""
-    home = os.path.realpath(os.path.expanduser("~"))
-    ap = os.path.abspath(os.path.expanduser(path))
-    if not (ap == home or ap.startswith(home + "/")):
-        raise Fail("path must be inside your home folder")
-    if os.path.islink(ap):
-        raise Fail("%s is a symlink: refusing" % ap)
-    parent = os.path.dirname(ap)
-    if not os.path.isdir(parent) or not os.path.realpath(parent).startswith(home):
-        raise Fail("folder is outside your home")
-    base = os.path.basename(ap)
-    if not base.endswith(".zip") or len(base) > 128 or not re.match(r"^[A-Za-z0-9._-]+\.zip$", base):
-        raise Fail("name: letters, digits, .-_, ending .zip")
-    return ap
-
-
-def cmd_export(args):
-    data, files = export_zip_bytes()
-    if "--stdout" in args:
-        out({"ok": True, "files": files, "data": base64.b64encode(data).decode("ascii"), "size": len(data)})
-        return
-    path = None
-    if "--file" in args:
-        i = args.index("--file")
-        if i + 1 >= len(args):
-            raise Fail("usage: export [--stdout] [--file PATH]")
-        path = args[i + 1]
-    ap = check_backup_path(path) if path else backup_default_path()
-    d = os.path.dirname(ap)
-    os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".backup-")
-    try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-        os.replace(tmp, ap)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-    out({"ok": True, "path": ap, "files": files})
-
-
-def cmd_import(args):
-    require_installed()
-    if "--file" in args:
-        i = args.index("--file")
-        if i + 1 >= len(args):
-            raise Fail("usage: import [--file PATH]")
-        home = os.path.realpath(os.path.expanduser("~"))
-        ap = os.path.abspath(os.path.expanduser(args[i + 1]))
-        if not (ap == home or ap.startswith(home + "/")):
-            raise Fail("path must be inside your home folder")
-        data = read_nofollow_bytes(ap, MAX_BACKUP_ZIP + 1)
-        if data is None:
-            raise Fail("no such backup: %s" % args[i + 1])
-    else:
-        try:
-            data = base64.b64decode(read_stdin(MAX_BACKUP_ZIP * 2).strip(), validate=True)
-        except (ValueError, Exception):
-            raise Fail("backup is not valid base64")
-    if not data or len(data) > MAX_BACKUP_ZIP:
-        raise Fail("backup has a bad size")
-    try:
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            names = zf.infolist()
-            if len(names) > 64:
-                raise Fail("backup has too many files")
-            total, payload = 0, {}
-            for info in names:
-                n = info.filename
-                if info.is_dir() or not backup_name_ok(n):
-                    raise Fail("unexpected file in backup: %s" % n)
-                if info.file_size > MAX_BACKUP_FILE:
-                    raise Fail("%s is larger than %d bytes" % (n, MAX_BACKUP_FILE))
-                total += info.file_size
-                if total > MAX_BACKUP_TOTAL:
-                    raise Fail("backup is larger than %d bytes" % MAX_BACKUP_TOTAL)
-                raw = zf.read(n)
-                if len(raw) > MAX_BACKUP_FILE:
-                    raise Fail("%s is larger than %d bytes" % (n, MAX_BACKUP_FILE))
-                try:
-                    payload[n] = raw.decode("utf-8")
-                except UnicodeDecodeError:
-                    raise Fail("%s is not valid text" % n)
-    except zipfile.BadZipFile:
-        raise Fail("backup is not a valid zip file")
-    # validate everything before touching VAR
-    if "settings.json" not in payload:
-        raise Fail("backup has no settings.json")
-    try:
-        settings_raw = json.loads(payload["settings.json"])
-    except ValueError:
-        raise Fail("settings.json is not valid")
-    if not isinstance(settings_raw, dict):
-        raise Fail("settings.json is not valid")
-    settings = clean_settings(settings_raw)
-    customs, lists = {}, {}
-    for n, text in payload.items():
-        if n.startswith("custom/"):
-            base = n[len("custom/"):-len(".txt")]
-            custom_name(base)
-            if is_full_preset_text(text):
-                parse_full(text)
-            else:
-                parse_preset(text)
-            customs[base] = text.strip() + "\n"
-        elif n.startswith("lists/"):
-            base = n[len("lists/"):-len(".txt")]
-            lines = clean_list(text, list_kind(base))
-            lists[base] = "\n".join(lines) + ("\n" if lines else "")
-    save_settings(settings)
-    for base, text in customs.items():
-        atomic_write(var_path("custom", base + ".txt"), text)
-    for base, text in lists.items():
-        atomic_write(var_path("lists", base + ".txt"), text)
-    restarted = restart_if_active()
-    out({"ok": True, "files": sorted(payload),
-         "custom": sorted(customs), "lists": {k: len(v.splitlines()) for k, v in lists.items()},
-         "restarted": restarted})
 
 
 # --------------------------------------------------------------- backup / restore
