@@ -27,6 +27,7 @@ Panel {
   // Mixed toward the background, not darkened: Qt.darker collapses on a light
   // theme. Same helper the app window uses.
   readonly property color dim: Model.mixColor(root.fg, root.bg, 0.34)
+  readonly property color innerLine: Model.mixColor(root.fg, root.bg, 0.78)
   readonly property color errorColor: {
     var u = Color.urgent
     return u.hslSaturation < 0.2 ? fg : u
@@ -435,13 +436,6 @@ Panel {
           width: parent.width
           visible: root.ready && root.svc.installed
           spacing: Style.space(8)
-          PanelSectionHeader {
-            text: "СТРАТЕГИЯ"
-            Layout.preferredWidth: Style.space(92)
-            Layout.alignment: Qt.AlignVCenter
-            foreground: root.fg
-            fontFamily: root.fontFamily
-          }
         PanelDropdown {
           id: strategy
           Layout.fillWidth: true
@@ -498,99 +492,115 @@ Panel {
         }
         }
 
-        // last check
+        // Availability, boxed like the app's Обзор card: section outline,
+        // one dim-outlined row per service.
         ColumnLayout {
           width: parent.width
           visible: root.ready && root.svc.installed
-          spacing: Style.space(4)
+          spacing: Style.space(6)
           RowLayout {
             Layout.fillWidth: true
             PanelSectionHeader { text: "ДОСТУПНОСТЬ"; Layout.fillWidth: true; foreground: root.fg; fontFamily: root.fontFamily }
-            HoverHandler { id: statusHover }
-            Text {
-              id: statusText
-              text: root.checkStatusText()
-              color: root.checkStatusSeverity() === "error" ? root.errorColor : root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              textFormat: Text.PlainText
-              elide: Text.ElideRight
-              Layout.maximumWidth: Style.space(200)
-            }
-            PanelToolTip {
-              // The popup has no room for the explainer inline, so it is one
-              // hover away instead of missing entirely.
-              visible: statusHover.hovered && statusText.text !== ""
-              text: Model.CHECK_EXPLAINER
-              fontFamily: root.fontFamily
-            }
-            // Text action in the header line, as in omarchy-xray ("Test").
-            Button {
-              id: checkBtn
-              bordered: false
-              fontSize: Style.font.caption
-              implicitHeight: root.ctlHeight
-              foreground: root.fg
-              hasCursor: root.cursorRow === "check"
-              text: root.ready && root.svc.busyLabel === "проверка" ? "Проверка…" : "Проверить"
-              tooltipText: "Проверить доступность (c)"
-              onClicked: root.svc.runCheck()
-              onHovered: function(h) { if (h) root.setCursor("check") }
-              Accessible.role: Accessible.Button
-              Accessible.name: "Проверить доступность"
-              Accessible.focusable: true
-              Accessible.focused: hasCursor
-            }
           }
-          Repeater {
-            model: root.ready ? Model.categories(root.svc.check) : []
-            delegate: RowLayout {
-              required property var modelData
-              Layout.fillWidth: true
+          BorderSurface {
+            Layout.fillWidth: true
+            implicitHeight: availCol.implicitHeight + Style.space(16)
+            color: "transparent"
+            borderSpec: Border.controlSpec("normal", root.fg, Color.accent)
+            radius: Style.cornerRadius
+            ColumnLayout {
+              id: availCol
+              anchors.fill: parent
+              anchors.margins: Style.space(8)
+              spacing: Style.space(4)
               Text {
+                id: statusText
                 Layout.fillWidth: true
-                text: (modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")) + modelData.label
-                color: modelData.good ? root.fg : root.errorColor
+                visible: text !== ""
+                text: root.checkStatusText()
+                color: root.checkStatusSeverity() === "error" ? root.errorColor : root.dim
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.bodySmall
+                font.pixelSize: Style.font.caption
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                HoverHandler { id: statusHover }
+                PanelToolTip {
+                  visible: statusHover.hovered && statusText.text !== ""
+                  text: Model.CHECK_EXPLAINER
+                  fontFamily: root.fontFamily
+                }
+              }
+              Repeater {
+                model: root.ready ? Model.categories(root.svc.check) : []
+                delegate: BorderSurface {
+                  required property var modelData
+                  Layout.fillWidth: true
+                  implicitHeight: catRow.implicitHeight + Style.space(8)
+                  color: "transparent"
+                  borderSpec: Border.flat(root.innerLine, 1)
+                  radius: Style.cornerRadius
+                  RowLayout {
+                    id: catRow
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.space(8)
+                    anchors.rightMargin: Style.space(8)
+                    Text {
+                      Layout.fillWidth: true
+                      text: (modelData.good ? "✓ " : (modelData.ok > 0 ? "⚠ " : "✗ ")) + modelData.label
+                      color: modelData.good ? root.fg : root.errorColor
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                    Text {
+                      text: modelData.ok + "/" + modelData.total
+                      color: modelData.good ? root.fg : root.errorColor
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                  }
+                }
               }
               Text {
-                text: modelData.ok + "/" + modelData.total
-                color: modelData.good ? root.fg : root.errorColor
+                visible: root.ready && Model.categories(root.svc.check).length === 0
+                text: "Ещё не проверялось"
+                color: root.dim
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.bodySmall
+                font.pixelSize: Style.font.caption
               }
             }
-          }
-          Text {
-            visible: root.ready && Model.categories(root.svc.check).length === 0
-            text: "Ещё не проверялось"
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
           }
         }
 
-        // Footer like xray's SUBSCRIPTIONS line: a quiet label and one text
-        // action at the right edge.
-        PanelSeparator { width: parent.width; foreground: root.fg; visible: root.ready && root.svc.installed }
+        // Two equal outlined actions, as the app's ActionButtons.
         RowLayout {
           width: parent.width
-          visible: root.ready && root.svc.installed
           spacing: Style.space(8)
-          PanelSectionHeader {
+          Button {
+            id: checkBtn
+            visible: root.ready && root.svc.installed
             Layout.fillWidth: true
-            text: "ПРИЛОЖЕНИЕ"
+            Layout.preferredWidth: 1
+            bordered: true
+            implicitHeight: root.ctlHeight
             foreground: root.fg
-            fontFamily: root.fontFamily
+            hasCursor: root.cursorRow === "check"
+            text: root.ready && root.svc.busyLabel === "проверка" ? "Проверка…" : "Проверить"
+            tooltipText: "Проверить доступность (c)"
+            onClicked: root.svc.runCheck()
+            onHovered: function(h) { if (h) root.setCursor("check") }
+            Accessible.role: Accessible.Button
+            Accessible.name: "Проверить доступность"
+            Accessible.focusable: true
+            Accessible.focused: hasCursor
           }
           Button {
-            bordered: false
-            fontSize: Style.font.caption
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            bordered: true
             implicitHeight: root.ctlHeight
             foreground: root.fg
             hasCursor: root.cursorRow === "open"
-            text: "Открыть  󰅂"
+            text: "Открыть приложение"
             tooltipText: "Открыть приложение (o)"
             onClicked: { root.close(); root.svc.openApp() }
             onHovered: function(h) { if (h) root.setCursor("open") }
