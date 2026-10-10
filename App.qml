@@ -148,6 +148,52 @@ Item {
     Layout.preferredWidth: Math.max(implicitWidth, root.actionW)
   }
 
+  // One tool per row: name and note on the left, outlined actions on the
+  // right, in a dim inner outline like every other row in the app.
+  component ToolRow: BorderSurface {
+    id: tool
+    property string title: ""
+    property string note: ""
+    default property alias actions: toolActions.data
+    Layout.fillWidth: true
+    implicitHeight: Math.max(toolText.implicitHeight, toolActions.implicitHeight) + Style.space(16)
+    color: "transparent"
+    borderSpec: Border.flat(root.innerLine, 1)
+    radius: Style.cornerRadius
+    RowLayout {
+      anchors.fill: parent
+      anchors.margins: Style.space(8)
+      spacing: Style.space(12)
+      ColumnLayout {
+        id: toolText
+        Layout.fillWidth: true
+        spacing: Style.space(2)
+        Text {
+          Layout.fillWidth: true
+          text: tool.title
+          color: root.fg
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          textFormat: Text.PlainText
+        }
+        Text {
+          Layout.fillWidth: true
+          visible: text !== ""
+          text: tool.note
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+        }
+      }
+      RowLayout {
+        id: toolActions
+        spacing: Style.space(8)
+      }
+    }
+  }
+
   component PrimaryButton: BorderSurface {
     id: primary
     Layout.preferredWidth: Math.max(implicitWidth, root.actionW)
@@ -2571,60 +2617,65 @@ bordered: true
 
 
       Section {
-        title: "HOSTS FLOWSEAL"
-        trailing: root.ready && root.svc.hostsOn === true ? "включён" : ""
-        actions: [
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+        title: "ИНСТРУМЕНТЫ"
+        ToolRow {
+          title: "Hosts Flowseal" + (root.ready && root.svc.hostsOn === true ? " · включён" : "")
+          note: stp.hostsConfirm && !(root.ready && root.svc.hostsOn) ? "Изменит /etc/hosts, нужен пароль"
+              : "Адреса Discord-серверов в /etc/hosts · нужен пароль"
+          ActionButton {
             visible: root.ready && root.svc.hostsOn === true
             enabled: root.ready && !root.svc.busy
             text: "Выключить"
             tooltipText: "Убрать записи из /etc/hosts (спросит пароль)"
             onClicked: root.svc.hostsSet(false)
-          },
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+          }
+          ActionButton {
             visible: !(root.ready && root.svc.hostsOn === true) && !stp.hostsConfirm
             text: "Включить"
             tooltipText: "Добавить адреса Discord-серверов из Flowseal в /etc/hosts (спросит пароль)"
             onClicked: { stp.hostsConfirm = true; hostsTimer.restart() }
           }
-        ]
-        Hint { Layout.fillWidth: true; text: "Адреса Discord-серверов из Flowseal в /etc/hosts · нужен пароль" }
-        RowLayout {
-          Layout.fillWidth: true
-          visible: stp.hostsConfirm && !(root.ready && root.svc.hostsOn)
-          spacing: Style.space(12)
-          Hint { Layout.fillWidth: true; text: "Изменит /etc/hosts, нужен пароль" }
-          Button { bordered: false; fontSize: Style.font.caption; text: "Подтвердить"; tooltipText: "Изменить /etc/hosts (спросит пароль)"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop(); root.svc.hostsSet(true) } }
-          Button { bordered: false; fontSize: Style.font.caption; text: "Отмена"; tooltipText: "Оставить /etc/hosts как есть"; onClicked: { stp.hostsConfirm = false; hostsTimer.stop() } }
+          ActionButton {
+            visible: stp.hostsConfirm && !(root.ready && root.svc.hostsOn)
+            text: "Отмена"
+            tooltipText: "Оставить /etc/hosts как есть"
+            onClicked: { stp.hostsConfirm = false; hostsTimer.stop() }
+          }
+          ActionButton {
+            visible: stp.hostsConfirm && !(root.ready && root.svc.hostsOn)
+            text: "Подтвердить"
+            tooltipText: "Изменить /etc/hosts (спросит пароль)"
+            onClicked: { stp.hostsConfirm = false; hostsTimer.stop(); root.svc.hostsSet(true) }
+          }
         }
-      }
-
-
-      Section {
-        title: "DISCORD"
-        actions: [
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
-            text: "Очистить кэш"
+        ToolRow {
+          title: "Кэш Discord"
+          note: "Если Discord не грузится; закройте его перед очисткой"
+          ActionButton {
+            text: "Очистить"
             tooltipText: "Удалить кэш Discord"
             onClicked: root.svc.clearDiscordCache()
           }
-        ]
-        Hint { Layout.fillWidth: true; text: "Помогает, если Discord не грузится; закройте Discord перед очисткой" }
+        }
+        ToolRow {
+          title: "DNS"
+          note: (typeof Model.dnsStatusText === "function" ? Model.dnsStatusText(root.ready ? root.svc.dnsInfo : {}) : "")
+              + " · DoH в браузере или DNSOverTLS в systemd-resolved"
+          ActionButton {
+            enabled: root.ready && !root.svc.busy
+            text: "Очистить кэш"
+            tooltipText: "Сбросить кэш DNS (resolvectl flush-caches)"
+            onClicked: root.svc.flushDns()
+          }
+        }
       }
-
 
       Section {
         title: "РЕЗЕРВНАЯ КОПИЯ"
-        actions: [
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+        ToolRow {
+          title: "Экспорт"
+          note: stp.backupExported !== "" ? stp.backupExported : "Настройки, списки и стратегии — в буфер обмена"
+          ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy
             text: "Экспорт"
             tooltipText: "Скопировать резервную копию в буфер обмена"
@@ -2638,10 +2689,22 @@ bordered: true
                 }
               })
             }
-          },
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+          }
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          // Inset like the ToolRow above, so both buttons share one edge.
+          Layout.leftMargin: Style.space(8)
+          Layout.rightMargin: Style.space(8)
+          spacing: Style.space(12)
+          TextField {
+            id: backupField
+            Layout.fillWidth: true
+            placeholderText: "Вставьте текст резервной копии"
+            text: stp.backupImport
+            onTextChanged: stp.backupImport = text
+          }
+          ActionButton {
             enabled: root.ready && root.svc.installed && !root.svc.busy && stp.backupImport.trim() !== ""
             text: "Импорт"
             tooltipText: "Восстановить из вставленного текста"
@@ -2652,69 +2715,19 @@ bordered: true
               root.svc.importBackup(t)
             }
           }
-        ]
-        Hint { Layout.fillWidth: true; text: "Настройки, списки и стратегии в одном файле; экспорт — в буфер обмена." }
-        Hint {
-          Layout.fillWidth: true
-          visible: stp.backupExported !== ""
-          text: stp.backupExported
-        }
-        TextField {
-          id: backupField
-          Layout.fillWidth: true
-          placeholderText: "Вставьте текст резервной копии для импорта"
-          text: stp.backupImport
-          onTextChanged: stp.backupImport = text
         }
       }
-
-
-      Section {
-        title: "БЕЗОПАСНЫЙ DNS"
-        actions: [
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
-            enabled: root.ready && !root.svc.busy
-            text: "Обновить"
-            tooltipText: "Показать текущие DNS-серверы"
-            onClicked: root.svc.loadDns()
-          },
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
-            enabled: root.ready && !root.svc.busy
-            text: "Очистить кэш"
-            tooltipText: "Сбросить кэш DNS (resolvectl flush-caches)"
-            onClicked: root.svc.flushDns()
-          }
-        ]
-        Hint {
-          Layout.fillWidth: true
-          text: "Включите DoH в браузере или DNSOverTLS в systemd-resolved."
-        }
-        Hint {
-          Layout.fillWidth: true
-          text: (typeof Model.dnsStatusText === "function" ? Model.dnsStatusText(root.ready ? root.svc.dnsInfo : {}) : "")
-        }
-      }
-
 
       Section {
         title: "ГОРЯЧИЕ КЛАВИШИ"
-        actions: [
-          Button {
-            bordered: false
-            fontSize: Style.font.caption
+        ToolRow {
+          title: "Сниппет для bindings.lua"
+          note: "Вставьте в конец ~/.config/hypr/bindings.lua, заменив KEY (первая — окно, вторая — обход)"
+          ActionButton {
             text: "Скопировать"
             tooltipText: "Скопировать Lua-сниппет в буфер"
-            foreground: root.fg
             onClicked: root.copyText(hotkeysSnippet.text)
           }
-        ]
-        Hint {
-          Layout.fillWidth: true
-          text: "Вставьте строки в конец ~/.config/hypr/bindings.lua, заменив KEY (первая — окно, вторая — обход)."
         }
         Editor {
           id: hotkeysSnippet
