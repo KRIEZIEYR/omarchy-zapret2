@@ -441,6 +441,34 @@ class ExportImport(unittest.TestCase):
             zm.cmd_import([])
         return emitted
 
+    def test_import_forged_size_cannot_balloon(self):
+        # The declared sizes are forged small while the stream holds ~200 MiB
+        # of zeros (a few hundred KiB deflated): the import must refuse it
+        # without ever holding the stream in memory.
+        import base64
+        import io
+        import tracemalloc
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            with zf.open("lists/list-general-user.txt", "w", force_zip64=True) as w:
+                chunk = b"0" * (1 << 20)
+                for _ in range(200):
+                    w.write(chunk)
+            for info in zf.infolist():
+                info.file_size = 100
+        text = base64.b64encode(buf.getvalue()).decode("ascii")
+        with tempfile.TemporaryDirectory() as tmp:
+            var = self._setup_var(tmp)
+            tracemalloc.start()
+            try:
+                with self.assertRaises(zm.Fail):
+                    self._import_stdin(var, text)
+                peak = tracemalloc.get_traced_memory()[1]
+            finally:
+                tracemalloc.stop()
+        self.assertLess(peak, 16 * 1024 * 1024)
+
     def _zip_b64(self, members):
         import base64
         import io
@@ -1335,3 +1363,22 @@ class CircularStrategy(unittest.TestCase):
         for body, expected in ((text, True), (open(os.path.join(zm.DATA, "presets", "alt.txt")).read(), False)):
             args = zm.render_args("my-x", zm.parse_preset(body), settings, "/E", "/L", ["/F"], counts)
             self.assertEqual("--lua-init=@/E/lua/zapret-auto.lua" in args, expected)
+
+
+class StartSpacing(unittest.TestCase):
+    def test_fifth_start_in_ten_seconds_waits(self):
+        # Regression: a pick that restarts the unit once a second hit
+        # systemd's start limit and left the service failed.
+        slept = []
+        ok = mock.Mock(returncode=0, stderr="")
+        zm.START_TIMES.clear()
+        with mock.patch.object(zm, "sh", lambda *a, **k: ok), \
+             mock.patch.object(zm.time, "sleep", slept.append):
+            for _ in range(4):
+                zm.systemctl("restart", "u.service")
+            self.assertEqual(slept, [])
+            zm.systemctl("restart", "u.service")
+            zm.systemctl("stop", "u.service")                      # stops are never delayed
+        self.assertEqual(len(slept), 1)
+        self.assertGreater(slept[0], 5)
+        zm.START_TIMES.clear()

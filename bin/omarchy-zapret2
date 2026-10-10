@@ -1022,7 +1022,18 @@ def unit_state(unit):
     return st
 
 
+START_TIMES = []
+
+
 def systemctl(verb, unit):
+    if verb in ("start", "restart"):
+        # systemd refuses the 6th start inside 10 s (StartLimitBurst=5): a pick
+        # over a fast network (a VPN, say) would trip it and leave the unit failed.
+        now = time.time()
+        START_TIMES[:] = [t for t in START_TIMES if now - t < 10.5]
+        if len(START_TIMES) >= 4:
+            time.sleep(max(0.0, 10.6 - (now - START_TIMES[0])))
+        START_TIMES.append(time.time())
     r = sh("systemctl", "--no-ask-password", verb, unit, timeout=60)
     if r.returncode != 0:
         raise Fail((r.stderr.strip().splitlines() or ["systemctl %s failed" % verb])[-1])
@@ -1544,6 +1555,7 @@ def cmd_import(args):
     if total > MAX_BACKUP_TOTAL:
         raise Fail("backup is larger than %d bytes" % MAX_BACKUP_TOTAL)
     staged = {}
+    used = 0
     with zf:
         for info in infos:
             name = info.filename
@@ -1551,8 +1563,19 @@ def cmd_import(args):
                 raise Fail("backup holds an unexpected file: %s" % name)
             if info.file_size > MAX_BACKUP_FILE:
                 raise Fail("%s is larger than %d bytes" % (name, MAX_BACKUP_FILE))
+            # The sizes above come from the archive and can be forged: read at
+            # most one byte past the limit, so a bomb never grows in memory.
             try:
-                content = zf.read(name).decode("utf-8")
+                with zf.open(info) as member:
+                    data = member.read(MAX_BACKUP_FILE + 1)
+                if len(data) > MAX_BACKUP_FILE:
+                    raise Fail("%s is larger than %d bytes" % (name, MAX_BACKUP_FILE))
+                used += len(data)
+                if used > MAX_BACKUP_TOTAL:
+                    raise Fail("backup is larger than %d bytes" % MAX_BACKUP_TOTAL)
+                content = data.decode("utf-8")
+            except Fail:
+                raise
             except Exception as e:
                 raise Fail("backup file %s is unreadable: %s" % (name, e))
             staged[name] = content

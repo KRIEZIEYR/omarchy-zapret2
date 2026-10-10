@@ -57,18 +57,23 @@ the app under Движок → Удаление.
 
 - **Overview**: on/off, the active strategy, reachability of YouTube, Discord,
   Google and Cloudflare (TLS and, when curl has HTTP/3, QUIC) per URL.
-- **Strategies**: Zapret 2 NEXT presets (shown with " · Z2", e.g. "General · Z2")
-  and Flowseal presets (without suffix), plus your own, edited in the window.
+- **Strategies**: one ranked list of Zapret 2 NEXT presets (shown with " · Z2"),
+  Flowseal presets and your own, each with a score bar against the no-bypass
+  baseline. *Run pick* tries the presets one by one (1–3 min, no password) and
+  fills the scores in; a header button switches between "by score" and "by
+  source". Under **Advanced search**: *Circular config* builds the own strategy
+  `my-circular`, which rotates between the best presets per host (zapret2's
+  `circular` orchestrator; its syntax passes `nfqws2 --dry-run`, rotation on a
+  real DPI-filtered network is untested), and *blockcheck2* runs zapret2's own
+  exhaustive search (quick/standard/force) and lets you save a finding as a
+  strategy. blockcheck2 needs `host` or `nslookup`: `omarchy pkg add bind`.
 - **Lists**: your sites, exclusions and IP networks; the bundled lists
   (read-only) and **Update from Flowseal** for fresh upstream lists. One
   domain per line covers its subdomains; `^domain` means that host only.
-- **Search**: *quick autopick* tries the presets one by one and keeps the
-  best (1–3 min, no password); *blockcheck2* runs zapret2's own exhaustive
-  search (quick/standard/force) and lets you save a finding as a strategy.
-- **Search** needs `host` or `nslookup` for blockcheck2: `omarchy pkg add bind`.
 - **Engine**: version, engine update, update of the system copy after a plugin
   update, doctor, service log, removal.
-- **Settings**: start at login, IPv6, game filter (TCP/UDP 1024–65535 by
+- **Settings**: language (English by default, Russian available), start at
+  login, IPv6, game filter (TCP/UDP 1024–65535 by
   ipset), ipset mode, Discord voice mode.
 - **Bar**: click for a popup (switch, strategy, last check), right-click
   toggles, middle-click opens the app. Bright filled shield when on, outline
