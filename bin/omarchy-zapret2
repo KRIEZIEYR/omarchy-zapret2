@@ -1948,8 +1948,7 @@ def cmd_autopick(args):
     if unit_state(BC_UNIT).get("ActiveState") in ("active", "activating"):
         raise Fail("blockcheck is running: stop it first")
     names = [p["name"] for p in all_presets() if p["group"] != "custom"]
-    if "my-circular" in custom_names():
-        names.append("my-circular")                # the rotation is measured with the rest
+    names += custom_names()                        # own strategies are tried with the rest
     valid = set(names) | set(custom_names())
     names = [n for n in (args[0].split(",") if args else names) if n in valid]
     if not names:
@@ -1971,7 +1970,7 @@ def cmd_autopick(args):
         try:
             systemctl("restart", UNIT)
             wait_active()
-            if name == "my-circular" and "zapret-auto.lua" not in (read_nofollow(os.path.join(RUN, "nfqws2.conf"), MAX_SMALL * 8) or ""):
+            if name in custom_names() and uses_circular(name) and not circular_loaded():
                 raise Fail("system part is outdated: update it in Engine")
             res = run_checks()
             row = {"preset": name, "score": res["score"], "total": res["total"],
@@ -2008,7 +2007,7 @@ def cmd_measure(args):
         raise Fail("blockcheck is running: stop it first")
     progress(step=1, of=1, preset=args[0])
     row, loaded = measure_preset(args[0])
-    if not loaded and args[0] == "my-circular":
+    if not loaded and uses_circular(args[0]):
         raise Fail("system part is outdated: update it in Engine")
     shown = bool(row and row["total"] > 0) and merge_autopick_row(row)
     out({"ok": True, "row": row, "shown": shown})
@@ -2106,6 +2105,15 @@ def circular_strategy(scores, limit=4):
     return "\n".join(out_lines) + "\n", names
 
 
+def uses_circular(name):
+    text = read_nofollow(var_path("custom", name + ".txt"), MAX_SMALL * 8) or ""
+    return "--lua-desync=circular" in text
+
+
+def circular_loaded():
+    return "zapret-auto.lua" in (read_nofollow(os.path.join(RUN, "nfqws2.conf"), MAX_SMALL * 8) or "")
+
+
 def measure_preset(name):
     """Run the checks once with one strategy, then put the service back as it
     was. Returns (row, loaded): loaded is False when the root side did not
@@ -2118,8 +2126,7 @@ def measure_preset(name):
         save_settings(dict(before, preset=name))
         systemctl("restart", UNIT)
         wait_active()
-        conf = read_nofollow(os.path.join(RUN, "nfqws2.conf"), MAX_SMALL * 8) or ""
-        loaded = "zapret-auto.lua" in conf
+        loaded = circular_loaded() or not uses_circular(name)
         if loaded:
             res = run_checks()
             row = {"preset": name, "score": res["score"], "total": res["total"],

@@ -649,9 +649,9 @@ class AutopickServiceState(unittest.TestCase):
         self.assertTrue(result["notNeeded"])
         self.assertEqual(calls[-1], ("stop", zm.UNIT))
 
-    def test_default_pick_measures_my_circular(self):
+    def test_default_pick_measures_custom_folder(self):
         _, result, _ = self._run(2, [3, 4], custom=["my-circular", "my-x"], default=True)
-        self.assertEqual([r["preset"] for r in result["rows"]], ["p0", "p1", "my-circular"])
+        self.assertEqual([r["preset"] for r in result["rows"]], ["p0", "p1", "my-circular", "my-x"])
 
     def test_needed_keeps_service_on(self):
         calls, result, _ = self._run(2, [3, 8])
