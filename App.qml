@@ -1611,11 +1611,6 @@ bordered: true
                       font.bold: true
                       text: value === 0 ? "0" : (value > 0 ? "+" : "−") + Math.abs(value)
                     }
-                    Hint {
-                      Layout.alignment: Qt.AlignVCenter
-                      color: sp.isWorse(modelData.name) ? root.bad : root.dim
-                      text: scoreMeta
-                    }
                     Item {
                       Layout.preferredWidth: Style.space(72)
                       Layout.fillHeight: true
@@ -1630,6 +1625,11 @@ bordered: true
                         tooltipText: root.t("Проверить ") + Model.presetTitle(modelData.name)
                         onClicked: root.svc.measure(modelData.name)
                       }
+                    }
+                    Hint {
+                      Layout.alignment: Qt.AlignVCenter
+                      color: sp.isWorse(modelData.name) ? root.bad : root.dim
+                      text: scoreMeta
                     }
                     // The width is reserved so the row never resizes when the
                     // text actions appear under the pointer.
