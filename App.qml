@@ -1580,6 +1580,21 @@ bordered: true
                       visible: sp.flat
                       text: modelData.group === "flowseal" ? "Flowseal" : modelData.group === "custom" ? root.t("Свои") : "Z2"
                     }
+                    Item {
+                      Layout.preferredWidth: Style.space(72)
+                      Layout.fillHeight: true
+                      Button {
+                        anchors.fill: parent
+                        verticalPadding: 0
+                        bordered: false
+                        fontSize: Style.font.caption
+                        visible: sp.selectedName === modelData.name
+                        enabled: root.ready && !root.svc.busy
+                        text: root.t("Проверить")
+                        tooltipText: root.t("Проверить ") + Model.presetTitle(modelData.name)
+                        onClicked: root.svc.measure(modelData.name)
+                      }
+                    }
                     // Score against the no-bypass baseline, as in the old Pick list.
                     Rectangle {
                       Layout.preferredWidth: Style.space(90)
@@ -1610,21 +1625,6 @@ bordered: true
                       color: value < 0 ? root.bad : value === 0 ? root.dim : Color.accent
                       font.bold: true
                       text: value === 0 ? "0" : (value > 0 ? "+" : "−") + Math.abs(value)
-                    }
-                    Item {
-                      Layout.preferredWidth: Style.space(72)
-                      Layout.fillHeight: true
-                      Button {
-                        anchors.fill: parent
-                        verticalPadding: 0
-                        bordered: false
-                        fontSize: Style.font.caption
-                        visible: sp.selectedName === modelData.name
-                        enabled: root.ready && !root.svc.busy
-                        text: root.t("Проверить")
-                        tooltipText: root.t("Проверить ") + Model.presetTitle(modelData.name)
-                        onClicked: root.svc.measure(modelData.name)
-                      }
                     }
                     Hint {
                       Layout.alignment: Qt.AlignVCenter
