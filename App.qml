@@ -1570,9 +1570,10 @@ bordered: true
                       font.pixelSize: Style.font.bodySmall
                     }
                     Label {
-                      Layout.fillWidth: true
+                      Layout.maximumWidth: Style.space(220)
                       fixedWidth: true
-                      text: Model.presetTitle(modelData.name)
+                      // The source tag beside it already says Z2.
+                      text: sp.flat ? Model.presetTitle(modelData.name).replace(/ · Z2$/, "") : Model.presetTitle(modelData.name)
                       font.bold: isActive
                     }
                     Hint {
@@ -1580,6 +1581,7 @@ bordered: true
                       visible: sp.flat
                       text: modelData.group === "flowseal" ? "Flowseal" : modelData.group === "custom" ? root.t("Свои") : "Z2"
                     }
+                    Item { Layout.fillWidth: true }
                     Item {
                       Layout.preferredWidth: Style.space(72)
                       Layout.fillHeight: true
