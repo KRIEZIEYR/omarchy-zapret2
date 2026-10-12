@@ -608,7 +608,7 @@ class PresetsShow(unittest.TestCase):
 
 
 class AutopickServiceState(unittest.TestCase):
-    def _run(self, baseline_score, preset_scores):
+    def _run(self, baseline_score, preset_scores, custom=(), default=False):
         """Run cmd_autopick with stubbed side effects; return (calls, result)."""
         calls = []
         saved = {}
@@ -630,7 +630,7 @@ class AutopickServiceState(unittest.TestCase):
              mock.patch.object(zm, "unit_state", lambda u: {"ActiveState": "inactive"}), \
              mock.patch.object(zm, "all_presets",
                                lambda: [{"name": n, "group": "g"} for n in names]), \
-             mock.patch.object(zm, "custom_names", lambda: []), \
+             mock.patch.object(zm, "custom_names", lambda: list(custom)), \
              mock.patch.object(zm, "load_settings", lambda: dict(settings)), \
              mock.patch.object(zm, "save_settings", lambda s: settings.update(s)), \
              mock.patch.object(zm, "progress", lambda **kw: None), \
@@ -641,7 +641,7 @@ class AutopickServiceState(unittest.TestCase):
              mock.patch.object(zm, "save_state",
                                lambda name, obj: saved.update({name: obj})), \
              mock.patch.object(zm, "out", lambda obj: emitted.update(obj)):
-            zm.cmd_autopick([",".join(names)])
+            zm.cmd_autopick([] if default else [",".join(names)])
         return calls, saved["autopick.json"], emitted
 
     def test_not_needed_stops_service(self):
@@ -649,11 +649,23 @@ class AutopickServiceState(unittest.TestCase):
         self.assertTrue(result["notNeeded"])
         self.assertEqual(calls[-1], ("stop", zm.UNIT))
 
+    def test_default_pick_measures_my_circular(self):
+        _, result, _ = self._run(2, [3, 4], custom=["my-circular", "my-x"], default=True)
+        self.assertEqual([r["preset"] for r in result["rows"]], ["p0", "p1", "my-circular"])
+
     def test_needed_keeps_service_on(self):
         calls, result, _ = self._run(2, [3, 8])
         self.assertFalse(result["notNeeded"])
         self.assertEqual(calls[-1], ("restart", zm.UNIT))
         self.assertNotEqual(calls[-1], ("stop", zm.UNIT))
+
+
+class MeasureOne(unittest.TestCase):
+    def test_unknown_strategy_rejected(self):
+        with mock.patch.object(zm, "require_installed", lambda: None), \
+             mock.patch.object(zm, "all_presets", lambda: [{"name": "a", "group": "g"}]):
+            with self.assertRaises(zm.Fail):
+                zm.cmd_measure(["nope"])
 
 
 class CircularPlanner(unittest.TestCase):

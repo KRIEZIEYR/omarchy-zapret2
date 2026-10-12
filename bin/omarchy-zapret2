@@ -1948,6 +1948,8 @@ def cmd_autopick(args):
     if unit_state(BC_UNIT).get("ActiveState") in ("active", "activating"):
         raise Fail("blockcheck is running: stop it first")
     names = [p["name"] for p in all_presets() if p["group"] != "custom"]
+    if "my-circular" in custom_names():
+        names.append("my-circular")                # the rotation is measured with the rest
     valid = set(names) | set(custom_names())
     names = [n for n in (args[0].split(",") if args else names) if n in valid]
     if not names:
@@ -1969,6 +1971,8 @@ def cmd_autopick(args):
         try:
             systemctl("restart", UNIT)
             wait_active()
+            if name == "my-circular" and "zapret-auto.lua" not in (read_nofollow(os.path.join(RUN, "nfqws2.conf"), MAX_SMALL * 8) or ""):
+                raise Fail("system part is outdated: update it in Engine")
             res = run_checks()
             row = {"preset": name, "score": res["score"], "total": res["total"],
                    "categories": {k: [v["ok"], v["total"]] for k, v in res["categories"].items()}}
@@ -1993,6 +1997,21 @@ def cmd_autopick(args):
               "notNeeded": not_needed}
     save_state("autopick.json", result)
     out(dict(result, ok=True))
+
+
+def cmd_measure(args):
+    """Check one strategy on its own and add the row to the Pick list."""
+    require_installed()
+    if not args or args[0] not in set(p["name"] for p in all_presets()):
+        raise Fail("unknown strategy")
+    if unit_state(BC_UNIT).get("ActiveState") in ("active", "activating"):
+        raise Fail("blockcheck is running: stop it first")
+    progress(step=1, of=1, preset=args[0])
+    row, loaded = measure_preset(args[0])
+    if not loaded and args[0] == "my-circular":
+        raise Fail("system part is outdated: update it in Engine")
+    shown = bool(row and row["total"] > 0) and merge_autopick_row(row)
+    out({"ok": True, "row": row, "shown": shown})
 
 
 def circular_domains():
@@ -3197,6 +3216,8 @@ def main(argv):
         cmd_check(args)
     elif cmd == "autopick":
         cmd_autopick(args)
+    elif cmd == "measure":
+        cmd_measure(args)
     elif cmd == "circular":
         cmd_circular(args)
     elif cmd == "blockcheck":

@@ -327,6 +327,20 @@ bordered: true
       // The width is reserved so the bar never resizes when the text action
       // appears under the pointer.
       Item {
+        Layout.preferredWidth: Style.space(72)
+        Layout.fillHeight: true
+        Button {
+          anchors.fill: parent
+          bordered: false
+          fontSize: Style.font.caption
+          visible: !!row && !row.baseline && (pickHover.hovered || hasCursor || selected)
+          enabled: !!row && !row.baseline && root.ready && !root.svc.busy
+          text: root.t("Проверить")
+          tooltipText: root.t("Проверить ") + ((row && row.title) || (row && row.preset) || "")
+          onClicked: { root.svc.measure(row.preset) }
+        }
+      }
+      Item {
         Layout.preferredWidth: Style.space(96)
         Layout.fillHeight: true
         Button {

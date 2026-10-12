@@ -251,6 +251,14 @@ Item {
     longJob(args, "автоподбор", function(d) { return d ? root.t("Выбрана стратегия ") + Model.presetTitle(d.chosen) : root.t("Готово") })
   }
 
+  function measure(name) {
+    longJob(["measure", name], "проверка", function(d) {
+      var r = d && d.row
+      if (!r) return root.t("Готово")
+      return r.error ? r.error : Model.presetTitle(name) + ": " + r.score + "/" + r.total
+    })
+  }
+
   function circularPlan(level) {
     var args = ["circular", "plan"]
     if (level) args.push("--level", String(level))

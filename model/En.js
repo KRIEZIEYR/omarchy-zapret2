@@ -277,6 +277,8 @@ var EN = {
   "Пресеты Flowseal": "Flowseal presets",
   "Применить": "Apply",
   "Применить ": "Apply ",
+  "Проверить": "Test",
+  "Проверить ": "Test ",
   "Проверить": "Check",
   "Проверить домен": "Check domain",
   "Проверить доступность": "Check availability",
