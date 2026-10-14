@@ -311,6 +311,7 @@ var EN = {
   "Системные файлы": "System files",
   "Скачивает релиз bol-van/zapret2, сверяет sha256 и кладёт в /opt/omarchy-zapret2. Пароль — один раз.": "Downloads the bol-van/zapret2 release, verifies sha256 and puts it in /opt/omarchy-zapret2. Password once.",
   "Скопировано": "Copied",
+  "Слишком большой текст в буфере": "Clipboard text is too large",
   "Скопировано файлов: ": "Files copied: ",
   "Скопировать": "Copy",
   "Скопировать Lua-сниппет в буфер": "Copy the Lua snippet to the clipboard",

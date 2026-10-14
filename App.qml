@@ -113,6 +113,39 @@ Item {
     }
   }
 
+  // Paste goes through wl-paste capped by head -c and a timeout: Qt's own
+  // paste reads a foreign clipboard until EOF, so a streaming source could
+  // exhaust the shared shell's memory.
+  readonly property int pasteLimit: 512 * 1024
+  property var pasteTarget: null
+  function boundedPaste(target) {
+    if (pasteProc.running || !target || target.readOnly) return
+    pasteTarget = target
+    pasteProc.running = true
+  }
+  Process {
+    id: pasteProc
+    command: ["sh", "-c", "timeout 3 wl-paste -n -t text 2>/dev/null | head -c " + (root.pasteLimit + 1)]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var t = root.pasteTarget
+        root.pasteTarget = null
+        if (!t || text === "") return
+        if (text.length > root.pasteLimit) { root.svc.flash(root.t("Слишком большой текст в буфере")); return }
+        if (t.selectedText !== "") t.remove(t.selectionStart, t.selectionEnd)
+        t.insert(t.cursorPosition, text)
+      }
+    }
+  }
+
+  component SafeField: TextField {
+    id: sf
+    ContextMenu.menu: null
+    Keys.onShortcutOverride: function(e) { if (e.matches(StandardKey.Paste)) e.accepted = true }
+    Keys.onPressed: function(e) { if (e.matches(StandardKey.Paste)) { e.accepted = true; root.boundedPaste(sf) } }
+    MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton }
+  }
+
   // --- small building blocks ---------------------------------------------
   component Label: Text {
     textFormat: Text.PlainText
@@ -367,6 +400,10 @@ bordered: true
       selectionColor: Style.selectionFillFor(root.fg, Color.accent)
       background: null
       padding: Style.space(8)
+      ContextMenu.menu: null
+      Keys.onShortcutOverride: function(e) { if (e.matches(StandardKey.Paste)) e.accepted = true }
+      Keys.onPressed: function(e) { if (e.matches(StandardKey.Paste)) { e.accepted = true; root.boundedPaste(area) } }
+      MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton }
     }
   }
 
@@ -857,7 +894,7 @@ bordered: true
           visible: root.ready && root.svc.installed
           title: root.t("Проверить домен")
           note: root.t("через пробел или запятую, до 10")
-          TextField {
+          SafeField {
             id: domainField
             Layout.preferredWidth: Style.space(240)
             placeholderText: "example.com"
@@ -1409,12 +1446,12 @@ bordered: true
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing && sp.importOpen
       spacing: Style.space(8)
-      TextField {
+      SafeField {
         id: impText
         Layout.fillWidth: true
         placeholderText: root.t("Текст, путь к файлу или ссылка http(s)")
       }
-      TextField {
+      SafeField {
         id: impName
         Layout.preferredWidth: Style.space(160)
         placeholderText: root.t("Имя (необязательно)")
@@ -1433,7 +1470,7 @@ bordered: true
       Layout.fillWidth: true
       visible: !sp.editing && !sp.showing
       spacing: Style.space(8)
-      TextField {
+      SafeField {
         id: filterField
         Layout.fillWidth: true
         placeholderText: root.t("Найти стратегию")
@@ -1802,7 +1839,7 @@ bordered: true
       RowLayout {
         Layout.fillWidth: true
         Label { text: root.t("Имя:") }
-        TextField {
+        SafeField {
           id: nameField
           Layout.preferredWidth: Style.space(220)
           text: sp.editName
@@ -2232,7 +2269,7 @@ bordered: true
         RowLayout {
           Layout.fillWidth: true
           spacing: Style.space(8)
-          TextField { id: domains; Layout.fillWidth: true; text: se.failingHosts; placeholderText: root.t("домены через пробел") }
+          SafeField { id: domains; Layout.fillWidth: true; text: se.failingHosts; placeholderText: root.t("домены через пробел") }
           Dropdown {
             id: level
             Layout.preferredWidth: root.actionW
@@ -2644,7 +2681,7 @@ bordered: true
             Layout.fillWidth: true
             spacing: Style.space(2)
             Label { text: root.t("Порты TCP") }
-            TextField {
+            SafeField {
               id: gameTcpField
               Layout.fillWidth: true
               text: root.ready ? (root.svc.settings.gameTcp || "") : ""
@@ -2656,7 +2693,7 @@ bordered: true
             Layout.fillWidth: true
             spacing: Style.space(2)
             Label { text: root.t("Порты UDP") }
-            TextField {
+            SafeField {
               id: gameUdpField
               Layout.fillWidth: true
               text: root.ready ? (root.svc.settings.gameUdp || "") : ""
@@ -2795,7 +2832,7 @@ bordered: true
         ToolRow {
           title: root.t("Импорт")
           note: root.t("Текст из экспорта")
-          TextField {
+          SafeField {
             id: backupField
             Layout.preferredWidth: Style.space(240)
             placeholderText: root.t("Вставьте текст копии")
