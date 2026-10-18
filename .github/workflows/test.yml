@@ -1,10 +1,10 @@
 name: test
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: node tests/run.js
-      - run: python3 -m py_compile bin/omarchy-zapret2
+      - run: python3 -m py_compile bin/omarchy-zapret2 bin/telegram.py
       - run: python3 -m unittest discover -s tests/manager

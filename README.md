@@ -30,12 +30,53 @@ bol-van/zapret2's GitHub releases, checks it against the sha256 digest GitHub
 publishes for the asset, and asks for your password once (polkit). Then
 switch it on.
 
+## Telegram Proxy
+
+The **Telegram** tab installs the headless [Flowseal tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)
+(MIT) into an isolated Python environment. Press **Install proxy**, **Start proxy**,
+then **Connect Telegram** and confirm the proxy in Telegram Desktop.
+It listens only on `127.0.0.1:1443`; its secret stays the same after restarts and updates.
+**Copy link** is available if the `tg://` handler is not registered.
+
+The user service `omarchy-zapret2-telegram.service` runs without root and independently
+of nfqws2. Start at login is optional. Cloudflare fallback and background domain
+refresh are disabled; the upstream direct TCP fallback remains available.
+The connection check tests WebSocket handshakes for messages and media on DC2/DC4;
+it does not prove that an account, every datacenter or calls work on a filtered network.
+When stopping the proxy, disable its connection in Telegram as well.
+
+Source, environments and private settings live under
+`~/.local/share/omarchy-zapret2/telegram`; the unit is in `~/.config/systemd/user`.
+The initial source is pinned to commit `307a384ab7f522e34bb1a045884d0bd90f40bee5`
+(v1.11.2) and checked against a bundled SHA256. **Update** explicitly resolves the latest
+upstream commit over HTTPS, records the downloaded source digest and builds a new
+environment before switching. An update to a new commit does not have a bundled checksum.
+The previous environment remains available for rollback if restart fails.
+Secrets are omitted from status and redacted before entering the journal.
+The proxy can be removed from its tab; the port and connection secret are retained.
+Full app removal also stops and removes the Telegram user service.
+
+```bash
+omarchy-zapret2 telegram install
+omarchy-zapret2 telegram on
+omarchy-zapret2 telegram check
+omarchy-zapret2 telegram status
+omarchy-zapret2 telegram set autostart on
+omarchy-zapret2 telegram set port 2443  # reconnect Telegram afterwards
+omarchy-zapret2 telegram logs
+omarchy-zapret2 telegram update
+omarchy-zapret2 telegram off
+omarchy-zapret2 telegram remove
+```
+
 ## Dependencies
 
 - Omarchy with shell plugins (Quickshell), x86_64 only (the release binary).
 - `/usr/bin/python3`, `curl`, `nftables`, polkit — all part of Omarchy.
 - The zapret2 engine itself (bol-van/zapret2, MIT) is downloaded from its
   GitHub releases on first install and verified by sha256.
+- Telegram proxy: Python `venv`/`pip`, `cryptography`, `httpx[http2]` and `certifi`
+  (downloaded into its own environment); `xdg-open` and `wl-copy` for connection links.
 - Optional: `bind` (`omarchy pkg add bind`) for the deep search (blockcheck2).
 
 ## Remove
@@ -75,6 +116,8 @@ the app under Движок → Удаление.
 - **Settings**: language (English by default, Russian available), start at
   login, IPv6, game filter (TCP/UDP 1024–65535 by
   ipset), ipset mode, Discord voice mode.
+- **Telegram**: a local MTProto to WebSocket proxy, connection link, separate
+  autostart, transport check, engine update and redacted logs.
 - **Bar**: click for a popup (switch, strategy, last check), right-click
   toggles, middle-click opens the app. Bright filled shield when on, outline
   when off, a dot on errors.
@@ -197,4 +240,5 @@ The shell does not notice edits through the symlink: run `omarchy restart shell`
 MIT. zapret2 by bol-van (MIT, downloaded at install time, not bundled).
 Presets, lists and the extra fake payloads in `data/` come from Zapret 2 NEXT
 (MIT, `data/LICENSE.zapret2-next.txt`), which builds on Flowseal's
-zapret-discord-youtube (MIT).
+zapret-discord-youtube (MIT). Telegram proxy by Flowseal
+([tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy), MIT, downloaded on demand).

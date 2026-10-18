@@ -16,6 +16,7 @@ plugin folder. That copy treats everything under /var/lib/omarchy-zapret2
 enums, lists are re-validated line by line, custom strategies pass an
 allowlist of nfqws2 options and Lua desync functions.
 
+  telegram status|install|update|on|off|restart|link|check|logs|remove|set port|autostart <value>
   status                       JSON state (what the widget reads)
   setup                        download the latest zapret2 release, verify it, install (one prompt)
   engine check                 installed vs latest release
@@ -54,6 +55,7 @@ import ipaddress
 import json
 import os
 import pwd
+import runpy
 import re
 import shutil
 import subprocess
@@ -1085,6 +1087,12 @@ def note_updated(kind):
         pass
 
 
+def telegram_module():
+    return runpy.run_path(os.path.join(APP, "bin", "telegram.py"), init_globals={
+        "Fail": Fail, "sh": sh, "http_get": http_get, "atomic_write": atomic_write,
+        "SELF": SELF, "out": out})
+
+
 def cmd_status():
     rec = load_record()
     st = {"ok": True, "installed": installed(), "engine": rec.get("version") if rec else None,
@@ -1093,6 +1101,10 @@ def cmd_status():
           "hosts": hosts_state()[0],
           "check": load_state("check.json", {}), "autopick": load_state("autopick.json", {}),
           "updates": updates_state()}
+    try:
+        st["telegram"] = telegram_module()["state"]()
+    except (Fail, OSError) as e:
+        st["telegram"] = {"installed": False, "active": "error", "error": str(e)}
     if rec and rec.get("uid") != os.getuid():
         st["error"] = "zapret2 is set up for another user on this machine"
     if st["installed"]:
@@ -2572,6 +2584,7 @@ def cmd_setup(args):
 
 
 def cmd_remove(args):
+    telegram_module()["command"](["remove"])
     rec = load_record()
     if not rec:
         desktop(False)
@@ -2935,6 +2948,7 @@ def install_app():
     try:
         os.makedirs(os.path.join(tmp, "bin"))
         shutil.copyfile(SELF, os.path.join(tmp, "bin", "omarchy-zapret2"))
+        shutil.copyfile(os.path.join(APP, "bin", "telegram.py"), os.path.join(tmp, "bin", "telegram.py"))
         shutil.copytree(DATA, os.path.join(tmp, "data"), symlinks=False)
         normalize_tree(tmp)
         os.chmod(os.path.join(tmp, "bin", "omarchy-zapret2"), 0o755)
@@ -3186,6 +3200,11 @@ def main(argv):
 
     if cmd == "status":
         cmd_status()
+    elif cmd == "telegram":
+        try:
+            out({"ok": True, **telegram_module()["command"](args)})
+        except (OSError, tarfile.TarError) as e:
+            raise Fail("Telegram: %s" % e)
     elif cmd == "presets" and args[:1] == ["update"]:
         cmd_presets_update()
     elif cmd == "presets" and args[:1] == ["show"]:

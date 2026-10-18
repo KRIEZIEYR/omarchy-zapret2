@@ -31,7 +31,7 @@ ever touching nfqws2 options.
 - Picks the strategy for the user's ISP: quick autopick against a no-bypass
   baseline, and zapret2's own blockcheck2 for a deep search.
 - Native to Omarchy: shell theme, bar widget, launcher entry; no Electron, no
-  extra processes besides the engine.
+  extra processes besides the engine and the optional Telegram proxy.
 - Security first: root runs only root-owned code; everything the user can
   write (settings, lists, strategies) is validated as data.
 
@@ -49,7 +49,9 @@ ever touching nfqws2 options.
 - Tabs: Overview (state, reachability per service), Strategies (Flowseal,
   Zapret 2 NEXT presets, own), Lists (user hostlists/ipsets, upstream lists),
   Search (autopick, blockcheck2), Engine (update, doctor, logs, removal),
-  Settings (autostart, IPv6, game filter, ipset mode, Discord voice).
+  Settings (autostart, IPv6, game filter, ipset mode, Discord voice),
+  Telegram (optional local Flowseal MTProto to WebSocket proxy with separate
+  user service, connection link, autostart, transport checks, updates and logs).
 - Privileged steps (setup, engine update, system copy update, removal) ask for
   a password via polkit; everything else is passwordless.
 - x86_64 only (release binary). blockcheck2 needs `host`/`nslookup` (bind).

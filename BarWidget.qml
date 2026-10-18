@@ -573,6 +573,26 @@ Panel {
           }
         }
 
+        RowLayout {
+          width: parent.width
+          spacing: Style.space(8)
+          Button {
+            Layout.fillWidth: true
+            bordered: false
+            leftAlign: true
+            foreground: root.fg
+            text: "Telegram · " + (root.ready ? root.svc.telegramStateText : root.t("Загрузка…"))
+            onClicked: { root.close(); root.svc.openApp(5) }
+          }
+          ToggleSwitch {
+            foreground: root.fg
+            checked: root.ready && (root.svc.telegram.active === "active" || root.svc.telegram.active === "activating")
+            enabled: root.ready && root.svc.telegram.installed === true && !root.svc.busy
+            Accessible.name: "Telegram Proxy"
+            onToggled: root.svc.telegramAction([checked ? "off" : "on"])
+          }
+        }
+
         // Two equal outlined actions, as the app's ActionButtons.
         RowLayout {
           width: parent.width

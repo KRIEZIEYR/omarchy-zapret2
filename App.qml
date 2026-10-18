@@ -29,7 +29,7 @@ Item {
   property bool opened: false
   property bool closingFromHost: false
   property int tab: 0
-  readonly property var tabs: [root.t("Обзор"), root.t("Стратегии"), root.t("Списки"), root.t("Движок"), root.t("Настройки")]
+  readonly property var tabs: [root.t("Обзор"), root.t("Стратегии"), root.t("Списки"), root.t("Движок"), root.t("Настройки"), "Telegram"]
 
   readonly property string fontFamily: Style.font.family
   readonly property string monoFamily: "monospace"
@@ -62,7 +62,7 @@ Item {
     if (ready) { svc.appOpen = true; svc.refresh() }
     // {"scroll": 0..1} jumps the page to that fraction (screenshots, links).
     if (p.scroll !== undefined) Qt.callLater(function() {
-      var pg = [ovPg, spPg.scroller, lpPg, epPg, stpPg][tab]
+      var pg = [ovPg, spPg.scroller, lpPg, epPg, stpPg, tgPg][tab]
       if (!pg) return
       var f = pg.contentItem
       f.contentY = Math.max(0, (f.contentHeight - f.height) * Math.max(0, Math.min(1, Number(p.scroll) || 0)))
@@ -83,6 +83,7 @@ Item {
       if (spPg.editing) { spPg.editing = false; return }
       if (spPg.selectedName !== "") { spPg.selectedName = ""; return }
     }
+    if (tab === 5 && tgPg.armRemove) { tgPg.armRemove = false; return }
     if (tab === 4 && stpPg.hostsConfirm) { stpPg.hostsConfirm = false; return }
     if (tab === 3 && epPg.armRemove) { epPg.armRemove = false; return }
     if (tab === 0 && ovPg.cursorKey !== "") { ovPg.cursorKey = ""; return }
@@ -239,12 +240,14 @@ Item {
     Layout.preferredWidth: Math.max(implicitWidth, root.actionW)
     property string text: ""
     property string tooltipText: ""
-    property color fg: root.fg
+    property bool filled: false
+    property bool focusable: false
+    property color fg: filled ? root.bg : root.fg
     signal clicked()
     implicitWidth: primaryBtn.implicitWidth + Style.space(24)
     implicitHeight: Math.max(primaryBtn.implicitHeight, Style.spacing.controlHeight)
-    // Outlined, never filled: no grey slabs anywhere in the app.
-    color: "transparent"
+    // Filled actions opt in; secondary controls retain their outline.
+    color: filled ? Color.accent : "transparent"
     borderSpec: Border.controlSpec("normal", primary.fg, Color.accent)
     radius: Style.cornerRadius
     Button {
@@ -252,6 +255,7 @@ Item {
       anchors.fill: parent
       bordered: false
       foreground: primary.fg
+      focusable: primary.focusable
       text: primary.text
       tooltipText: primary.tooltipText
       onClicked: primary.clicked()
@@ -366,7 +370,7 @@ bordered: true
           anchors.fill: parent
           bordered: false
           fontSize: Style.font.caption
-          visible: !!row && !row.baseline && (pickHover.hovered || hasCursor || selected || (row && row.chosen)) && (!root.ready || root.svc.preset !== row.preset)
+          visible: !!row && !row.baseline && (pickHover.hovered || hasCursor || selected || (row && row.chosen === true)) && (!root.ready || root.svc.preset !== row.preset)
           enabled: !!row && !row.baseline && root.ready && !root.svc.busy && root.svc.preset !== row.preset
           text: root.t("Применить")
           tooltipText: root.t("Применить ") + ((row && row.title) || (row && row.preset) || "") + " (Enter)"
@@ -426,7 +430,7 @@ bordered: true
       id: keyCtrl
       anchors.fill: parent
       Keys.onPressed: function(e) {
-        if ((e.modifiers & Qt.ControlModifier) && e.key >= Qt.Key_1 && e.key <= Qt.Key_5) {
+        if ((e.modifiers & Qt.ControlModifier) && e.key >= Qt.Key_1 && e.key <= Qt.Key_6) {
           root.tab = e.key - Qt.Key_1
           e.accepted = true
         } else if ((e.modifiers & Qt.ControlModifier) && e.key === Qt.Key_T && root.ready) {
@@ -439,7 +443,7 @@ bordered: true
         id: appKeys
         anchors.fill: parent
         blocked: (root.tab === 1 && spPg.uiBlocked) || (root.tab === 2 && lpPg.uiBlocked)
-            || (root.tab === 3 && epPg.uiBlocked) || (root.tab === 4 && stpPg.uiBlocked)
+            || (root.tab === 3 && epPg.uiBlocked) || (root.tab === 4 && stpPg.uiBlocked) || (root.tab === 5 && tgPg.uiBlocked)
         onMoveRequested: function(dx, dy) {
           if (dy === 0) return
           if (root.tab === 0) ovPg.moveCursor(dy)
@@ -541,7 +545,7 @@ bordered: true
                     Text {
                       Layout.preferredWidth: Style.space(18)
                       horizontalAlignment: Text.AlignHCenter
-                      text: String.fromCodePoint([0xF056E, 0xF062E, 0xF0279, 0xF01FA, 0xF0493][index])
+                      text: String.fromCodePoint([0xF056E, 0xF062E, 0xF0279, 0xF01FA, 0xF0493, 0xF0501][index])
                       color: tabSurface.isActive ? Color.accent : root.dim
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.body + 2
@@ -559,7 +563,7 @@ bordered: true
                     // stays visible on every tab, including Обзор.
                     BorderSurface {
                       Layout.alignment: Qt.AlignVCenter
-                      visible: index === 3 && root.ready && root.svc.installed && !root.svc.appCurrent
+                      visible: index === 3 && !!root.svc && root.svc.installed && !root.svc.appCurrent
                       implicitWidth: pillText.implicitWidth + Style.space(8)
                       implicitHeight: pillText.implicitHeight + Style.space(2)
                       color: "transparent"
@@ -646,7 +650,7 @@ bordered: true
             Hint {
               Layout.fillWidth: true
               Layout.topMargin: Style.space(2)
-              text: root.t("Ctrl+1…5 — вкладки\nCtrl+T — вкл/выкл\n/ — поиск")
+              text: root.t("Ctrl+1…6 — вкладки\nCtrl+T — вкл/выкл\n/ — поиск")
             }
           }
 
@@ -679,15 +683,18 @@ bordered: true
               Button {
                 bordered: true
                 visible: root.ready && root.svc.errorText !== ""
-                text: root.t("Диагностика")
-                tooltipText: root.t("Открыть Движок: диагностика и журнал")
-                onClicked: root.tab = 3
+                text: root.tab === 5 ? root.t("Логи") : root.t("Диагностика")
+                tooltipText: root.tab === 5 ? root.t("Журнал прокси") : root.t("Открыть Движок: диагностика и журнал")
+                onClicked: {
+                  if (root.tab === 5) { tgPg.showLogs = true; root.svc.telegramLoadLogs() }
+                  else root.tab = 3
+                }
               }
             }
 
             Section {
               title: root.t("ДВИЖОК ZAPRET2 НЕ УСТАНОВЛЕН")
-              visible: root.ready && root.svc.reachable && !root.svc.installed
+              visible: root.tab !== 5 && root.ready && root.svc.reachable && !root.svc.installed
               Hint {
                 Layout.fillWidth: true
                 text: root.t("Скачивает релиз bol-van/zapret2, сверяет sha256 и кладёт в /opt/omarchy-zapret2. Пароль — один раз.")
@@ -705,6 +712,7 @@ bordered: true
               ListsPage { id: lpPg }
               EnginePage { id: epPg }
               SettingsPage { id: stpPg }
+              TelegramPage { id: tgPg }
             }
           }
         }
@@ -714,6 +722,215 @@ bordered: true
   }
 
   // --- pages ---------------------------------------------------------------
+  component TelegramPage: ScrollView {
+    id: tg
+    readonly property var info: root.svc ? root.svc.telegram : ({})
+    readonly property bool installed: info.installed === true
+    readonly property bool running: info.active === "active" || info.active === "activating"
+    readonly property bool available: root.ready && !root.svc.busy
+    readonly property bool uiBlocked: portField.activeFocus || tgLogs.area.activeFocus
+    property bool showLogs: false
+    property bool armRemove: false
+    clip: true
+    ColumnLayout {
+      width: tg.availableWidth
+      spacing: Style.space(12)
+      Section {
+        title: "TELEGRAM"
+        PanelHero {
+          Layout.fillWidth: true
+          foreground: root.fg
+          fontFamily: root.fontFamily
+          title: "Telegram Proxy"
+          meta: root.ready ? root.svc.telegramStateText : root.t("Загрузка…")
+        }
+        Hint {
+          Layout.fillWidth: true
+          text: tg.installed ? "MTProto → WebSocket · 127.0.0.1:" + (tg.info.port || 1443)
+              : root.t("Локальный прокси Flowseal для Telegram Desktop. Установка без пароля.")
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: text !== ""
+          color: root.bad
+          text: tg.info.error || ""
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+          PrimaryButton {
+            filled: true
+            focusable: true
+            enabled: tg.available
+            text: !tg.installed ? root.t("Установить прокси")
+                : tg.running ? root.t("Подключить Telegram") : root.t("Включить прокси")
+            tooltipText: tg.running ? root.t("Открыть ссылку подключения в Telegram") : text
+            onClicked: {
+              if (!tg.installed) root.svc.telegramInstall(false)
+              else if (!tg.running) root.svc.telegramAction(["on"])
+              else root.svc.telegramLink(false)
+            }
+          }
+          ActionButton {
+            focusable: true
+            visible: tg.installed
+            enabled: tg.available
+            text: tg.running ? root.t("Выключить") : root.t("Скопировать ссылку")
+            onClicked: tg.running ? root.svc.telegramAction(["off"]) : root.svc.telegramLink(true)
+          }
+        }
+        RowLayout {
+          visible: tg.installed && tg.running
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+          ActionButton {
+            focusable: true
+            enabled: tg.available
+            text: root.t("Скопировать ссылку")
+            onClicked: root.svc.telegramLink(true)
+          }
+          ActionButton {
+            focusable: true
+            enabled: tg.available
+            text: root.t("Перезапустить")
+            onClicked: root.svc.telegramAction(["restart"])
+          }
+        }
+        Hint {
+          Layout.fillWidth: true
+          text: root.t("В Telegram подтвердите подключение. При выключении прокси отключите его и в Telegram.")
+          visible: tg.installed
+        }
+        Hint {
+          Layout.fillWidth: true
+          visible: root.ready && root.svc.busy && root.svc.busyLabel === "Telegram"
+          text: root.svc.progressInfo && root.svc.progressInfo.message
+              ? root.t(root.svc.progressInfo.message) : root.t("Подождите…")
+        }
+      }
+      Section {
+        title: root.t("СОЕДИНЕНИЕ")
+        visible: tg.installed
+        ToolRow {
+          title: root.t("Транспорт до Telegram")
+          note: root.t("Проверка WebSocket для сообщений и медиа, DC2 и DC4.")
+          ActionButton {
+            focusable: true
+            enabled: tg.available
+            text: root.t("Проверить")
+            onClicked: root.svc.telegramAction(["check"])
+          }
+        }
+        Hint {
+          Layout.fillWidth: true
+          text: tg.info.check && tg.info.check.at
+              ? root.t("Проверено: ") + new Date(tg.info.check.at * 1000).toLocaleString(Qt.locale(root.lang))
+              : root.t("Проверка ещё не запускалась")
+        }
+        Repeater {
+          model: tg.info.check && tg.info.check.results ? tg.info.check.results : []
+          delegate: ToolRow {
+            required property var modelData
+            title: "DC" + modelData.dc + " · " + (modelData.media ? root.t("Медиа") : root.t("Сообщения"))
+            note: modelData.ok ? root.t("WebSocket доступен") : root.t("WebSocket недоступен") + (modelData.error ? " · " + modelData.error : "")
+            noteColor: modelData.ok ? root.dim : root.bad
+          }
+        }
+        Hint {
+          Layout.fillWidth: true
+          text: root.t("Проверяется транспорт, а не работа аккаунта или звонков. Результат зависит от сети.")
+        }
+      }
+      Section {
+        title: root.t("НАСТРОЙКИ ПРОКСИ")
+        visible: tg.installed
+        ToggleRow {
+          label: root.t("Включать при входе")
+          note: root.t("Независимо от обхода Zapret2")
+          checked: tg.info.autostart === true
+          enabled: tg.available
+          onFlip: root.svc.telegramAction(["set", "autostart", tg.info.autostart ? "off" : "on"])
+        }
+        ToolRow {
+          title: root.t("Локальный порт")
+          note: root.t("После изменения подключите Telegram заново.")
+          SafeField {
+            id: portField
+            Layout.preferredWidth: Style.space(78)
+            text: String(tg.info.port || 1443)
+            validator: IntValidator { bottom: 1024; top: 65535 }
+            color: root.fg
+            font.family: root.monoFamily
+            selectByMouse: true
+            Accessible.name: root.t("Локальный порт")
+            enabled: tg.available
+            background: BorderSurface { color: "transparent"; borderSpec: Border.controlSpec("normal", root.fg, Color.accent); radius: Style.cornerRadius }
+          }
+          ActionButton {
+            focusable: true
+            enabled: tg.available && portField.acceptableInput && Number(portField.text) !== tg.info.port
+            text: root.t("Применить")
+            onClicked: root.svc.telegramAction(["set", "port", portField.text])
+          }
+        }
+      }
+      Section {
+        title: root.t("ДВИЖОК ПРОКСИ")
+        visible: tg.installed
+        ToolRow {
+          title: "tg-ws-proxy " + (tg.info.version || "")
+          note: "Flowseal · " + String(tg.info.revision || "").substring(0, 12)
+          ActionButton {
+            focusable: true
+            enabled: tg.available
+            text: root.t("Обновить прокси")
+            onClicked: root.svc.telegramInstall(true)
+          }
+        }
+        ToolRow {
+          title: root.t("Журнал прокси")
+          ActionButton {
+            focusable: true
+            enabled: tg.available
+            text: root.t("Логи")
+            onClicked: { tg.showLogs = true; root.svc.telegramLoadLogs() }
+          }
+        }
+        Editor {
+          id: tgLogs
+          visible: tg.showLogs
+          Layout.fillHeight: false
+          Layout.preferredHeight: Style.space(180)
+          readOnly: true
+          area.wrapMode: Text.WrapAnywhere
+          text: root.ready ? root.svc.telegramLogs.join("\n") : ""
+        }
+        ToolRow {
+          title: tg.armRemove ? root.t("Удалить Telegram Proxy?") : root.t("Удалить прокси")
+          note: root.t("Порт и ссылка подключения сохранятся для повторной установки.")
+          ActionButton {
+            focusable: true
+            visible: tg.armRemove
+            enabled: tg.available
+            text: root.t("Отмена")
+            onClicked: tg.armRemove = false
+          }
+          ActionButton {
+            focusable: true
+            enabled: tg.available
+            text: tg.armRemove ? root.t("Удалить") : root.t("Удалить прокси")
+            foreground: tg.armRemove ? root.bad : root.fg
+            onClicked: {
+              if (tg.armRemove) { root.svc.telegramAction(["remove"]); tg.armRemove = false }
+              else tg.armRemove = true
+            }
+          }
+        }
+      }
+    }
+  }
+
+
   component OverviewPage: ScrollView {
     // Square, thin scrollbar pressed into the window's right margin, outside
     // the content, so it never covers anything and takes no room.
@@ -805,6 +1022,15 @@ bordered: true
           text: root.t("Открыть Движок")
           tooltipText: root.t("Открыть вкладку Движок: обновление плагина")
           onClicked: root.tab = 3
+        }
+      }
+
+      ToolRow {
+        title: "Telegram"
+        note: root.ready ? root.svc.telegramStateText : root.t("Загрузка…")
+        ActionButton {
+          text: root.t("Открыть Telegram Proxy")
+          onClicked: root.tab = 5
         }
       }
 

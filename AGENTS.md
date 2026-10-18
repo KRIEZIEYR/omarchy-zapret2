@@ -10,7 +10,7 @@ bypass engine (bol-van/zapret2, `nfqws2` + Lua desync) on Arch/Omarchy. UI is
 Quickshell/QML inside the Omarchy shell; logic lives in a Python manager.
 UI copy: English by default, Russian via Settings → Language. Russian source
 strings are wrapped in `root.t()` (QML) / `tr()` (model) and translated by
-`model/En.js`; add every new Russian string there. Repo: https://github.com/KRIEZIEYR/omarchy-zapret2, branch
+`model/En.js`; add every new Russian string there. Repo: https://github.com/kapustaltd/omarchy-zapret2, branch
 `master`.
 
 ## Layout
@@ -18,12 +18,15 @@ strings are wrapped in `root.t()` (QML) / `tr()` (model) and translated by
 - `manifest.json` — kinds service + panel + bar-widget.
 - `Service.qml` — shared state; polls the manager, runs actions (`act`).
 - `App.qml` — the app: a normal Hyprland `FloatingWindow` (not an overlay)
-  with 5 tabs: Overview, Strategies (ranked list, quick pick, circular config and
-  blockcheck2 under "Advanced search"), Lists, Engine, Settings.
+  with 6 tabs: Overview, Strategies (ranked list, quick pick, circular config and
+  blockcheck2 under "Advanced search"), Lists, Engine, Settings, Telegram.
 - `BarWidget.qml` — bar icon + popup (toggle, strategy, check, open app).
 - `ZapretIcon.qml` — shield drawn on Canvas.
 - `model/Zapret.js` — pure logic (titles, verdicts, colors, parsing). Every
   exported function used by tests is listed in `tests/run.js`.
+- `bin/telegram.py` — user-only tg-ws-proxy integration, loaded by the manager.
+  Independent user systemd service, localhost only, private config under
+  `~/.local/share/omarchy-zapret2/telegram`. Never load or run it from root commands.
 - `bin/omarchy-zapret2` — Python manager (`python3 -I`), JSON on stdout.
   Commands: status, presets/presets show/presets update, on/off/restart,
   set <key> <value>, custom, list, lists update, hosts, discord-cache,
@@ -48,12 +51,12 @@ strings are wrapped in `root.t()` (QML) / `tr()` (model) and translated by
 ## Running and checking
 
 - Tests: `node tests/run.js` and `python3 -m unittest discover -s tests/manager`
-  must pass. `python3 -m py_compile bin/omarchy-zapret2`.
+  must pass. `python3 -m py_compile bin/omarchy-zapret2 bin/telegram.py`.
 - The plugin dir `~/.config/omarchy/plugins/krieziey.omarchy-zapret2` symlinks
   to this repo, but the shell does NOT hot-reload QML through it: run
   `omarchy restart shell` after QML edits.
 - Open a tab: `omarchy-shell shell summon krieziey.omarchy-zapret2 '{"tab":N}'`
-  (N = 0..4; also `"advanced":true`, `"scroll":0..1`). Window title is `Zapret2`; screenshot with
+  (N = 0..5; also `"advanced":true`, `"scroll":0..1`). Window title is `Zapret2`; screenshot with
   `grim -g "<x>,<y> <w>x<h>"` using geometry from `hyprctl clients -j`.
 - Runtime QML errors: `journalctl --user --since "-1min" | grep App.qml`.
 - Root-side changes (manager code run as root, unit, nft rendering) only take

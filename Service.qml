@@ -35,6 +35,46 @@ Item {
   readonly property bool appCurrent: !st || st.appCurrent !== false
   readonly property string summary: reachable ? Model.summary(st) : root.t("Zapret2 · нет связи с менеджером")
 
+  readonly property var telegram: st && st.telegram ? st.telegram : ({})
+  readonly property string telegramStateText: telegram.error ? root.t("Ошибка прокси")
+      : !telegram.installed ? root.t("Не установлен")
+      : telegram.active === "active" ? root.t("Прокси работает")
+      : telegram.active === "activating" ? root.t("Запускается…")
+      : telegram.active === "failed" ? root.t("Ошибка прокси")
+      : telegram.active === "unknown" ? root.t("Нет связи с сервисом") : root.t("Выключен")
+  property var telegramLogs: []
+
+  function telegramAction(args) {
+    act(["telegram"].concat(args), "Telegram", "", function(r) {
+      if (r.ok && args[0] === "remove") telegramLogs = []
+    })
+  }
+  function telegramInstall(update) {
+    longJob(["telegram", update ? "update" : "install"], "Telegram", root.t("Прокси Telegram установлен"))
+  }
+  function telegramLink(copy) {
+    act(["telegram", "link"], "Telegram", "", function(r) {
+      if (!r.ok || !r.data.link) return
+      telegramLinkProc.copying = copy
+      telegramLinkProc.command = [copy ? "wl-copy" : "xdg-open", r.data.link]
+      telegramLinkProc.environment = baseEnv
+      telegramLinkProc.running = true
+    })
+  }
+  Process {
+    id: telegramLinkProc
+    clearEnvironment: true
+    property bool copying: false
+    onExited: function(code) {
+      if (code !== 0) root.lastError = copying ? root.t("Не удалось скопировать ссылку")
+          : root.t("Не удалось открыть Telegram. Скопируйте ссылку подключения.")
+      else if (copying) root.flash(root.t("Скопировано"))
+    }
+  }
+  function telegramLoadLogs() {
+    act(["telegram", "logs"], "Telegram", "", function(r) { if (r.ok) telegramLogs = r.data.lines || [] })
+  }
+
   property string lastError: ""
   readonly property string errorText: lastError !== "" ? lastError : (st && st.error ? st.error : "")
   property string flashText: ""
